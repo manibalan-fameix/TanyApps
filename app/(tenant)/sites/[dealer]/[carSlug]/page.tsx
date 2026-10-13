@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm"
+import { and, asc, eq, inArray } from "drizzle-orm"
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 
@@ -7,10 +7,15 @@ import { BuyerBottomBar } from "@/components/cars/buyer-bottom-bar"
 import { BuyerGallery } from "@/components/cars/buyer-gallery"
 import { BuyerHeaderCard } from "@/components/cars/buyer-header-card"
 import { BuyerPurchasePanel } from "@/components/cars/buyer-purchase-panel"
+import { NewCarComparisonCard } from "@/components/cars/new-car-comparison-card"
+import { ShowMotoScoreCard } from "@/components/cars/showmoto-score-card"
 import { ChatWidget } from "@/components/chat/chat-widget"
+import { ViewBeacon } from "@/components/tenant/view-beacon"
 import { SiteHeader } from "@/components/tenant/site-header"
 import { isChatEnabled } from "@/lib/ai/chat"
 import { copy } from "@/lib/copy"
+import { computeShowMotoScore } from "@/lib/cars/score"
+import { computeNewCarSavings } from "@/lib/cars/savings"
 import { titleOf } from "@/lib/cars/title"
 import { carMedia, cars } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
@@ -18,6 +23,7 @@ import {
   emptyMarketplaceDetails,
   marketplaceDetailsSchema,
 } from "@/lib/cars/marketplace"
+import { tenantUrl } from "@/lib/env"
 import { formatInr } from "@/lib/share/caption"
 import { getStorage } from "@/lib/storage"
 import { getDealerBySlug } from "@/lib/tenant/dealer"
@@ -33,10 +39,20 @@ async function load(dealerSlug: string, carSlug: string) {
   // Buyers only ever see published cars.
   if (!car || car.status === "draft" || car.status === "archived") return null
   const variant = car.variantId ? await getVariantById(car.variantId) : null
-  const media = await db.carMedia.select(
-    and(eq(carMedia.carId, car.id), eq(carMedia.kind, "photo")),
-    { limit: 8 }
+  // Only photos that actually landed in storage. Pending rows are abandoned uploads with nothing behind the URL.
+  const uploaded = await db.carMedia.select(
+    and(
+      eq(carMedia.carId, car.id),
+      eq(carMedia.kind, "photo"),
+      inArray(carMedia.status, ["uploaded", "ready"])
+    ),
+    { orderBy: [asc(carMedia.sortOrder)], limit: 8 }
   )
+  // The hero leads the gallery, the rest follow in capture order.
+  const media = [
+    ...uploaded.filter((m) => m.angle === HERO_ANGLE),
+    ...uploaded.filter((m) => m.angle !== HERO_ANGLE),
+  ]
   const storage = getStorage()
   const hero = media.find((m) => m.angle === HERO_ANGLE) ?? media[0]
   return {
@@ -56,7 +72,32 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { dealer, carSlug } = await params
   const data = await load(dealer, carSlug)
-  return data ? { title: titleOf(data.car.year, data.variant) } : {}
+  if (!data) return {}
+
+  const title = titleOf(data.car.year, data.variant)
+  const description = `${data.car.askingPrice ? `${formatInr(data.car.askingPrice)} — ` : ""}${data.dealer.displayName}, ${data.dealer.city}`
+  // WhatsApp/Facebook unfurl og:image absolutely, so a locally-hosted photo (dev only; R2 is already absolute) needs the tenant host prefixed.
+  const image = data.heroUrl
+    ? data.heroUrl.startsWith("http")
+      ? data.heroUrl
+      : tenantUrl(dealer, data.heroUrl)
+    : null
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      images: image ? [{ url: image }] : [],
+    },
+    twitter: {
+      card: image ? "summary_large_image" : "summary",
+      title,
+      description,
+      images: image ? [image] : [],
+    },
+  }
 }
 
 const specLabel: Record<string, string> = {
@@ -81,6 +122,21 @@ export default async function CarPage({
     .catch(emptyMarketplaceDetails())
     .parse(car.marketplaceDetails ?? {})
   const title = titleOf(car.year, variant)
+  const score = computeShowMotoScore({
+    year: car.year,
+    kmDriven: car.kmDriven,
+    ownerCount: car.ownerCount,
+    askingPrice: car.askingPrice,
+    insuranceValidTill: car.insuranceValidTill,
+    hypothecationCleared: car.hypothecationCleared,
+    rcVerified: car.rcVerifiedAt != null,
+    photoCount: media.length,
+    details,
+  })
+  const savings = computeNewCarSavings({
+    askingPrice: car.askingPrice,
+    newCarPrice: details.pricing.newCarPrice,
+  })
   const gallery = media.map((m) => ({
     url: storage.publicUrl(m.r2Key),
     angle: m.angle,
@@ -206,8 +262,21 @@ export default async function CarPage({
                 bookingAmount: details.pricing.bookingAmount ?? null,
                 tokenRefundable: details.pricing.tokenRefundable,
               }}
+              booking={{
+                dealerSlug: dealer.slug,
+                carSlug,
+                canPayOnline: dealer.razorpayAccountStatus === "activated",
+              }}
             />
           </div>
+          <div className="mb-4">
+            <ShowMotoScoreCard result={score} />
+          </div>
+          {savings ? (
+            <div className="mb-4">
+              <NewCarComparisonCard savings={savings} title={title} />
+            </div>
+          ) : null}
           <BuyerPurchasePanel
             overview={overview}
             reasons={details.trust.reasonsToBuy}
@@ -224,14 +293,15 @@ export default async function CarPage({
           price={car.askingPrice}
           dealerPhone={dealer.phone}
         />
-        {/* TEMP: forced on for a no-API-key UI preview — revert to `isChatEnabled()` */}
-        {true || isChatEnabled() ? (
+        {isChatEnabled() ? (
           <ChatWidget
             scope={{ type: "car", carSlug }}
             greeting={t.chat.carGreeting}
             questions={t.chat.carQuestions}
+            handoff={dealer.phone ? { phone: dealer.phone, message: t.chat.whatsappCar(title) } : null}
           />
         ) : null}
+        <ViewBeacon carSlug={carSlug} />
       </main>
     </>
   )

@@ -12,12 +12,17 @@ export function createR2Storage(cfg: R2Config): StorageAdapter {
     region: "auto",
     endpoint: `https://${cfg.accountId}.r2.cloudflarestorage.com`,
     credentials: { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey },
+    // Newer SDKs add a CRC32 checksum to presigned URLs. A browser PUT does not send it, so R2 rejects the upload.
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
   })
   const publicBase = cfg.publicUrl.replace(/\/$/, "")
 
   return {
     kind: "r2",
     async presignPut(key, contentType) {
+      // Photos go through the app (/api/upload), so the browser never needs bucket CORS for them.
+      if (contentType.startsWith("image/")) return { url: `/api/upload/${key}`, method: "PUT", headers: { "Content-Type": contentType } }
       const url = await getSignedUrl(s3, new PutObjectCommand({ Bucket: cfg.bucket, Key: key, ContentType: contentType }), {
         expiresIn: PRESIGN_SECONDS,
       })

@@ -4,15 +4,27 @@ import { z } from "zod"
 
 import { unscopedDb, type Db } from "./client.ts"
 import {
+  bookings,
   carMedia,
   carViews,
   cars,
   dealerDomains,
   dealerUsers,
   leads,
+  banners,
+  coupons,
+  deliveryPartners,
+  deliveryZones,
+  enquiries,
+  menuCategories,
+  menuItems,
+  orderLocations,
+  orders,
   priceEvents,
   rcLookups,
   rcTransfers,
+  reviews,
+  stockAdjustments,
 } from "./schema/index.ts"
 
 export class TenantViolationError extends Error {
@@ -32,7 +44,7 @@ type DirectTable = PgTable & { dealerId: AnyPgColumn }
 type ChildTable = PgTable & { carId: AnyPgColumn }
 
 /** Tables carrying their own dealer_id. */
-export const DIRECT_TENANT_TABLES = { cars, leads, dealerUsers, dealerDomains } as const
+export const DIRECT_TENANT_TABLES = { cars, leads, dealerUsers, dealerDomains, bookings, menuCategories, menuItems, orders, coupons, reviews, enquiries, banners, deliveryPartners, deliveryZones, stockAdjustments, orderLocations } as const
 /** Tables owned through a car (car_id). Scoped by an ownership subquery on cars. */
 export const CHILD_TENANT_TABLES = { carMedia, rcLookups, carViews, rcTransfers, priceEvents } as const
 
@@ -136,6 +148,18 @@ export function scopedDb(dealerId: string, db: Db = unscopedDb) {
     leads: direct(leads),
     dealerUsers: direct(dealerUsers),
     dealerDomains: direct(dealerDomains),
+    bookings: direct(bookings),
+    menuCategories: direct(menuCategories),
+    menuItems: direct(menuItems),
+    orders: direct(orders),
+    coupons: direct(coupons),
+    reviews: direct(reviews),
+    enquiries: direct(enquiries),
+    banners: direct(banners),
+    deliveryPartners: direct(deliveryPartners),
+    deliveryZones: direct(deliveryZones),
+    stockAdjustments: direct(stockAdjustments),
+    orderLocations: direct(orderLocations),
     carMedia: child(carMedia),
     rcLookups: child(rcLookups),
     carViews: child(carViews),

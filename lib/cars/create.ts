@@ -8,10 +8,13 @@ const isUniqueViolation = (e: unknown) => (e as { cause?: { code?: string } })?.
 
 export class InvalidRegError extends Error {}
 
-/** A draft car from a registration number. The plate is encrypted at rest; the short code is unique. */
-export async function createDraftCar(dealerId: string, reg: string): Promise<string> {
-  if (!isValidReg(reg)) throw new InvalidRegError("Registration number looks wrong")
-  const normalized = normalizeReg(reg)
+/**
+ * A draft car, usually from a registration number (encrypted at rest). Pass no plate for a car
+ * started from a video, where the plate may not have been shown. The short code is unique.
+ */
+export async function createDraftCar(dealerId: string, reg?: string): Promise<string> {
+  if (reg !== undefined && !isValidReg(reg)) throw new InvalidRegError("Registration number looks wrong")
+  const normalized = reg === undefined ? null : normalizeReg(reg)
   const db = scopedDb(dealerId)
 
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -19,8 +22,8 @@ export async function createDraftCar(dealerId: string, reg: string): Promise<str
     try {
       const [row] = await db.cars
         .insert({
-          regNumber: encrypt(normalized),
-          regPrefix: regPrefix(normalized),
+          regNumber: normalized && encrypt(normalized),
+          regPrefix: normalized && regPrefix(normalized),
           status: "draft",
           shortCode,
           slug: `draft-${shortCode}`,

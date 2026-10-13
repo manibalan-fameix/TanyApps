@@ -1,5 +1,23 @@
 /** Minimal Gemini REST client (fetch only, so it runs on Node and Cloudflare Workers alike). */
-const BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+const STUDIO_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+const VERTEX_BASE = "https://aiplatform.googleapis.com/v1/publishers/google/models"
+
+/**
+ * Where a request goes. Google AI Studio keys travel in a header. Vertex AI keys (they start with "AQ.")
+ * are rejected by AI Studio and must call Vertex with the key in the query string.
+ */
+function target(apiKey: string, model: string, method: "generateContent" | "streamGenerateContent"): { url: string; headers: Record<string, string> } {
+  const path = `${encodeURIComponent(model)}:${method}`
+  const sse = method === "streamGenerateContent" ? "alt=sse" : ""
+  if (apiKey.startsWith("AQ.")) {
+    const query = [sse, `key=${encodeURIComponent(apiKey)}`].filter(Boolean).join("&")
+    return { url: `${VERTEX_BASE}/${path}?${query}`, headers: { "content-type": "application/json" } }
+  }
+  return {
+    url: `${STUDIO_BASE}/${path}${sse ? `?${sse}` : ""}`,
+    headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
+  }
+}
 
 export type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } }
 export type GeminiContent = { role: "user" | "model"; parts: GeminiPart[] }
@@ -40,11 +58,8 @@ const textOf = (c: Candidate | undefined) => (c?.content?.parts ?? []).map((p) =
 export async function generate(
   fetchFn: GeminiFetch, apiKey: string, model: string, req: GeminiRequest,
 ): Promise<string | null> {
-  const res = await fetchFn(`${BASE}/${encodeURIComponent(model)}:generateContent`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
-    body: body(req),
-  })
+  const { url, headers } = target(apiKey, model, "generateContent")
+  const res = await fetchFn(url, { method: "POST", headers, body: body(req) })
   if (!res.ok) throw new GeminiError(res.status)
   const candidate = ((await res.json()) as { candidates?: Candidate[] }).candidates?.[0]
   if (!candidate || (candidate.finishReason && candidate.finishReason !== "STOP")) return null
@@ -55,11 +70,8 @@ export async function generate(
 export async function* streamText(
   fetchFn: GeminiFetch, apiKey: string, model: string, req: GeminiRequest,
 ): AsyncGenerator<string> {
-  const res = await fetchFn(`${BASE}/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
-    body: body(req),
-  })
+  const { url, headers } = target(apiKey, model, "streamGenerateContent")
+  const res = await fetchFn(url, { method: "POST", headers, body: body(req) })
   if (!res.ok || !res.body) throw new GeminiError(res.status)
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
   let buffer = ""

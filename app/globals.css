@@ -24,6 +24,7 @@
     --color-input: var(--input);
     --color-border: var(--border);
     --color-destructive: var(--destructive);
+    --color-success: var(--success);
     --color-accent-foreground: var(--accent-foreground);
     --color-accent: var(--accent);
     --color-muted-foreground: var(--muted-foreground);
@@ -63,6 +64,7 @@
     --accent: oklch(0.967 0.001 286.375);
     --accent-foreground: oklch(0.21 0.006 285.885);
     --destructive: oklch(0.577 0.245 27.325);
+    --success: oklch(0.527 0.154 150.069);
     --border: oklch(0.92 0.004 286.32);
     --input: oklch(0.92 0.004 286.32);
     --ring: oklch(0.705 0.015 286.067);
@@ -98,6 +100,7 @@
     --accent: oklch(0.274 0.006 286.033);
     --accent-foreground: oklch(0.985 0 0);
     --destructive: oklch(0.704 0.191 22.216);
+    --success: oklch(0.723 0.219 149.579);
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.552 0.016 285.938);
@@ -122,8 +125,43 @@
     }
   body {
     @apply bg-background text-foreground;
+    -webkit-tap-highlight-color: transparent;
     }
+  @media (max-width: 767px) {
+    body {
+      overscroll-behavior-y: none;
+    }
+  }
   html {
     @apply font-sans;
     }
+}
+/* AG Grid: keep the header filter button next to the label instead of the far edge. */
+.ag-header-cell .ag-cell-label-container {
+  /* The container is row-reverse, so flex-end packs label + button to the left. */
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+.ag-header-cell .ag-header-cell-label {
+  flex: 0 1 auto;
+}
+
+/* AG Grid header icons: masked so they follow the text colour in light and dark. */
+.ag-header-cell.hdr-icon .ag-header-cell-text::before {
+  content: "";
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  margin-right: 0.375rem;
+  vertical-align: -0.2em;
+  background-color: currentColor;
+  opacity: 0.5;
+  -webkit-mask: var(--hdr-icon) center / contain no-repeat;
+  mask: var(--hdr-icon) center / contain no-repeat;
+}
+
+/* AG Grid: vertically centre every cell's content within the row. */
+.ag-row .ag-cell {
+  display: flex;
+  align-items: center;
 }

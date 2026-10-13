@@ -3,14 +3,31 @@
 import Link from "next/link"
 import { useEffect, useState, useTransition } from "react"
 import { toast } from "sonner"
+import { HugeiconsIcon } from "@hugeicons/react"
+import {
+  Add01Icon,
+  ArrowRight01Icon,
+  Calendar03Icon,
+  CancelCircleIcon,
+  Call02Icon,
+  Car01Icon,
+  CheckmarkCircle01Icon,
+  DashboardSpeed01Icon,
+  FavouriteIcon,
+  FilterHorizontalIcon,
+  Fuel02Icon,
+  HeartIcon,
+  ImageUpload01Icon,
+  Search01Icon,
+  SteeringIcon,
+  UserCircleIcon,
+} from "@hugeicons/core-free-icons"
 
+import { Logo } from "@/components/logo"
 import { Button, buttonVariants } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Progress } from "@/components/ui/progress"
 import {
-  DAYS,
   HOURS_PRESETS,
   PALETTES,
   RADIUS_KEYS,
@@ -18,39 +35,106 @@ import {
   onboardSchema,
   slugSchema,
 } from "@/lib/dealers/onboard"
-import type { DayKey } from "@/lib/hours"
 import { RADIUS_OPTIONS, readableOn } from "@/lib/theme/tokens"
+import { resizeToPng } from "@/lib/image/resize"
 import { slugify } from "@/lib/slug"
 import { cn } from "@/lib/utils"
 
+import { authorisePayment } from "@/components/billing/razorpay-checkout"
+import { celebrate } from "@/components/onboarding/confetti"
+import { CreatingShowroom } from "@/components/onboarding/creating-showroom"
+import { IndustryPicker } from "@/components/onboarding/industry-picker"
+import { PhoneVerify } from "@/components/onboarding/phone-verify"
+import { RestaurantPreview } from "@/components/onboarding/restaurant-preview"
+import { type IndustryKey, getIndustry } from "@/lib/industries"
+import type { FirebaseWebConfig } from "@/lib/firebase/client"
+import { PlanPicker } from "@/components/billing/plan-picker"
+import {
+  PLANS,
+  RESTAURANT_MENU_LIMITS,
+  TRIAL_DAYS,
+  isFreePlan,
+  type BillingCycle,
+  type SignupPlanKey,
+} from "@/lib/plans"
+
 import { type SlugStatus, checkSlug, createDealership } from "./actions"
 
-const STEPS = ["Your showroom", "Contact and hours", "Make it yours"] as const
-const CITY_SUGGESTIONS = ["Chennai", "Bengaluru", "Hyderabad", "Mumbai", "Pune", "Delhi", "Kolkata", "Coimbatore", "Madurai", "Kochi", "Ahmedabad", "Jaipur"]
+const STEPS = [
+  "Your industry",
+  "Your business",
+  "Contact details",
+  "Make it yours",
+  "Choose your plan",
+] as const
+const CITY_SUGGESTIONS = [
+  "Chennai",
+  "Bengaluru",
+  "Hyderabad",
+  "Mumbai",
+  "Pune",
+  "Delhi",
+  "Kolkata",
+  "Coimbatore",
+  "Madurai",
+  "Kochi",
+  "Ahmedabad",
+  "Jaipur",
+]
 
-type Errors = Partial<Record<keyof OnboardDraft | "form", string>>
+type Errors = Partial<Record<keyof OnboardDraft | "form" | "logo", string>>
 
 const initialHours = () => {
   const p = HOURS_PRESETS[0]
-  return Object.fromEntries(p.days.map((d) => [d, { open: p.open, close: p.close }])) as OnboardDraft["hours"]
+  return Object.fromEntries(
+    p.days.map((d) => [d, { open: p.open, close: p.close }])
+  ) as OnboardDraft["hours"]
 }
 
-export function OnboardingWizard({ rootDomain, firstName }: { rootDomain: string; firstName: string }) {
+export function OnboardingWizard({
+  rootDomain,
+  firstName,
+  email,
+  verifiedPhone,
+  firebaseConfig,
+  testPhones,
+}: {
+  rootDomain: string
+  firstName: string
+  email: string
+  verifiedPhone: string
+  firebaseConfig: FirebaseWebConfig | null
+  testPhones: string[]
+}) {
   const [step, setStep] = useState(0)
   const [done, setDone] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const [errors, setErrors] = useState<Errors>({})
 
+  const [industry, setIndustry] = useState<IndustryKey>("motors")
+  const ind = getIndustry(industry)
+
   const [displayName, setDisplayName] = useState("")
   const [slug, setSlug] = useState("")
   const [slugEdited, setSlugEdited] = useState(false)
-  const [remote, setRemote] = useState<{ slug: string; status: SlugStatus } | null>(null)
+  const [remote, setRemote] = useState<{
+    slug: string
+    status: SlugStatus
+  } | null>(null)
   const [city, setCity] = useState("")
-  const [phone, setPhone] = useState("")
-  const [hours, setHours] = useState<OnboardDraft["hours"]>(initialHours)
+  const [phone, setPhone] = useState(verifiedPhone)
+  const [verified, setVerified] = useState(verifiedPhone)
+  // Hours are not asked here; the default applies until the dealer edits them in Settings.
+  const [hours] = useState<OnboardDraft["hours"]>(initialHours)
   const [primary, setPrimary] = useState<string>(PALETTES[0].primary)
   const [accent, setAccent] = useState<string>(PALETTES[0].accent)
   const [radius, setRadius] = useState<OnboardDraft["radius"]>("md")
+  const [logo, setLogo] = useState<string | null>(null)
+  const [plan, setPlan] = useState<SignupPlanKey>("free")
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly")
+  const [billingNote, setBillingNote] = useState<
+    "authorised" | "later" | "free"
+  >(isFreePlan(plan) ? "free" : "later")
 
   // Live availability check, debounced. Only the async answer is state; idle/invalid/checking are derived,
   // and an answer for a stale slug is ignored.
@@ -67,7 +151,9 @@ export function OnboardingWizard({ rootDomain, firstName }: { rootDomain: string
     if (!parsed.success) return
     let stale = false
     const t = setTimeout(async () => {
-      const status = await checkSlug(parsed.data).catch(() => "limited" as const)
+      const status = await checkSlug(parsed.data).catch(
+        () => "limited" as const
+      )
       if (!stale) setRemote({ slug: parsed.data, status })
     }, 400)
     return () => {
@@ -76,7 +162,19 @@ export function OnboardingWizard({ rootDomain, firstName }: { rootDomain: string
     }
   }, [slug])
 
-  const draft: OnboardDraft = { displayName, slug, city, phone, hours, primary, accent, radius }
+  const draft: OnboardDraft = {
+    industry,
+    displayName,
+    slug,
+    city,
+    phone,
+    hours,
+    primary,
+    accent,
+    radius,
+    plan,
+    billingCycle,
+  }
 
   function validate(fields: (keyof OnboardDraft)[]): boolean {
     const result = onboardSchema.safeParse(draft)
@@ -87,308 +185,888 @@ export function OnboardingWizard({ rootDomain, firstName }: { rootDomain: string
         if (fields.includes(key)) next[key] ??= issue.message
       }
     }
+    if (fields.includes("phone") && !next.phone && phone !== verified) {
+      next.phone = "Verify your mobile number with the code we send."
+    }
     if (fields.includes("slug") && !next.slug) {
-      if (slugStatus === "taken") next.slug = "That web address is taken. Try another."
-      else if (slugStatus === "checking" || slugStatus === "idle") next.slug = "Hold on, checking that address..."
-      else if (slugStatus === "limited") next.slug = "Too many checks. Wait a moment and try again."
+      if (slugStatus === "taken")
+        next.slug = "That web address is taken. Try another."
+      else if (slugStatus === "checking" || slugStatus === "idle")
+        next.slug = "Hold on, checking that address..."
+      else if (slugStatus === "limited")
+        next.slug = "Too many checks. Wait a moment and try again."
     }
     setErrors(next)
     return Object.keys(next).length === 0
   }
 
   const next = () => {
-    const ok = step === 0 ? validate(["displayName", "slug"]) : validate(["city", "phone", "hours"])
+    const ok =
+      step === 0
+        ? true
+        : step === 1
+          ? validate(["displayName", "slug"])
+          : step === 2
+            ? validate(["city", "phone"])
+            : validate(["primary", "accent", "radius"])
     if (ok) setStep((s) => s + 1)
   }
 
+  async function pickLogo(file: File | undefined) {
+    if (!file) return
+    if (!file.type.startsWith("image/"))
+      return setErrors((e) => ({ ...e, logo: "Choose an image file." }))
+    try {
+      const blob = await resizeToPng(file, 256)
+      const reader = new FileReader()
+      reader.onload = () => {
+        setLogo(reader.result as string)
+        setErrors((e) => ({ ...e, logo: undefined }))
+      }
+      reader.readAsDataURL(blob)
+    } catch {
+      setErrors((e) => ({
+        ...e,
+        logo: "Could not read that image. Try a PNG or JPG.",
+      }))
+    }
+  }
+
   function submit() {
-    if (!validate(["primary", "accent", "radius"])) return
+    if (!validate(["plan", "billingCycle"])) return
     startTransition(async () => {
-      const result = await createDealership(draft)
-      if (result.ok) return setDone(result.url)
+      const result = await createDealership(draft, logo)
+      if (result.ok) {
+        if (isFreePlan(plan)) setBillingNote("free")
+        else if (result.checkout) {
+          const authorised = await authorisePayment(result.checkout, {
+            description: `${PLANS[plan].label} · ${TRIAL_DAYS}-day free trial`,
+            color: primary,
+            prefill: { name: firstName, contact: phone },
+          })
+          setBillingNote(authorised === "done" ? "authorised" : "later")
+        }
+        return setDone(result.url)
+      }
       if (result.fieldErrors) {
         setErrors(result.fieldErrors as Errors)
-        setStep(result.fieldErrors.slug || result.fieldErrors.displayName ? 0 : 1)
+        setStep(
+          result.fieldErrors.slug || result.fieldErrors.displayName
+            ? 1
+            : result.fieldErrors.logo
+              ? 3
+              : 2
+        )
       } else {
         setErrors({ form: result.error })
       }
     })
   }
 
-  if (done) return <Success url={done} name={displayName} />
+  if (done)
+    return (
+      <Success
+        url={done}
+        billingNote={billingNote}
+        industry={industry}
+        name={displayName}
+        city={city}
+        primary={primary}
+        accent={accent}
+        radius={radius}
+      />
+    )
 
-  const setDay = (day: DayKey, on: boolean) =>
-    setHours((h) => {
-      const copy = { ...h }
-      const ref = Object.values(h)[0] ?? { open: "10:00", close: "19:00" }
-      if (on) copy[day] = ref
-      else delete copy[day]
-      return copy
-    })
-  const ref = Object.values(hours)[0] ?? { open: "10:00", close: "19:00" }
-  const setTimes = (open: string, close: string) =>
-    setHours((h) => Object.fromEntries(Object.keys(h).map((d) => [d, { open, close }])) as OnboardDraft["hours"])
-
-  return (
-    <Card className="w-full max-w-lg">
-      <CardHeader>
-        <p className="text-sm text-muted-foreground">
-          Step {step + 1} of {STEPS.length}
-        </p>
-        <Progress value={((step + 1) / STEPS.length) * 100} aria-label={`Step ${step + 1} of ${STEPS.length}`} />
-        <CardTitle className="pt-2 text-xl">
-          {step === 0 ? (firstName ? `Welcome, ${firstName}. Let's set up your showroom` : "Let's set up your showroom") : STEPS[step]}
-        </CardTitle>
-        <CardDescription>
-          {step === 0 && "This is what buyers will see. You can change it any time."}
-          {step === 1 && "Buyers call this number and use your hours to book test drives."}
-          {step === 2 && "Pick a colour for your showroom page. The preview updates live."}
-        </CardDescription>
-      </CardHeader>
-
-      <CardContent className="flex flex-col gap-5">
-        {step === 0 && (
-          <>
-            <div className="grid gap-2">
-              <Label htmlFor="displayName">Dealership name</Label>
-              <Input
-                id="displayName"
-                value={displayName}
-                placeholder="Sri Murugan Motors"
-                autoFocus
-                autoComplete="organization"
-                onChange={(e) => {
-                  setDisplayName(e.target.value)
-                  if (!slugEdited) setSlug(slugify(e.target.value).slice(0, 40))
-                }}
-              />
-              <FieldError message={errors.displayName} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="slug">Your web address</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="slug"
-                  value={slug}
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  onChange={(e) => {
-                    setSlugEdited(true)
-                    setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))
-                  }}
-                />
-                <span className="text-sm whitespace-nowrap text-muted-foreground">.{rootDomain}</span>
-              </div>
-              <SlugHint status={slugStatus} slug={slug} rootDomain={rootDomain} />
-              <FieldError message={errors.slug} />
-            </div>
-          </>
-        )}
-
-        {step === 1 && (
-          <>
-            <div className="grid gap-2">
-              <Label htmlFor="city">City</Label>
-              <Input id="city" list="cities" value={city} placeholder="Chennai" autoComplete="address-level2" onChange={(e) => setCity(e.target.value)} />
-              <datalist id="cities">
-                {CITY_SUGGESTIONS.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
-              <FieldError message={errors.city} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="phone">Mobile number buyers can call</Label>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">+91</span>
-                <Input
-                  id="phone"
-                  inputMode="numeric"
-                  autoComplete="tel-national"
-                  maxLength={10}
-                  placeholder="98765 43210"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
-                />
-              </div>
-              <FieldError message={errors.phone} />
-            </div>
-            <div className="grid gap-3">
-              <Label>Business hours</Label>
-              <div className="flex flex-wrap gap-2">
-                {HOURS_PRESETS.map((p) => (
-                  <Button
-                    key={p.label}
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      setHours(Object.fromEntries(p.days.map((d) => [d, { open: p.open, close: p.close }])) as OnboardDraft["hours"])
-                    }
-                  >
-                    {p.label}
-                  </Button>
-                ))}
-              </div>
-              <div className="flex flex-wrap gap-2" role="group" aria-label="Days you are open">
-                {DAYS.map((d) => {
-                  const on = Boolean(hours[d.key])
-                  return (
-                    <Button key={d.key} type="button" size="sm" variant={on ? "default" : "outline"} aria-pressed={on} onClick={() => setDay(d.key, !on)}>
-                      {d.label}
-                    </Button>
-                  )
-                })}
-              </div>
-              <div className="flex items-center gap-2">
-                <Input type="time" aria-label="Opens at" value={ref.open} onChange={(e) => setTimes(e.target.value, ref.close)} />
-                <span className="text-sm text-muted-foreground">to</span>
-                <Input type="time" aria-label="Closes at" value={ref.close} onChange={(e) => setTimes(ref.open, e.target.value)} />
-              </div>
-              <FieldError message={errors.hours} />
-            </div>
-          </>
-        )}
-
-        {step === 2 && (
-          <>
-            <div className="grid gap-2">
-              <Label>Brand colour</Label>
-              <div className="flex flex-wrap items-center gap-2">
-                {PALETTES.map((p) => (
-                  <button
-                    key={p.name}
-                    type="button"
-                    title={p.name}
-                    aria-label={p.name}
-                    aria-pressed={primary === p.primary}
-                    onClick={() => {
-                      setPrimary(p.primary)
-                      setAccent(p.accent)
-                    }}
-                    className={cn("size-9 rounded-full border-2 border-transparent", primary === p.primary && "ring-2 ring-ring ring-offset-2 ring-offset-background")}
-                    style={{ backgroundColor: p.primary }}
-                  />
-                ))}
-                <label className="ml-1 flex items-center gap-2 text-sm text-muted-foreground">
-                  Custom
-                  <input type="color" aria-label="Custom brand colour" value={primary} onChange={(e) => setPrimary(e.target.value)} className="size-9 cursor-pointer rounded-md border bg-transparent p-0.5" />
-                </label>
-              </div>
-              <FieldError message={errors.primary} />
-            </div>
-            <div className="grid gap-2">
-              <Label>Corner style</Label>
-              <div className="flex gap-2" role="group" aria-label="Corner style">
-                {RADIUS_KEYS.map((r) => (
-                  <Button key={r} type="button" size="sm" variant={radius === r ? "default" : "outline"} aria-pressed={radius === r} onClick={() => setRadius(r)}>
-                    {r === "none" ? "Square" : r === "sm" ? "Soft" : r === "md" ? "Rounded" : "Round"}
-                  </Button>
-                ))}
-              </div>
-            </div>
-            <Preview name={displayName || "Your Dealership"} city={city || "Your city"} primary={primary} accent={accent} radius={radius} />
-            <p className="text-xs text-muted-foreground">You can add your logo and fine-tune colours later in Settings.</p>
-          </>
-        )}
-
-        {errors.form ? <p role="alert" className="text-sm text-destructive">{errors.form}</p> : null}
-
-        <div className="flex items-center justify-between pt-1">
-          <Button type="button" variant="ghost" disabled={step === 0 || pending} onClick={() => { setErrors({}); setStep((s) => s - 1) }}>
-            Back
+  const footer = (
+    <div className="flex flex-col gap-4">
+      <div
+        className="flex gap-2"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={STEPS.length}
+        aria-valuenow={step + 1}
+        aria-label={`Step ${step + 1} of ${STEPS.length}`}
+      >
+        {STEPS.map((name, i) => (
+          <span
+            key={name}
+            className={cn(
+              "h-1 flex-1 rounded-full",
+              i <= step ? "bg-primary" : "bg-muted"
+            )}
+          />
+        ))}
+      </div>
+      <div className="flex items-center justify-between">
+        <Button
+          type="button"
+          variant="ghost"
+          size="lg"
+          disabled={step === 0 || pending}
+          onClick={() => {
+            setErrors({})
+            setStep((s) => s - 1)
+          }}
+        >
+          Back
+        </Button>
+        {step < STEPS.length - 1 ? (
+          <Button type="button" size="lg" onClick={next}>
+            Continue
           </Button>
-          {step < STEPS.length - 1 ? (
-            <Button type="button" size="lg" onClick={next}>
-              Continue
-            </Button>
-          ) : (
-            <Button type="button" size="lg" disabled={pending} onClick={submit}>
-              {pending ? "Creating your showroom..." : "Create my showroom"}
-            </Button>
-          )}
+        ) : (
+          <Button type="button" size="lg" disabled={pending} onClick={submit}>
+            {pending
+              ? `Creating your ${ind.pageNoun}...`
+              : isFreePlan(plan)
+                ? `Create my ${ind.pageNoun}`
+                : `Start ${TRIAL_DAYS}-day free trial`}
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+  return (
+    <>
+      {pending ? <CreatingShowroom /> : null}
+      <OnboardShell
+        footer={footer}
+        aside={
+          <div className="w-full max-w-sm">
+            <p className="mb-3 text-center text-sm text-muted-foreground">
+              Live preview of your {ind.pageNoun}
+            </p>
+            <IndustryPreview
+              industry={industry}
+              name={displayName || `Your ${ind.key === "motors" ? "Dealership" : "Restaurant"}`}
+              city={city || "Your city"}
+              primary={primary}
+              accent={accent}
+              radius={radius}
+              logo={logo}
+            />
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col items-center gap-2 text-center">
+            <p className="text-sm text-muted-foreground">
+              Step {step + 1} of {STEPS.length}
+            </p>
+            <h1 className="pt-2 text-3xl font-bold text-balance sm:text-4xl">
+              {step === 0 ? (
+                firstName ? (
+                  <>
+                    Welcome,{" "}
+                    {firstName.charAt(0).toUpperCase() + firstName.slice(1)}.
+                    <br />
+                    What kind of business do you run?
+                  </>
+                ) : (
+                  "What kind of business do you run?"
+                )
+              ) : step === 1 ? (
+                `Set up your ${ind.pageNoun}`
+              ) : (
+                STEPS[step]
+              )}
+            </h1>
+            <p className="mt-2 text-sm text-balance text-muted-foreground">
+              {step === 0 &&
+                "We tailor your page, tools and settings to your industry."}
+              {step === 1 &&
+                `This is what ${ind.key === "motors" ? "buyers" : "guests"} will see. You can change it any time.`}
+              {step === 2 &&
+                `${ind.key === "motors" ? "Buyers" : "Guests"} call this number to reach you. Add your opening hours later in Settings.`}
+              {step === 3 &&
+                `Pick a colour for your ${ind.pageNoun}. The preview updates live.`}
+              {step === 4 &&
+                `Start free with ${ind.key === "motors" ? `up to ${PLANS.free.maxLiveCars} cars` : `up to ${RESTAURANT_MENU_LIMITS.free} menu items`}, no card needed. Paid plans include a ${TRIAL_DAYS}-day free trial.`}
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-5">
+            {step === 0 && (
+              <IndustryPicker value={industry} onChange={setIndustry} />
+            )}
+
+            {step === 1 && (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="displayName">{ind.nameLabel}</Label>
+                  <Input
+                    id="displayName"
+                    value={displayName}
+                    placeholder={ind.namePlaceholder}
+                    autoFocus
+                    autoComplete="organization"
+                    onChange={(e) => {
+                      setDisplayName(e.target.value)
+                      if (!slugEdited)
+                        setSlug(
+                          slugify(e.target.value).replace(/-/g, "").slice(0, 40)
+                        )
+                    }}
+                  />
+                  <FieldError message={errors.displayName} />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="slug">Your web address</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="slug"
+                      value={slug}
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      onChange={(e) => {
+                        setSlugEdited(true)
+                        setSlug(
+                          e.target.value.toLowerCase().replace(/[^a-z0-9]/g, "")
+                        )
+                      }}
+                    />
+                    <span className="text-sm whitespace-nowrap text-muted-foreground">
+                      .{rootDomain}
+                    </span>
+                  </div>
+                  <SlugHint
+                    status={slugStatus}
+                    slug={slug}
+                    rootDomain={rootDomain}
+                  />
+                  <FieldError message={errors.slug} />
+                </div>
+              </>
+            )}
+
+            {step === 2 && (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="city">City</Label>
+                  <Input
+                    id="city"
+                    list="cities"
+                    value={city}
+                    placeholder="Chennai"
+                    autoComplete="address-level2"
+                    onChange={(e) => setCity(e.target.value)}
+                  />
+                  <datalist id="cities">
+                    {CITY_SUGGESTIONS.map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
+                  <FieldError message={errors.city} />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="phone">{ind.phoneLabel}</Label>
+                  <PhoneVerify
+                    config={firebaseConfig}
+                    testPhones={testPhones}
+                    phone={phone}
+                    onPhone={setPhone}
+                    verified={verified}
+                    onVerified={setVerified}
+                    error={errors.phone}
+                  />
+                </div>
+                {email ? (
+                  <div className="grid gap-2">
+                    <Label htmlFor="account-email">Your email</Label>
+                    <Input id="account-email" value={email} readOnly disabled />
+                    <p className="text-xs text-muted-foreground">
+                      From your sign-in. We&apos;ll send receipts and updates
+                      here.
+                    </p>
+                  </div>
+                ) : null}
+              </>
+            )}
+
+            {step === 3 && (
+              <>
+                <div className="grid gap-2">
+                  <Label>Logo (optional)</Label>
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-muted">
+                      {logo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={logo}
+                          alt="Your logo"
+                          className="size-full object-contain"
+                        />
+                      ) : (
+                        <HugeiconsIcon
+                          icon={ImageUpload01Icon}
+                          className="size-6 text-muted-foreground"
+                        />
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <label
+                        className={cn(
+                          buttonVariants({ variant: "outline", size: "sm" }),
+                          "cursor-pointer"
+                        )}
+                      >
+                        {logo ? "Change logo" : "Upload logo"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="sr-only"
+                          onChange={(e) => {
+                            void pickLogo(e.target.files?.[0])
+                            e.target.value = ""
+                          }}
+                        />
+                      </label>
+                      {logo ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setLogo(null)}
+                        >
+                          Remove
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                  <FieldError message={errors.logo} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Brand colour</Label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {PALETTES.map((p) => (
+                      <button
+                        key={p.name}
+                        type="button"
+                        title={p.name}
+                        aria-label={p.name}
+                        aria-pressed={primary === p.primary}
+                        onClick={() => {
+                          setPrimary(p.primary)
+                          setAccent(p.accent)
+                        }}
+                        className={cn(
+                          "size-9 rounded-full border-2 border-transparent",
+                          primary === p.primary &&
+                            "ring-2 ring-ring ring-offset-2 ring-offset-background"
+                        )}
+                        style={{ backgroundColor: p.primary }}
+                      />
+                    ))}
+                    <label className="ml-1 flex items-center gap-2 text-sm text-muted-foreground">
+                      Custom
+                      <input
+                        type="color"
+                        aria-label="Custom brand colour"
+                        value={primary}
+                        onChange={(e) => setPrimary(e.target.value)}
+                        className="size-9 cursor-pointer rounded-md border bg-transparent p-0.5"
+                      />
+                    </label>
+                  </div>
+                  <FieldError message={errors.primary} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Corner style</Label>
+                  <div
+                    className="flex gap-2"
+                    role="group"
+                    aria-label="Corner style"
+                  >
+                    {RADIUS_KEYS.map((r) => (
+                      <Button
+                        key={r}
+                        type="button"
+                        size="sm"
+                        variant={radius === r ? "default" : "outline"}
+                        aria-pressed={radius === r}
+                        onClick={() => setRadius(r)}
+                      >
+                        {r === "none"
+                          ? "Square"
+                          : r === "sm"
+                            ? "Soft"
+                            : r === "md"
+                              ? "Rounded"
+                              : "Round"}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  You can change your logo and fine-tune colours later in
+                  Settings.
+                </p>
+              </>
+            )}
+
+            {step === 4 && (
+              <>
+                <PlanPicker
+                  industry={industry}
+                  plan={plan}
+                  cycle={billingCycle}
+                  onPlan={setPlan}
+                  onCycle={setBillingCycle}
+                />
+                <FieldError message={errors.plan ?? errors.billingCycle} />
+                <p className="text-xs text-muted-foreground">
+                  {isFreePlan(plan)
+                    ? `You can upgrade to a paid plan any time from Settings, when you have more ${ind.itemNoun === "cars" ? "cars" : "menu items"} to list.`
+                    : `Free for ${TRIAL_DAYS} days. You add a payment method now and are charged only when the trial ends. Cancel any time before then.`}
+                </p>
+              </>
+            )}
+
+            {errors.form ? (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.form}
+              </p>
+            ) : null}
+          </div>
         </div>
-      </CardContent>
-    </Card>
+      </OnboardShell>
+    </>
   )
 }
 
-function FieldError({ message }: { message?: string }) {
-  return message ? <p role="alert" className="text-sm text-destructive">{message}</p> : null
-}
-
-function SlugHint({ status, slug, rootDomain }: { status: SlugStatus | "checking" | "idle"; slug: string; rootDomain: string }) {
-  if (status === "idle") return <p className="text-xs text-muted-foreground">Letters, numbers and hyphens. Your link will be {`<name>.${rootDomain}`}.</p>
-  if (status === "checking") return <p className="text-xs text-muted-foreground">Checking...</p>
-  if (status === "available") return <p className="text-xs text-primary">{slug}.{rootDomain} is available.</p>
-  if (status === "taken") return <p className="text-xs text-destructive">{slug}.{rootDomain} is taken. Try adding your city.</p>
-  if (status === "limited") return <p className="text-xs text-muted-foreground">Too many checks. Wait a moment.</p>
-  return <p className="text-xs text-destructive">Use 2 or more letters, numbers or hyphens. Some names are reserved.</p>
-}
-
-/** A miniature of the buyer-facing page, styled with the chosen theme. Colours here are the dealer's own data. */
-function Preview({ name, city, primary, accent, radius }: { name: string; city: string; primary: string; accent: string; radius: OnboardDraft["radius"] }) {
-  const fg = readableOn(primary)
-  const r = RADIUS_OPTIONS[radius]
+/** shadcn `login-02` layout: brand + form on the left, a muted panel on the right (large screens only). */
+function OnboardShell({
+  children,
+  aside,
+  footer,
+}: {
+  children: React.ReactNode
+  aside: React.ReactNode
+  footer?: React.ReactNode
+}) {
   return (
-    <div className="overflow-hidden border bg-background" style={{ borderRadius: r }} aria-label="Preview of your showroom page">
-      <div className="px-4 py-3" style={{ backgroundColor: primary, color: fg }}>
-        <p className="font-semibold">{name}</p>
-        <p className="text-xs opacity-80">{city}</p>
-      </div>
-      <div className="flex gap-3 p-4">
-        <div className="size-16 shrink-0 bg-muted" style={{ borderRadius: r }} />
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <p className="truncate text-sm font-medium">2019 Hyundai Creta SX</p>
-          <p className="text-xs text-muted-foreground">Diesel · 31,500 km · 1 owner</p>
-          <div className="flex items-center gap-2 pt-1">
-            <span className="text-sm font-semibold">₹11,25,000</span>
-            <span className="px-2 py-0.5 text-xs" style={{ backgroundColor: accent, color: readableOn(accent), borderRadius: r }}>
-              Verified
-            </span>
-          </div>
+    <div className="grid min-h-svh lg:grid-cols-2">
+      <div className="flex flex-col gap-4 p-6 md:p-10">
+        <div className="flex justify-center gap-2 md:justify-start">
+          <Link
+            href="/"
+            aria-label="ShowMoto home"
+            className="flex items-center gap-2 font-medium"
+          >
+            <Logo className="h-7" />
+          </Link>
         </div>
-      </div>
-      <div className="px-4 pb-4">
-        <div className="px-4 py-2 text-center text-sm font-medium" style={{ backgroundColor: primary, color: fg, borderRadius: r }}>
-          Book a test drive
+        <div className="flex flex-1 items-center justify-center">
+          <div className="w-full max-w-sm">{children}</div>
         </div>
+        {footer}
+      </div>
+      <div className="relative hidden bg-muted lg:flex lg:items-center lg:justify-center lg:p-10">
+        {aside}
       </div>
     </div>
   )
 }
 
-function Success({ url, name }: { url: string; name: string }) {
+function FieldError({ message }: { message?: string }) {
+  return message ? (
+    <p role="alert" className="text-sm text-destructive">
+      {message}
+    </p>
+  ) : null
+}
+
+function SlugHint({
+  status,
+  slug,
+  rootDomain,
+}: {
+  status: SlugStatus | "checking" | "idle"
+  slug: string
+  rootDomain: string
+}) {
+  if (status === "idle")
+    return (
+      <p className="text-xs text-muted-foreground">
+        Letters and numbers only. Your link will be {`<name>.${rootDomain}`}.
+      </p>
+    )
+  if (status === "checking")
+    return <p className="text-xs text-muted-foreground">Checking...</p>
+  if (status === "available")
+    return (
+      <p className="flex items-center gap-1.5 text-xs font-medium text-success">
+        <HugeiconsIcon
+          icon={CheckmarkCircle01Icon}
+          className="size-4 shrink-0"
+        />
+        {slug}.{rootDomain} is available.
+      </p>
+    )
+  if (status === "taken")
+    return (
+      <p className="flex items-center gap-1.5 text-xs font-medium text-destructive">
+        <HugeiconsIcon icon={CancelCircleIcon} className="size-4 shrink-0" />
+        {slug}.{rootDomain} is not available. Try adding your city.
+      </p>
+    )
+  if (status === "limited")
+    return (
+      <p className="text-xs text-muted-foreground">
+        Too many checks. Wait a moment.
+      </p>
+    )
   return (
-    <Card className="w-full max-w-lg">
-      <CardHeader>
-        <CardTitle className="text-xl">{name} is live</CardTitle>
-        <CardDescription>Your showroom has its own link. Add a car and share it on WhatsApp and Instagram.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+    <p className="text-xs text-destructive">
+      Use 2 or more letters or numbers. Some names are reserved.
+    </p>
+  )
+}
+
+/** A miniature of the buyer-facing page, styled with the chosen theme. Colours here are the dealer's own data. */
+function Preview({
+  name,
+  city,
+  primary,
+  accent,
+  radius,
+  logo,
+}: {
+  name: string
+  city: string
+  primary: string
+  accent: string
+  radius: OnboardDraft["radius"]
+  logo?: string | null
+}) {
+  const fg = readableOn(primary)
+  const r = RADIUS_OPTIONS[radius]
+  const specs = [
+    { icon: DashboardSpeed01Icon, label: "31,500 km" },
+    { icon: Fuel02Icon, label: "Diesel" },
+    { icon: SteeringIcon, label: "Manual" },
+  ]
+  const tabs = [
+    { icon: Car01Icon, label: "Cars", active: true },
+    { icon: FilterHorizontalIcon, label: "Filter", active: false },
+    { icon: Add01Icon, label: "Add car", active: false, prominent: true },
+    { icon: Call02Icon, label: "Call", active: false },
+    { icon: UserCircleIcon, label: "Account", active: false },
+  ]
+  return (
+    <div
+      className="mx-auto w-[300px] rounded-[2.5rem] border-[6px] border-foreground/90 bg-foreground/90 shadow-xl"
+      aria-label="Preview of your showroom page"
+    >
+      <div className="relative flex h-[620px] flex-col overflow-hidden rounded-[2rem] bg-background">
+        <div className="absolute top-2 left-1/2 z-20 h-4 w-20 -translate-x-1/2 rounded-full bg-foreground/90" />
+        {/* Header: logo, search, shortlist, account */}
+        <div className="flex h-[72px] shrink-0 items-end gap-2 border-b bg-background px-3 pb-2">
+          {logo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logo}
+              alt=""
+              className="size-8 shrink-0 rounded-full bg-muted object-contain"
+            />
+          ) : (
+            <span
+              className="flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+              style={{ backgroundColor: primary, color: fg }}
+            >
+              {name.charAt(0).toUpperCase()}
+            </span>
+          )}
+          <div className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-xl border bg-muted px-2 text-[11px] text-muted-foreground">
+            <HugeiconsIcon
+              icon={Search01Icon}
+              strokeWidth={2}
+              className="size-3.5 shrink-0"
+            />
+            <span className="truncate text-muted-foreground/50">
+              Search make or model
+            </span>
+          </div>
+          <span className="flex h-8 shrink-0 items-center">
+            <HugeiconsIcon
+              icon={FavouriteIcon}
+              strokeWidth={2}
+              className="size-5"
+            />
+          </span>
+        </div>
+
+        <div className="flex min-h-0 flex-1 [scrollbar-width:none] flex-col gap-3 overflow-y-auto p-3 [&::-webkit-scrollbar]:hidden">
+          {/* Offer banner */}
+          <div
+            className="aspect-[3/1] shrink-0 overflow-hidden border bg-muted"
+            style={{ borderRadius: r }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/offer-quality-checked-cars.png"
+              alt="Quality-checked cars"
+              className="size-full object-cover"
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold tracking-tight">
+                Available now
+              </h2>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                1
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Cars selected for quality, value, and the road ahead.
+            </p>
+          </div>
+
+          {/* Car card */}
+          <div
+            className="shrink-0 overflow-hidden border bg-card"
+            style={{ borderRadius: r }}
+          >
+            <div className="relative aspect-[16/10] shrink-0 overflow-hidden bg-muted">
+              {/* Sample photo: "Hyundai Creta 1.6 GLS 2019" by RL GNZLZ, CC BY-SA 2.0, via Wikimedia Commons */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/preview-car.jpg"
+                alt=""
+                className="size-full object-cover"
+              />
+              <div className="absolute top-2 left-2 flex items-center gap-1.5">
+                <span className="rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-medium shadow-sm">
+                  TN 09
+                </span>
+                <span
+                  className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                  style={{ backgroundColor: accent, color: readableOn(accent) }}
+                >
+                  Dealer verified
+                </span>
+              </div>
+              <span className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-background/90 shadow-sm">
+                <HugeiconsIcon
+                  icon={HeartIcon}
+                  strokeWidth={2}
+                  className="size-3.5 text-foreground"
+                />
+              </span>
+            </div>
+            <div className="flex flex-col gap-2.5 p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold tracking-tight">
+                    2019 Hyundai Creta
+                  </p>
+                  <p className="truncate text-[11px] text-muted-foreground">
+                    SX
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-sm font-semibold tracking-tight">
+                    ₹11,25,000
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    EMI from ₹19,500
+                  </p>
+                </div>
+              </div>
+              <ul className="flex flex-wrap gap-1.5 border-y py-2">
+                {specs.map(({ icon, label }) => (
+                  <li
+                    key={label}
+                    className="flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-[10px] text-muted-foreground"
+                  >
+                    <HugeiconsIcon
+                      icon={icon}
+                      strokeWidth={1.8}
+                      className="size-3 text-foreground"
+                    />
+                    {label}
+                  </li>
+                ))}
+              </ul>
+              <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <HugeiconsIcon
+                    icon={Calendar03Icon}
+                    strokeWidth={2}
+                    className="size-3.5"
+                    style={{ color: primary }}
+                  />
+                  Ready to test drive
+                </span>
+                <HugeiconsIcon
+                  icon={ArrowRight01Icon}
+                  strokeWidth={2}
+                  className="size-3.5"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom tab bar */}
+        <ul className="flex shrink-0 border-t bg-background px-1 pb-2">
+          {tabs.map(({ icon, label, active, prominent }) =>
+            prominent ? (
+              <li
+                key={label}
+                className="flex flex-1 items-center justify-center"
+              >
+                <span
+                  className="flex size-10 items-center justify-center rounded-full shadow-md"
+                  style={{ backgroundColor: primary, color: fg }}
+                  aria-label={label}
+                >
+                  <HugeiconsIcon
+                    icon={icon}
+                    strokeWidth={2.5}
+                    className="size-5"
+                  />
+                </span>
+              </li>
+            ) : (
+              <li
+                key={label}
+                className="flex flex-1 flex-col items-center gap-0.5 py-1.5 text-[10px] font-medium"
+                style={active ? { color: primary } : undefined}
+              >
+                <HugeiconsIcon
+                  icon={icon}
+                  strokeWidth={2}
+                  className={cn("size-5", !active && "text-muted-foreground")}
+                />
+                <span className={cn(!active && "text-muted-foreground")}>
+                  {label}
+                </span>
+              </li>
+            )
+          )}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+function IndustryPreview({
+  industry,
+  ...props
+}: {
+  industry: IndustryKey
+  name: string
+  city: string
+  primary: string
+  accent: string
+  radius: OnboardDraft["radius"]
+  logo?: string | null
+}) {
+  return industry === "restaurants" ? (
+    <RestaurantPreview {...props} />
+  ) : (
+    <Preview {...props} />
+  )
+}
+
+function Success({
+  url,
+  billingNote,
+  industry,
+  name,
+  city,
+  primary,
+  accent,
+  radius,
+}: {
+  url: string
+  billingNote: "authorised" | "later" | "free"
+  industry: IndustryKey
+  name: string
+  city: string
+  primary: string
+  accent: string
+  radius: OnboardDraft["radius"]
+}) {
+  const ind = getIndustry(industry)
+  useEffect(() => {
+    celebrate([primary, accent, "#ffffff"])
+    // Once, when the showroom is first shown as created.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return (
+    <OnboardShell
+      aside={
+        <IndustryPreview
+          industry={industry}
+          name={name}
+          city={city}
+          primary={primary}
+          accent={accent}
+          radius={radius}
+        />
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col items-center gap-1 text-center">
+          <h1 className="text-2xl font-bold">{name} is live</h1>
+          <p className="text-sm text-balance text-muted-foreground">
+            {ind.key === "motors"
+              ? "Your showroom has its own link. Add a car and share it on WhatsApp and Instagram."
+              : "Your menu page has its own link. Share it on WhatsApp and Instagram, and print it as a QR code for your tables."}
+          </p>
+          <p className="text-xs text-balance text-muted-foreground">
+            {billingNote === "free"
+              ? ind.key === "motors"
+                ? `You are on the Free plan: up to ${PLANS.free.maxLiveCars} cars live at once. Upgrade any time.`
+                : `You are on the Free plan: up to ${RESTAURANT_MENU_LIMITS.free} menu items. Upgrade any time.`
+              : billingNote === "authorised"
+                ? `Your ${TRIAL_DAYS}-day free trial has started.`
+                : `Your ${TRIAL_DAYS}-day free trial has started. Add a payment method before it ends to keep your showroom live.`}
+          </p>
+        </div>
         <div className="flex items-center gap-2 rounded-lg border p-3">
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">{url.replace(/^https?:\/\//, "").replace(/\/$/, "")}</span>
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">
+            {url.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+          </span>
           <Button
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => navigator.clipboard.writeText(url).then(() => toast.success("Link copied"), () => toast.error("Could not copy"))}
+            onClick={() =>
+              navigator.clipboard.writeText(url).then(
+                () => toast.success("Link copied"),
+                () => toast.error("Could not copy")
+              )
+            }
           >
             Copy
           </Button>
         </div>
-        <Link href="/cars/new" className={cn(buttonVariants({ size: "lg" }), "w-full")}>
-          Add your first car
+        <Link
+          href={ind.firstItemHref}
+          className={cn(buttonVariants({ size: "lg" }), "w-full")}
+        >
+          {ind.firstItemCta}
         </Link>
         <div className="flex justify-between text-sm">
           <Link href="/dashboard" className="text-muted-foreground underline">
             Go to dashboard
           </Link>
-          <a href={url} target="_blank" rel="noreferrer" className="text-muted-foreground underline">
-            View my showroom
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-muted-foreground underline"
+          >
+            View my {ind.pageNoun}
           </a>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </OnboardShell>
   )
 }

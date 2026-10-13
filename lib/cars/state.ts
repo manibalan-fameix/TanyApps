@@ -9,6 +9,7 @@ import { getStorage } from "../storage/index.ts"
 import { isLanded, publishReadiness, type Readiness } from "./readiness.ts"
 import { formatReg } from "../reg.ts"
 import { emptyMarketplaceDetails, marketplaceDetailsSchema, type MarketplaceDetails } from "./marketplace.ts"
+import { readVoiceDraft, type ReadVoiceDraft } from "./from-voice.ts"
 
 export type MediaState = {
   id: string
@@ -39,6 +40,8 @@ export type CarState = {
   slug: string
   caption: string | null
   marketplaceDetails: MarketplaceDetails
+  /** An unfinished "add by voice" session, so the dealer can resume it. Null for every other car. */
+  voiceDraft: ReadVoiceDraft | null
   media: MediaState[]
 }
 
@@ -76,6 +79,7 @@ export async function getCarState(dealerId: string, carId: string): Promise<CarS
     slug: car.slug,
     caption: car.caption,
     marketplaceDetails: marketplaceDetailsSchema.catch(emptyMarketplaceDetails()).parse(car.marketplaceDetails ?? {}),
+    voiceDraft: readVoiceDraft(car.voiceDraft),
     media: media.map((m) => ({
       id: m.id,
       kind: m.kind,

@@ -61,6 +61,8 @@ export const marketplaceDetailsSchema = z.object({
     loanDurationMonths: z.number().int().min(1).max(120).optional().nullable(),
     interestRate: optionalSmallNumber,
     bookingAmount: optionalInt,
+    /** Current ex-showroom price of a new car of the same model, as told by the dealer. Drives the "you save" comparison. */
+    newCarPrice: optionalInt,
     tokenRefundable: z.boolean().default(true),
     availabilityStatus: z.string().trim().max(40).optional().nullable(),
   }).default({ tokenRefundable: true }),

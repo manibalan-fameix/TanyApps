@@ -1,0 +1,1 @@
+ALTER TABLE "cars" ADD COLUMN "voice_draft" jsonb;

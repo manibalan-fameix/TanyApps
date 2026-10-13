@@ -1,16 +1,16 @@
-import Link from "next/link"
 import { redirect } from "next/navigation"
 
-import { FirebaseLogin } from "@/components/auth/firebase-login"
+
+
+import { DealerLoginForm } from "@/components/auth/dealer-login-form"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { copy } from "@/lib/copy"
-import { auth, isAuthConfigured } from "@/lib/auth"
+import { isAuthConfigured } from "@/lib/auth"
+import { getDealerContext } from "@/lib/auth/context"
 import { openDevDemo } from "@/lib/auth/actions"
 import { isDevBypassEnabled } from "@/lib/auth/dev-bypass"
 import { getFirebaseWebConfig } from "@/lib/auth/firebase"
 import { defaultLocalLoginEmail, isLocalPasswordLoginEnabled } from "@/lib/auth/local-login"
-import { EmailPasswordForm } from "./email-password-form"
 
 export const metadata = { title: copy.auth.signInTitle }
 // Reads env and session at request time; never prerender.
@@ -24,35 +24,26 @@ export default async function LoginPage() {
   // Development only: numbers registered as Firebase "phone numbers for testing" (comma separated, 10 digits).
   const testPhones =
     process.env.NODE_ENV === "development" ? (process.env.FIREBASE_TEST_PHONES ?? "").split(",").map((n) => n.trim()).filter(Boolean) : []
-  if (configured && (await auth())?.user) redirect("/dashboard")
+  // Only a user who already has a dealership skips login; an unfinished sign-up stays here and signs up.
+  if (configured && (await getDealerContext()).status === "ok") redirect("/dashboard")
 
   return (
-    <main className="flex min-h-svh items-center justify-center p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>{copy.auth.signInTitle}</CardTitle>
-          <CardDescription>{copy.auth.signInBody}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {localPassword ? <EmailPasswordForm defaultEmail={defaultLocalLoginEmail()} /> : null}
-          {configured && firebaseConfig ? <FirebaseLogin config={firebaseConfig} testPhones={testPhones} /> : null}
-          {bypass ? (
-            <form action={openDevDemo}>
-              <Button type="submit" size="lg" variant="outline" className="w-full">
-                Open the demo dealer
-              </Button>
-            </form>
-          ) : null}
-          {bypass ? (
-            <p className="text-sm text-muted-foreground">{copy.auth.devBypass}</p>
-          ) : (
-            !configured && <p className="text-sm text-muted-foreground">{copy.auth.notConfigured}</p>
-          )}
-          <p className="text-xs text-muted-foreground">
-            By continuing you agree to our <Link className="underline" href="/terms">Terms</Link> and <Link className="underline" href="/privacy">Privacy Policy</Link>.
-          </p>
-        </CardContent>
-      </Card>
+    <main className="flex min-h-svh flex-col items-center justify-center gap-6 bg-muted p-6 md:p-10">
+      <div className="flex w-full max-w-sm flex-col gap-6">
+        <DealerLoginForm config={configured ? firebaseConfig : null} testPhones={testPhones} localEmail={localPassword ? defaultLocalLoginEmail() : undefined} />
+        {bypass ? (
+          <form action={openDevDemo}>
+            <Button type="submit" variant="outline" className="h-11 w-full text-base">
+              Open the demo dealer
+            </Button>
+          </form>
+        ) : null}
+        {bypass ? (
+          <p className="text-center text-sm text-muted-foreground">{copy.auth.devBypass}</p>
+        ) : (
+          !configured && <p className="text-center text-sm text-muted-foreground">{copy.auth.notConfigured}</p>
+        )}
+      </div>
     </main>
   )
 }

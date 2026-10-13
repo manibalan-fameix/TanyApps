@@ -3,6 +3,7 @@ import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core"
 
 import { cars, dealerDomains, dealers } from "../db/schema"
 import * as schema from "../db/schema"
+import { effectivePlanKey } from "../billing/state"
 import { getPlan } from "../plans"
 
 // Custom domains (paid tier) and short links: the two lookups the proxy makes on the hot path.
@@ -41,13 +42,13 @@ export async function resolveCustomDomain(hostname: string): Promise<string | nu
 
   const db = await proxyDb()
   const [row] = await db
-    .select({ slug: dealers.slug, plan: dealers.plan })
+    .select({ slug: dealers.slug, plan: dealers.plan, nextPlan: dealers.nextPlan, nextPlanStartsAt: dealers.nextPlanStartsAt })
     .from(dealerDomains)
     .innerJoin(dealers, eq(dealers.id, dealerDomains.dealerId))
     .where(and(eq(dealerDomains.hostname, hostname), isNotNull(dealerDomains.verifiedAt)))
     .limit(1)
 
-  const slug = row && getPlan(row.plan).customDomain ? row.slug : null
+  const slug = row && getPlan(effectivePlanKey(row)).customDomain ? row.slug : null
   if (domainCache.size > 5000) domainCache.clear()
   domainCache.set(hostname, { slug, expires: Date.now() + (slug ? CACHE_TTL_MS : NEGATIVE_TTL_MS) })
   return slug
@@ -59,12 +60,17 @@ export async function resolveCustomDomain(hostname: string): Promise<string | nu
  * do not resolve; sold cars still do, so an old link keeps working.
  */
 export async function resolveShortCode(dealerSlug: string, code: string): Promise<string | null> {
+  return (await resolveShortLink(dealerSlug, code))?.carSlug ?? null
+}
+
+/** Same lookup, also returning the dealer id, so a click can be counted against the right dealer. */
+export async function resolveShortLink(dealerSlug: string, code: string): Promise<{ carSlug: string; dealerId: string } | null> {
   const db = await proxyDb()
   const [row] = await db
-    .select({ slug: cars.slug })
+    .select({ slug: cars.slug, dealerId: cars.dealerId })
     .from(cars)
     .innerJoin(dealers, eq(dealers.id, cars.dealerId))
     .where(and(eq(dealers.slug, dealerSlug), eq(cars.shortCode, code), inArray(cars.status, ["live", "on_hold", "sold"])))
     .limit(1)
-  return row?.slug ?? null
+  return row ? { carSlug: row.slug, dealerId: row.dealerId } : null
 }

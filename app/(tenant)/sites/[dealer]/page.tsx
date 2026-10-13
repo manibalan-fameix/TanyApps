@@ -9,11 +9,14 @@ import { DealerInventoryHeader } from "@/components/tenant/dealer-inventory-head
 import { OfferBannerCarousel } from "@/components/tenant/offer-banner-carousel"
 import { CarGridCard } from "@/components/cars/car-grid-card"
 import { ChatWidget } from "@/components/chat/chat-widget"
+import { ViewBeacon } from "@/components/tenant/view-beacon"
 import { isChatEnabled } from "@/lib/ai/chat"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { HERO_ANGLE } from "@/lib/angles"
 import { calculateEmi } from "@/lib/cars/emi"
 import { copy } from "@/lib/copy"
+import { StoreHome } from "@/components/restaurant/store/home"
+import { loadStorefront } from "@/lib/restaurant/storefront-data"
 import {
   facetOptions,
   filterListing,
@@ -41,6 +44,7 @@ export default async function DealerHome({
 }) {
   const dealer = await getDealerBySlug((await params).dealer)
   if (!dealer) notFound()
+  if (dealer.industry === "restaurants") return <StoreHome dealer={dealer} store={await loadStorefront(dealer)} />
   const rawSearchParams = await searchParams
   const db = scopedDb(dealer.id)
 
@@ -56,7 +60,11 @@ export default async function DealerHome({
   if (carIds.length > 0) {
     const storage = getStorage()
     const media = await db.carMedia.select(
-      and(inArray(carMedia.carId, carIds), eq(carMedia.kind, "photo")),
+      and(
+        inArray(carMedia.carId, carIds),
+        eq(carMedia.kind, "photo"),
+        inArray(carMedia.status, ["uploaded", "ready"])
+      ),
       {
         orderBy: [asc(carMedia.sortOrder)],
       }
@@ -155,6 +163,7 @@ export default async function DealerHome({
           dealer={{
             name: dealer.displayName,
             city: dealer.city,
+            logoUrl: dealer.logoUrl,
           }}
           query={filters.q}
         />
@@ -165,7 +174,7 @@ export default async function DealerHome({
             resultCount={results.length}
           />
           <SidebarInset className="min-w-0 overflow-y-auto bg-background">
-            <main className="w-full px-[60px] py-4 max-lg:px-6 sm:py-6 lg:py-8">
+            <main className="w-full px-[60px] py-4 max-lg:px-6 max-md:pb-[calc(6rem+env(safe-area-inset-bottom))] sm:py-6 lg:py-8">
               <OfferBannerCarousel />
 
               <section className="mt-6">
@@ -225,13 +234,15 @@ export default async function DealerHome({
           </SidebarInset>
         </div>
       </SidebarProvider>
-      {true || isChatEnabled() ? ( // TEMP: forced on for a no-API-key UI preview — revert to `isChatEnabled()`
+      {isChatEnabled() ? (
         <ChatWidget
           scope={{ type: "general" }}
           greeting={t.chat.generalGreeting(dealer.displayName)}
           questions={t.chat.generalQuestions}
+          handoff={dealer.phone ? { phone: dealer.phone, message: t.chat.whatsappGeneral(dealer.displayName) } : null}
         />
       ) : null}
+      <ViewBeacon />
     </div>
   )
 }

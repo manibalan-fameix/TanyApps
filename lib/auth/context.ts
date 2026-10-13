@@ -7,6 +7,7 @@ import { dealerUsers, dealers } from "../db/schema"
 import { auth } from "./index"
 import { DEV_BYPASS_COOKIE, DEV_DEALER, DEV_USER, isDevBypassEnabled } from "./dev-bypass"
 import { LOCAL_LOGIN_COOKIE, emailFromLocalLoginCookie, getLocalDealerContext, isLocalPasswordLoginEnabled } from "./local-login"
+import { effectivePlanKey } from "../billing/state"
 import { getPlan } from "../plans"
 
 export type DealerContext =
@@ -53,7 +54,7 @@ export const getDealerContext = cache(async (): Promise<DealerContext> => {
     try {
       const rows = await unscopedDb.select().from(dealers).where(eq(dealers.slug, DEV_DEALER.slug)).limit(1)
       const row = rows?.[0]
-      if (row) return { status: "ok", user: DEV_USER, dealer: row, role: "owner", plan: getPlan(row.plan), devBypass: true, dealerInDb: true }
+      if (row) return { status: "ok", user: DEV_USER, dealer: row, role: "owner", plan: getPlan(effectivePlanKey(row)), devBypass: true, dealerInDb: true }
     } catch {
       // No database configured or reachable: fall through to the in-memory demo dealer.
     }
@@ -72,5 +73,5 @@ export const getDealerContext = cache(async (): Promise<DealerContext> => {
     .limit(1)
 
   if (!row) return { status: "no-dealer", user }
-  return { status: "ok", user, dealer: row.dealer, role: row.role, plan: getPlan(row.dealer.plan), dealerInDb: true }
+  return { status: "ok", user, dealer: row.dealer, role: row.role, plan: getPlan(effectivePlanKey(row.dealer)), dealerInDb: true }
 })

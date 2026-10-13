@@ -1,1 +1,10 @@
-export type Step = "start" | "plate" | "car" | "photos" | "marketplace" | "price" | "done"
+export type Step =
+  | "start"
+  | "video"
+  | "voice"
+  | "plate"
+  | "car"
+  | "photos"
+  | "marketplace"
+  | "price"
+  | "done"

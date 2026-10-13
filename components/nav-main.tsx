@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
+import { useState } from "react"
 
 import type { NavMainItem } from "@/components/admin/nav-config"
 import {
@@ -13,7 +14,6 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarMenu,
-  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
@@ -24,42 +24,55 @@ import { copy } from "@/lib/copy"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons"
 
-export function NavMain({ items }: { items: NavMainItem[] }) {
+export function NavMain({ items, label }: { items: NavMainItem[]; label?: string }) {
   const pathname = usePathname()
-  const within = (url: string) => pathname === url || pathname.startsWith(`${url}/`)
+  const router = useRouter()
+  const within = (url: string) =>
+    pathname === url || pathname.startsWith(`${url}/`)
+  // A group is open while you are inside it, unless you have toggled it yourself.
+  const [toggled, setToggled] = useState<Record<string, boolean>>({})
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>{copy.admin.nav.platform}</SidebarGroupLabel>
+      <SidebarGroupLabel>{label ?? copy.admin.nav.platform}</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => (
           <Collapsible
             key={item.title}
-            defaultOpen={within(item.url)}
+            open={toggled[item.title] ?? within(item.url)}
+            onOpenChange={(open) => {
+              // Clicking a group from outside it lands on its first page.
+              const first = item.items?.[0]
+              if (first && !within(item.url)) {
+                router.push(first.url)
+                open = true
+              }
+              setToggled((t) => ({ ...t, [item.title]: open }))
+            }}
             render={<SidebarMenuItem />}
           >
-            <SidebarMenuButton
-              tooltip={item.title}
-              isActive={pathname === item.url}
-              render={<Link href={item.url} />}
-            >
-              <HugeiconsIcon icon={item.icon} strokeWidth={2} />
-              <span>{item.title}</span>
-            </SidebarMenuButton>
             {item.items?.length ? (
               <>
                 <CollapsibleTrigger
                   render={
-                    <SidebarMenuAction className="aria-expanded:rotate-90" />
+                    <SidebarMenuButton
+                      tooltip={item.title}
+                      className="aria-expanded:[&>svg:last-child]:rotate-90"
+                    />
                   }
                 >
-                  <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} />
-                  <span className="sr-only">{copy.admin.nav.toggle}</span>
+                  <HugeiconsIcon icon={item.icon} strokeWidth={2} />
+                  <span>{item.title}</span>
+                  <HugeiconsIcon
+                    icon={ArrowRight01Icon}
+                    strokeWidth={2}
+                    className="ml-auto transition-transform"
+                  />
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <SidebarMenuSub>
-                    {item.items?.map((subItem) => (
-                      <SidebarMenuSubItem key={subItem.title}>
+                    {item.items.map((subItem) => (
+                      <SidebarMenuSubItem key={subItem.url}>
                         <SidebarMenuSubButton
                           isActive={pathname === subItem.url}
                           render={<Link href={subItem.url} />}
@@ -71,7 +84,16 @@ export function NavMain({ items }: { items: NavMainItem[] }) {
                   </SidebarMenuSub>
                 </CollapsibleContent>
               </>
-            ) : null}
+            ) : (
+              <SidebarMenuButton
+                tooltip={item.title}
+                isActive={pathname === item.url}
+                render={<Link href={item.url} />}
+              >
+                <HugeiconsIcon icon={item.icon} strokeWidth={2} />
+                <span>{item.title}</span>
+              </SidebarMenuButton>
+            )}
           </Collapsible>
         ))}
       </SidebarMenu>

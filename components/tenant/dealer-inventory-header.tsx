@@ -18,7 +18,7 @@ export function DealerInventoryHeader({
   dealer,
   query,
 }: {
-  dealer: { name: string; city: string | null }
+  dealer: { name: string; city: string | null; logoUrl: string | null }
   query: string
 }) {
   const pathname = usePathname()
@@ -44,15 +44,27 @@ export function DealerInventoryHeader({
         <SidebarTrigger className="-ml-1" />
         <Separator orientation="vertical" className="h-4" />
       </div>
-      <Link href="/" className="flex h-12 shrink-0 items-center lg:h-14">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/sri-murugan-motors-logo.png"
-          alt={dealer.name}
-          className="h-full w-auto object-contain"
-        />
+      <Link href="/" className="flex h-12 shrink-0 items-center gap-2 lg:h-14">
+        {dealer.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={dealer.logoUrl}
+            alt={dealer.name}
+            className="size-10 rounded-full bg-muted object-contain lg:size-11"
+          />
+        ) : (
+          <span className="flex size-10 items-center justify-center rounded-full bg-primary text-base font-semibold text-primary-foreground lg:size-11">
+            {dealer.name.charAt(0).toUpperCase()}
+          </span>
+        )}
+        <span className="hidden max-w-40 truncate text-sm font-semibold tracking-tight sm:block lg:text-base">
+          {dealer.name}
+        </span>
       </Link>
-      <form onSubmit={submitSearch} className="min-w-0 max-w-[13.25rem] flex-1 sm:max-w-[15.25rem]">
+      <form
+        onSubmit={submitSearch}
+        className="max-w-[13.25rem] min-w-0 flex-1 sm:max-w-[15.25rem]"
+      >
         <label className="flex h-9 items-center gap-2 rounded-xl border border-border bg-muted px-3 text-sm text-muted-foreground focus-within:ring-2 focus-within:ring-ring">
           <HugeiconsIcon
             icon={Search01Icon}
@@ -64,7 +76,7 @@ export function DealerInventoryHeader({
             name="q"
             defaultValue={query}
             placeholder="Search make or model"
-            className="min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-muted-foreground"
+            className="min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-muted-foreground/50"
           />
         </label>
       </form>
@@ -83,7 +95,11 @@ export function DealerInventoryHeader({
           href="/shortlisted"
           className="flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium hover:bg-muted"
         >
-          <HugeiconsIcon icon={FavouriteIcon} strokeWidth={2} className="size-5 shrink-0" />
+          <HugeiconsIcon
+            icon={FavouriteIcon}
+            strokeWidth={2}
+            className="size-5 shrink-0"
+          />
           <span className="hidden md:inline">Shortlisted</span>
         </Link>
         <AccountMenu />

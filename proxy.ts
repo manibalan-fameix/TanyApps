@@ -3,7 +3,9 @@ import { NextResponse, type NextRequest } from "next/server"
 import { getRootDomain } from "./lib/env"
 import { looksLikeShortCode } from "./lib/slug"
 import { TENANT_HEADER, classifyHost } from "./lib/tenant/host"
-import { resolveCustomDomain, resolveShortCode } from "./lib/tenant/lookup"
+import { classifySource, deviceOf, isBot } from "./lib/analytics/events"
+import { recordEvent } from "./lib/analytics/track"
+import { resolveCustomDomain, resolveShortLink } from "./lib/tenant/lookup"
 
 const notFound = () => new NextResponse("Not found", { status: 404 })
 
@@ -58,9 +60,21 @@ export async function proxy(request: NextRequest) {
       // Short share link: /k7x2m -> 301 to the canonical car URL (query string, e.g. UTM, is kept).
       const segment = pathname.slice(1)
       if (looksLikeShortCode(segment)) {
-        const carSlug = await resolveShortCode(slug, segment)
-        if (carSlug) {
-          url.pathname = `/${carSlug}`
+        const link = await resolveShortLink(slug, segment)
+        if (link) {
+          const ua = request.headers.get("user-agent")
+          // A tap on a shared link. Link-preview fetchers (WhatsApp, Facebook) are skipped inside isBot.
+          if (!isBot(ua)) {
+            await recordEvent({
+              event: "share_click",
+              dealerId: link.dealerId,
+              carSlug: link.carSlug,
+              source: classifySource(url.searchParams.get("utm_source"), request.headers.get("referer")),
+              device: deviceOf(ua),
+              country: request.headers.get("cf-ipcountry") ?? "",
+            })
+          }
+          url.pathname = `/${link.carSlug}`
           return NextResponse.redirect(url, 301)
         }
       }
@@ -73,5 +87,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   // Skip Next internals and static files (anything with an extension).
-  matcher: ["/((?!_next/|.*\\.[a-zA-Z0-9]+$).*)"],
+  // /api/upload does its own dealer check and takes request bodies larger than the proxy passes on.
+  matcher: ["/((?!_next/|api/upload/|.*\\.[a-zA-Z0-9]+$).*)"],
 }

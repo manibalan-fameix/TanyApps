@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils"
 const outfit = Outfit({ subsets: ["latin"], variable: "--font-sans" })
 const fontMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" })
 
-export const metadata: Metadata = { title: "ShowMoto" }
-export const viewport: Viewport = { width: "device-width", initialScale: 1 }
+export const metadata: Metadata = { title: "ShowMoto", appleWebApp: { capable: true, title: "ShowMoto", statusBarStyle: "default" }, formatDetection: { telephone: false } }
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" }
 
 // Root layout is theme-neutral. The admin layout adds next-themes; tenant pages get the
 // dealer's tokens from their own layout, so buyers never see a dark-mode switch.

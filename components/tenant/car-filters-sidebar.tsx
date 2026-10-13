@@ -9,6 +9,7 @@ import {
   Search01Icon,
 } from "@hugeicons/core-free-icons"
 
+import { Logo } from "@/components/logo"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -409,9 +410,7 @@ export function CarFiltersSidebar({
         </Button>
         <p className="text-center text-xs text-sidebar-foreground/60">
           {copy.tenant.poweredBy}{" "}
-          <span className="font-semibold text-sidebar-foreground">
-            {copy.brand.name}
-          </span>
+          <Logo className="inline-block h-3.5 align-middle text-sidebar-foreground" />
         </p>
       </SidebarFooter>
       <SidebarRail />

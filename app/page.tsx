@@ -1,5 +1,4 @@
-import Link from "next/link"
-
+import { Logo } from "@/components/logo"
 import { buttonVariants } from "@/components/ui/button"
 import { copy } from "@/lib/copy"
 import { adminUrl } from "@/lib/env"
@@ -9,12 +8,13 @@ import { cn } from "@/lib/utils"
 export default function Home() {
   return (
     <main className="mx-auto flex min-h-svh max-w-xl flex-col justify-center gap-6 p-6">
-      <p className="text-sm font-medium text-primary">{copy.brand.name}</p>
+      <Logo className="h-10 self-start" />
       <h1 className="text-3xl font-semibold tracking-tight">{copy.marketing.heading}</h1>
       <p className="text-muted-foreground">{copy.marketing.body}</p>
-      <Link href={adminUrl("/login")} className={cn(buttonVariants({ size: "lg" }), "w-fit")}>
+      {/* Plain anchor: a cross-origin hop to the admin subdomain must be a full document navigation, not a router/RSC fetch. */}
+      <a href={adminUrl("/login")} className={cn(buttonVariants({ size: "lg" }), "w-fit")}>
         {copy.marketing.cta}
-      </Link>
+      </a>
     </main>
   )
 }

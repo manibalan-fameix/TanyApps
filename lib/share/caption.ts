@@ -50,10 +50,20 @@ export function templateCaption(f: CaptionFacts): string {
 const answer = z.object({ caption: z.string().min(1).max(2200) })
 
 /**
- * A caption is only accepted from the model if it carries the real link and the exact price and
- * introduces no other URLs. Anything else falls back to the template.
+ * Some models occasionally emit an emoji as a lone UTF-16 surrogate (or the JSON round-trip drops
+ * its other half), which then renders as � wherever it lands. Once broken there is no way to
+ * recover the intended character, so a caption in that state is rejected outright.
+ */
+function hasBrokenUnicode(s: string): boolean {
+  return s.includes("�") || /[\uD800-\uDFFF]/.test(s.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, ""))
+}
+
+/**
+ * A caption is only accepted from the model if it carries the real link and the exact price,
+ * introduces no other URLs, and contains no corrupted characters. Anything else falls back to the template.
  */
 export function captionIsFaithful(caption: string, f: CaptionFacts): boolean {
+  if (hasBrokenUnicode(caption)) return false
   if (!caption.includes(f.link)) return false
   if (!caption.replace(/[,\s]/g, "").includes(String(f.price))) return false
   const urls = caption.match(/https?:\/\/\S+/g) ?? []

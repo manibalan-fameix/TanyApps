@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm"
 
 import { unscopedDb } from "../db/client"
 import { dealerUsers, dealers, users } from "../db/schema"
+import { effectivePlanKey } from "../billing/state"
 import { getPlan } from "../plans"
 
 export const LOCAL_LOGIN_COOKIE = "local-login"
@@ -66,7 +67,7 @@ export async function ensureLocalDealerUser(email: string) {
     .values({ dealerId: dealer.id, userId: user.id, role: "owner" })
     .onConflictDoNothing()
 
-  return { user, dealer, role: "owner" as const, plan: getPlan(dealer.plan) }
+  return { user, dealer, role: "owner" as const, plan: getPlan(effectivePlanKey(dealer)) }
 }
 
 export async function getLocalDealerContext(email: string) {
@@ -79,5 +80,5 @@ export async function getLocalDealerContext(email: string) {
     .limit(1)
 
   if (!row) return null
-  return { user: row.user, dealer: row.dealer, role: row.role, plan: getPlan(row.dealer.plan) }
+  return { user: row.user, dealer: row.dealer, role: row.role, plan: getPlan(effectivePlanKey(row.dealer)) }
 }

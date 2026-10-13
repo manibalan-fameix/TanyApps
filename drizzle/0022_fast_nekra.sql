@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ADD COLUMN "rider_token_enc" text;

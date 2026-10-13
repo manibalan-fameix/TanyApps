@@ -32,6 +32,22 @@ export async function resizeToJpeg(source: Blob, maxEdge: number, quality = 0.85
   return { blob: await toBlob(canvas, quality), width, height }
 }
 
+/** Downscale to `maxEdge` and re-encode as PNG, keeping transparency. For logos. */
+export async function resizeToPng(source: Blob, maxEdge: number): Promise<Blob> {
+  const bitmap = await decode(source)
+  const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height))
+  const canvas = document.createElement("canvas")
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale))
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+  const ctx = canvas.getContext("2d")
+  if (!ctx) throw new Error("Canvas unavailable")
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  bitmap.close()
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Could not encode image"))), "image/png"),
+  )
+}
+
 /** Center-crop to 4:5 portrait (Instagram carousel), 1080x1350. */
 export async function cropPortrait45(source: Blob, width = 1080): Promise<Blob> {
   const bitmap = await decode(source)

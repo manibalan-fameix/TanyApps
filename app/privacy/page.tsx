@@ -1,5 +1,6 @@
 import Link from "next/link"
 
+import { Logo } from "@/components/logo"
 import { copy } from "@/lib/copy"
 
 export const metadata = { title: "Privacy Policy | " + copy.brand.name }
@@ -7,8 +8,8 @@ export const metadata = { title: "Privacy Policy | " + copy.brand.name }
 export default function Page() {
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-4 p-6 py-12 leading-relaxed">
-      <Link href="/" className="text-sm font-medium text-primary">
-        {copy.brand.name}
+      <Link href="/" aria-label={copy.brand.name} className="w-fit">
+        <Logo className="h-8" />
       </Link>
       <h1 className="text-3xl font-semibold tracking-tight">Privacy Policy</h1>
       <p className="text-sm text-muted-foreground">Last updated: 24 September 2026</p>

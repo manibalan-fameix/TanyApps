@@ -5,6 +5,10 @@ export const users = pgTable("users", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   name: text("name"),
   email: text("email").unique(),
+  /** E.164 (+91...). Lets a phone OTP sign-in reach a teammate added by number. */
+  phone: text("phone").unique(),
+  /** scrypt hash of a password an owner set for a teammate. Null for everyone else. */
+  passwordHash: text("password_hash"),
   emailVerified: timestamp("email_verified", { mode: "date" }),
   image: text("image"),
 })

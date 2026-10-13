@@ -52,6 +52,12 @@ describe("caption", () => {
     expect(captionIsFaithful(`Nice car ₹4,99,000 ${facts.link}`, facts)).toBe(false)
     expect(captionIsFaithful(`${ok} also https://evil.example/x`, facts)).toBe(false)
   })
+  it("faithfulness check rejects corrupted unicode (broken emoji)", () => {
+    const ok = `Nice car ₹5,65,000 ${facts.link}`
+    expect(captionIsFaithful(`${ok} �`, facts)).toBe(false)
+    expect(captionIsFaithful(`${ok} \uD83D`, facts)).toBe(false) // lone high surrogate
+    expect(captionIsFaithful(`${ok} 🚗`, facts)).toBe(true) // valid pair (🚗)
+  })
   it("uses the model's caption only when faithful", async () => {
     const good = { json: vi.fn(async () => ({ caption: `Baleno ready 🚗 ₹5,65,000 ${facts.link} #UsedCars` })) } as never
     expect((await generateCaption(good, facts)).source).toBe("ai")

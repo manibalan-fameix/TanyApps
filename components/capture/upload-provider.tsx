@@ -1,11 +1,22 @@
 "use client"
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Alert02Icon, CloudUploadIcon } from "@hugeicons/core-free-icons"
 
-import { confirmUploadAction, requestUploadAction } from "@/app/(admin)/(shell)/cars/actions"
+import {
+  confirmUploadAction,
+  requestUploadAction,
+} from "@/app/(admin)/(shell)/cars/actions"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { copy } from "@/lib/copy"
@@ -37,7 +48,14 @@ export function useUploads(): Ctx {
   return ctx
 }
 
-const PERMANENT = new Set(["invalid", "too_large", "too_many", "not_found", "car_closed", "unauthorised"])
+const PERMANENT = new Set([
+  "invalid",
+  "too_large",
+  "too_many",
+  "not_found",
+  "car_closed",
+  "unauthorised",
+])
 
 const transport: UploadTransport = {
   async request(item) {
@@ -56,14 +74,28 @@ const transport: UploadTransport = {
     }
     return { ...res.target, mediaId: res.mediaId }
   },
-  async send(target, blob) {
-    const res = await fetch(target.url, { method: target.method, headers: target.headers, body: blob })
-    if (res.ok) return
+  async send(target, blob, onProgress) {
+    // XMLHttpRequest, not fetch: fetch cannot report how many bytes of an upload have gone out.
+    const status = await new Promise<number>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open(target.method, target.url)
+      for (const [k, v] of Object.entries(target.headers))
+        xhr.setRequestHeader(k, v)
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress?.(e.loaded / e.total)
+      }
+      xhr.onload = () => resolve(xhr.status)
+      xhr.onerror = () => reject(new Error("Network error"))
+      xhr.ontimeout = () => reject(new Error("Upload timed out"))
+      xhr.onabort = () => reject(new Error("Upload cancelled"))
+      xhr.send(blob)
+    })
+    if (status >= 200 && status < 300) return
     // 4xx (other than timeout / rate limit) will not fix itself; 5xx and network errors will.
-    if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
-      throw new PermanentUploadError(`Storage refused the upload (${res.status})`)
+    if (status >= 400 && status < 500 && status !== 408 && status !== 429) {
+      throw new PermanentUploadError(`Storage refused the upload (${status})`)
     }
-    throw new Error(`Storage error (${res.status})`)
+    throw new Error(`Storage error (${status})`)
   },
   async confirm(item, target) {
     const res = await confirmUploadAction({
@@ -157,7 +189,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       },
     }),
     // `version` intentionally re-creates the value so consumers see fresh items.
-    [ready, online, version, pump],
+    [ready, online, version, pump]
   )
 
   return (
@@ -172,7 +204,9 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
 function UploadPill() {
   const { items, online, retryFailed } = useUploads()
   const all = items()
-  const pending = all.filter((i) => i.state === "queued" || i.state === "uploading")
+  const pending = all.filter(
+    (i) => i.state === "queued" || i.state === "uploading"
+  )
   const failed = all.filter((i) => i.state === "failed")
   if (pending.length === 0 && failed.length === 0) return null
 
@@ -181,9 +215,13 @@ function UploadPill() {
   return (
     <div
       role="status"
-      className="fixed inset-x-4 bottom-4 z-40 mx-auto flex max-w-sm items-center gap-3 rounded-2xl bg-card p-3 text-card-foreground shadow-lg ring-1 ring-foreground/10"
+      className="fixed inset-x-4 bottom-4 z-40 mx-auto flex max-w-sm items-center gap-3 rounded-2xl bg-card p-3 text-card-foreground shadow-lg ring-1 ring-foreground/10 max-md:bottom-[calc(5rem+env(safe-area-inset-bottom))]"
     >
-      <HugeiconsIcon icon={failed.length ? Alert02Icon : CloudUploadIcon} strokeWidth={2} className="size-5 shrink-0" />
+      <HugeiconsIcon
+        icon={failed.length ? Alert02Icon : CloudUploadIcon}
+        strokeWidth={2}
+        className="size-5 shrink-0"
+      />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">
           {failed.length && !pending.length
@@ -192,7 +230,18 @@ function UploadPill() {
               ? copy.admin.uploadPill.offline
               : copy.admin.uploadPill.uploading(pending.length)}
         </p>
-        {pending.length > 0 && <Progress value={total ? (done / total) * 100 : 0} className="mt-1.5" />}
+        {pending.length > 0 && (
+          <Progress
+            value={
+              total
+                ? ((done + pending.reduce((n, i) => n + (i.progress ?? 0), 0)) /
+                    total) *
+                  100
+                : 0
+            }
+            className="mt-1.5"
+          />
+        )}
       </div>
       {failed.length > 0 && (
         <Button size="sm" variant="outline" onClick={() => void retryFailed()}>

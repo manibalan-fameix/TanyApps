@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 python3 - <<'PY' | pnpm exec wrangler secret bulk
 import json, re, sys
 keys = ["DATABASE_URL", "AUTH_SECRET", "ENCRYPTION_KEY", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY",
-        "RC_API_KEY", "VISION_API_KEY"]
+        "RC_API_KEY", "VISION_API_KEY", "TRACKER_SECRET"]
 env = {}
 for line in open(".env.local"):
     m = re.match(r"^([A-Z0-9_]+)=(.*)$", line.rstrip("\n"))

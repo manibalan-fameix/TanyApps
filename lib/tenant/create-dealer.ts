@@ -10,9 +10,10 @@ export async function isSlugTaken(slug: string): Promise<boolean> {
 }
 
 /** Creates a dealership and makes `userId` its owner. Throws with Postgres code 23505 if the slug is taken. */
-export async function createDealerForOwner(userId: string, input: OnboardInput): Promise<void> {
-  await unscopedDb.transaction(async (tx) => {
-    const [dealer] = await tx.insert(dealers).values(toDealerValues(input)).returning({ id: dealers.id })
+export async function createDealerForOwner(userId: string, input: OnboardInput, logoUrl?: string): Promise<string> {
+  return unscopedDb.transaction(async (tx) => {
+    const [dealer] = await tx.insert(dealers).values(toDealerValues(input, logoUrl)).returning({ id: dealers.id })
     await tx.insert(dealerUsers).values({ dealerId: dealer.id, userId, role: "owner" })
+    return dealer.id
   })
 }

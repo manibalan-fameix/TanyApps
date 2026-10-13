@@ -1,6 +1,7 @@
 "use server"
 
 import { eq } from "drizzle-orm"
+import { revalidatePath } from "next/cache"
 import { headers } from "next/headers"
 import { z } from "zod"
 
@@ -9,6 +10,7 @@ import { readPlate } from "@/lib/ai/plate"
 import { getDealerContext } from "@/lib/auth/context"
 import { toRcSummary, type RcSummary, type VariantSuggestion } from "@/lib/cars/dto"
 import { createDraftCar, InvalidRegError } from "@/lib/cars/create"
+import { deleteCar } from "@/lib/cars/delete"
 import { confirmUpload, requestUpload, type MediaError } from "@/lib/cars/media"
 import { getShareKit, publishCar, publishInput, type PublishError, type ShareKit } from "@/lib/cars/publish"
 import { getCarState, type CarState } from "@/lib/cars/state"
@@ -217,7 +219,14 @@ export async function saveMarketplaceDetailsAction(input: { carId: string; detai
   const d = await dealer()
   if (!d) return fail("unauthorised")
   const parsed = marketplaceInput.safeParse(input)
-  if (!parsed.success) return fail("invalid")
+  if (!parsed.success) {
+    // Say which field is wrong, so the dealer can fix it instead of guessing.
+    const issue = parsed.error.issues.find((i) => i.path[0] === "details") ?? parsed.error.issues[0]
+    const field = String(issue.path.at(-1) ?? "details")
+      .replace(/([A-Z])/g, " $1")
+      .toLowerCase()
+    return { ok: false as const, error: "invalid" as const, detail: `Check "${field}": ${issue.message.toLowerCase()}.` }
+  }
   if (!(await getCarState(d.id, parsed.data.carId))) return fail("not_found")
   await scopedDb(d.id).cars.update({ marketplaceDetails: parsed.data.details }, eq(cars.id, parsed.data.carId))
   return { ok: true as const, car: await getCarState(d.id, parsed.data.carId) }
@@ -240,4 +249,80 @@ export async function getShareKitAction(carId: string): Promise<{ ok: true; kit:
   if (!d || !uuid.safeParse(carId).success) return fail("unauthorised")
   const kit = await getShareKit(d.id, carId)
   return kit ? { ok: true, kit } : fail("not_found")
+}
+
+// ---------- 6. manage a listed car ----------
+
+const manageInput = z.object({
+  carId: z.string().uuid(),
+  status: z.enum(["live", "on_hold", "sold", "archived"]),
+  askingPrice: z.number().int().min(1).max(1_000_000_000).nullable(),
+  kmDriven: z.number().int().min(0).max(2_000_000).nullable(),
+  ownerCount: z.number().int().min(1).max(10).nullable(),
+  colour: z.string().trim().max(40).nullable(),
+  insuranceValidTill: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  soldPrice: z.number().int().min(1).max(1_000_000_000).nullable(),
+})
+
+/** Edit a published car's status and facts. Drafts go through the add-car wizard instead. */
+export async function updateCarAction(input: z.infer<typeof manageInput>) {
+  const d = await dealer()
+  if (!d) return fail("unauthorised")
+  const parsed = manageInput.safeParse(input)
+  if (!parsed.success) return fail("invalid")
+  const { carId, status, soldPrice, ...facts } = parsed.data
+
+  const db = scopedDb(d.id)
+  const [before] = await db.cars.select(eq(cars.id, carId), { limit: 1 })
+  if (!before) return fail("not_found")
+  if (before.status === "draft") return fail("draft")
+  // A car that was never published has no listing to go live with.
+  if (status === "live" && !before.listedAt) return fail("not_published")
+
+  const nowSold = status === "sold"
+  await db.cars.update(
+    {
+      ...facts,
+      status,
+      soldAt: nowSold ? (before.soldAt ?? new Date()) : null,
+      soldPrice: nowSold ? (soldPrice ?? facts.askingPrice ?? before.askingPrice) : null,
+    },
+    eq(cars.id, carId),
+  )
+  if (nowSold && before.status !== "sold") {
+    await db.priceEvents.insert({ carId, event: "sold", price: soldPrice ?? facts.askingPrice ?? before.askingPrice ?? 0 })
+  } else if (facts.askingPrice && facts.askingPrice !== before.askingPrice) {
+    await db.priceEvents.insert({ carId, event: "price_changed", price: facts.askingPrice })
+  }
+  revalidatePath("/cars")
+  revalidatePath(`/cars/${carId}`)
+  return { ok: true as const }
+}
+
+// ---------- 7. delete or archive from the cars list ----------
+
+/** Permanently delete a car and its files. Refuses a car with price history or enquiries: archive those instead. */
+export async function deleteCarAction(carId: string) {
+  const d = await dealer()
+  if (!d || !uuid.safeParse(carId).success) return fail("unauthorised")
+  if (!allow(`delete-car:${d.id}`, 60, 3_600_000)) return fail("rate_limited")
+  const res = await deleteCar(d.id, carId)
+  if (!res.ok) return fail(res.error)
+  revalidatePath("/cars")
+  revalidatePath("/dashboard")
+  return { ok: true as const }
+}
+
+/** Take a published car off the dealer's page without losing anything. */
+export async function archiveCarAction(carId: string) {
+  const d = await dealer()
+  if (!d || !uuid.safeParse(carId).success) return fail("unauthorised")
+  const db = scopedDb(d.id)
+  const [car] = await db.cars.select(eq(cars.id, carId), { limit: 1 })
+  if (!car) return fail("not_found")
+  if (car.status === "draft") return fail("draft")
+  await db.cars.update({ status: "archived", soldAt: null, soldPrice: null }, eq(cars.id, carId))
+  revalidatePath("/cars")
+  revalidatePath(`/cars/${carId}`)
+  return { ok: true as const }
 }

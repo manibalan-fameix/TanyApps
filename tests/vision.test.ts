@@ -59,3 +59,22 @@ describe("plate reading", () => {
     expect(await readPlate(null, image)).toEqual({ reg: null, valid: false, aiAvailable: false })
   })
 })
+
+describe("vision client endpoints", () => {
+  const urlAndHeaders = async (key: string) => {
+    const f = fakeFetch(() => reply('{"plate":"X"}'))
+    await createGeminiVision(key, "m", f).json(req)
+    const [url, init] = (f as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
+    return { url: String(url), headers: init.headers }
+  }
+  it("sends AI Studio keys in a header", async () => {
+    const { url, headers } = await urlAndHeaders("plain-key")
+    expect(url).toBe("https://generativelanguage.googleapis.com/v1beta/models/m:generateContent")
+    expect(headers["x-goog-api-key"]).toBe("plain-key")
+  })
+  it("sends Vertex AI keys (AQ.…) to Vertex with the key in the query string", async () => {
+    const { url, headers } = await urlAndHeaders("AQ.abc")
+    expect(url).toBe("https://aiplatform.googleapis.com/v1/publishers/google/models/m:generateContent?key=AQ.abc")
+    expect(headers["x-goog-api-key"]).toBeUndefined()
+  })
+})

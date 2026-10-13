@@ -153,7 +153,7 @@ export function buildGeneralSystemPrompt(dealerName: string, phone: string | nul
 export const DEFAULT_CHAT_MODEL = "gemini-3.6-flash"
 
 export function getChatModel(env: Record<string, string | undefined> = process.env): string {
-  return env.CHAT_MODEL ?? env.VISION_MODEL ?? DEFAULT_CHAT_MODEL
+  return env.CHAT_MODEL || env.VISION_MODEL || DEFAULT_CHAT_MODEL
 }
 
 export interface ChatClient {

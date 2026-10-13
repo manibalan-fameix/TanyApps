@@ -6,6 +6,7 @@ import { unscopedDb } from "../db/client"
 import { accounts, users } from "../db/schema"
 import { firebaseProjectId, verifyFirebaseIdToken } from "./firebase"
 import { findOrCreateFirebaseUser } from "./firebase-user"
+import { authenticateTeammate } from "./teammate-login"
 
 // Sign-in happens in the browser with Firebase (Google, phone OTP, email + password). The browser
 // sends the Firebase ID token here; we verify it ourselves and start a normal app session.
@@ -26,6 +27,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (identity.provider === "password" && !identity.emailVerified) return null
         return findOrCreateFirebaseUser(identity)
       },
+    }),
+    Credentials({
+      id: "teammate",
+      credentials: { email: {}, password: {} },
+      authorize: (credentials) => authenticateTeammate(String(credentials?.email ?? ""), String(credentials?.password ?? "")),
     }),
   ],
   pages: { signIn: "/login" },

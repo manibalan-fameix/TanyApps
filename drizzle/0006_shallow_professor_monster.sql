@@ -1,0 +1,1 @@
+ALTER TABLE "dealers" ADD COLUMN "paid_through" timestamp with time zone;

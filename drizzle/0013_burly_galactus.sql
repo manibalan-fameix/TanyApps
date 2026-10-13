@@ -1,0 +1,1 @@
+ALTER TABLE "dealers" ADD COLUMN "industry" text DEFAULT 'motors' NOT NULL;

@@ -18,7 +18,8 @@ export async function getAllVariants(): Promise<VariantRow[]> {
       yearFrom: variants.yearFrom, yearTo: variants.yearTo,
     })
     .from(variants)
-  cache = { rows, at: Date.now() }
+  // An empty table is never cached, so importing the data takes effect straight away.
+  if (rows.length > 0) cache = { rows, at: Date.now() }
   return rows
 }
 

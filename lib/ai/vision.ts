@@ -3,10 +3,14 @@ import { z } from "zod"
 
 export type VisionImage = { mediaType: "image/jpeg" | "image/png" | "image/webp"; base64: string }
 
+export type VisionAudio = { mediaType: "audio/wav" | "audio/mp3" | "audio/aac"; base64: string }
+
 export type VisionRequest<T> = {
   system: string
   prompt: string
   images?: VisionImage[]
+  /** A spoken track (e.g. a creator's walkaround voice-over), sent after the images. */
+  audio?: VisionAudio
   /** JSON Schema the model's answer must follow (structured outputs). */
   jsonSchema: Record<string, unknown>
   /** Zod validation of the parsed answer; the model's output is never trusted as-is. */
@@ -34,6 +38,7 @@ export function createGeminiVision(apiKey: string, model: string, fetchFn: Gemin
             role: "user",
             parts: [
               ...(req.images ?? []).map((img) => ({ inlineData: { mimeType: img.mediaType, data: img.base64 } })),
+              ...(req.audio ? [{ inlineData: { mimeType: req.audio.mediaType, data: req.audio.base64 } }] : []),
               { text: req.prompt },
             ],
           }],
@@ -55,5 +60,5 @@ export function createGeminiVision(apiKey: string, model: string, fetchFn: Gemin
 /** Null when VISION_API_KEY (a Google Gemini API key) is not set: callers fall back to manual entry / rules only. */
 export function getVisionClient(env: Record<string, string | undefined> = process.env): VisionClient | null {
   if (!env.VISION_API_KEY) return null
-  return createGeminiVision(env.VISION_API_KEY, env.VISION_MODEL ?? DEFAULT_VISION_MODEL)
+  return createGeminiVision(env.VISION_API_KEY, env.VISION_MODEL || DEFAULT_VISION_MODEL)
 }

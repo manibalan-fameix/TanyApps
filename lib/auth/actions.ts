@@ -3,9 +3,16 @@
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { AuthError } from "next-auth"
+import { eq } from "drizzle-orm"
 import { z } from "zod"
 
+import { unscopedDb } from "../db/client"
+import { dealerUsers } from "../db/schema"
+
 import { signIn, signOut } from "./index"
+import { allow } from "../rate-limit"
+import { verifyFirebaseIdToken } from "./firebase"
+import { findFirebaseUser } from "./firebase-user"
 import { DEV_BYPASS_COOKIE, isDevBypassEnabled } from "./dev-bypass"
 import {
   LOCAL_LOGIN_COOKIE,
@@ -24,6 +31,18 @@ const emailPasswordSchema = z.object({
 
 export type FirebaseSignInResult = { ok: true } | { ok: false; error: string }
 
+/**
+ * Whether a verified Firebase identity already has a dealer account here (a user who belongs to a dealership).
+ * A user row without a dealership is an unfinished sign-up, so login offers "create account" instead.
+ */
+export async function firebaseAccountExists(idToken: string): Promise<boolean> {
+  const identity = await verifyFirebaseIdToken(idToken)
+  const user = identity ? await findFirebaseUser(identity) : null
+  if (!user) return false
+  const [membership] = await unscopedDb.select({ id: dealerUsers.userId }).from(dealerUsers).where(eq(dealerUsers.userId, user.id)).limit(1)
+  return Boolean(membership)
+}
+
 /** Exchanges a Firebase ID token (from the browser SDK) for an app session. */
 export async function signInWithFirebaseToken(idToken: string): Promise<FirebaseSignInResult> {
   try {
@@ -33,6 +52,23 @@ export async function signInWithFirebaseToken(idToken: string): Promise<Firebase
     if (error instanceof AuthError) {
       return { ok: false, error: "We could not verify your sign-in. If you used email, confirm your email address first." }
     }
+    throw error
+  }
+}
+
+/**
+ * Email + password for teammates whose owner set a password. Returns false for anyone else
+ * (the caller then tries Firebase), so this never reveals whether an address exists.
+ */
+export async function signInTeammate(email: string, password: string): Promise<boolean> {
+  const parsed = emailPasswordSchema.safeParse({ email, password })
+  if (!parsed.success) return false
+  if (!allow(`teammate-login:${parsed.data.email}`, 10, 10 * 60_000)) return false
+  try {
+    await signIn("teammate", { email: parsed.data.email, password: parsed.data.password, redirect: false })
+    return true
+  } catch (error) {
+    if (error instanceof AuthError) return false
     throw error
   }
 }
@@ -55,6 +91,8 @@ export async function signInWithEmailPassword(
     password: formData.get("password"),
   })
   if (!parsed.success) return { error: "Enter a valid email and password." }
+
+  if (await signInTeammate(parsed.data.email, parsed.data.password)) redirect("/dashboard")
 
   if (parsed.data.password !== localLoginPassword()) return { error: "Incorrect password." }
 

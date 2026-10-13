@@ -38,7 +38,8 @@ export function friendlyAuthError(error: unknown): string {
   const code = (error as { code?: string })?.code ?? ""
   // Firebase's own reason (e.g. "INVALID_APP_CREDENTIAL : ..."), when the server sent one.
   const server = (error as { customData?: { _serverResponse?: { error?: { message?: string } } } })?.customData?._serverResponse?.error?.message
-  if (process.env.NODE_ENV === "development") console.error("Firebase auth error:", code, server ?? error)
+  const cancelled = code === "auth/cancelled-popup-request" || code === "auth/popup-closed-by-user"
+  if (process.env.NODE_ENV === "development" && !cancelled) console.error("Firebase auth error:", code, server ?? error)
   if (process.env.NODE_ENV === "development" && (!MESSAGES[code] || code === "auth/invalid-app-credential")) {
     return `Firebase says: ${code}${server ? ` - ${server}` : ""}`
   }

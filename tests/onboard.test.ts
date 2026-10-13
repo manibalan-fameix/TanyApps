@@ -12,7 +12,21 @@ const ok = {
   primary: "#1d4ed8",
   accent: "#f59e0b",
   radius: "md" as const,
+  plan: "starter" as const,
+  billingCycle: "monthly" as const,
 }
+
+describe("industry", () => {
+  it("defaults to motors so existing callers keep working", () => {
+    const r = onboardSchema.safeParse(ok)
+    expect(r.success && r.data.industry).toBe("motors")
+  })
+  it("accepts restaurants, stores it on the dealer row and rejects unknown industries", () => {
+    const r = onboardSchema.safeParse({ ...ok, industry: "restaurants" })
+    expect(r.success && toDealerValues(r.data).industry).toBe("restaurants")
+    expect(onboardSchema.safeParse({ ...ok, industry: "salons" }).success).toBe(false)
+  })
+})
 
 describe("onboarding input", () => {
   it("accepts a valid dealership and normalises the phone number to +91", () => {

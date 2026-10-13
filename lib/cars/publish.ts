@@ -7,6 +7,7 @@ import { unscopedDb, type Db } from "../db/client.ts"
 import { cars, dealers } from "../db/schema/index.ts"
 import { scopedDb } from "../db/scoped.ts"
 import { tenantUrl } from "../env.ts"
+import { billingState, effectivePlanKey } from "../billing/state.ts"
 import { getPlan } from "../plans.ts"
 import { generateCaption } from "../share/caption.ts"
 import { carSlug, uniqueSlug } from "../slug.ts"
@@ -17,7 +18,7 @@ export const publishInput = z.object({
   km: z.number().int().min(0, "km").max(999_999, "km"),
 })
 
-export type PublishError = "not_found" | "not_ready" | "invalid" | "cap_reached" | "closed"
+export type PublishError = "not_found" | "not_ready" | "invalid" | "cap_reached" | "closed" | "suspended"
 export type ShareKit = {
   /** Short link the dealer pastes into captions. Redirects (301) to the canonical page. */
   shortLink: string
@@ -52,6 +53,8 @@ export async function publishCar(
 
   const [dealer] = await unscopedDb.select().from(dealers).where(eq(dealers.id, dealerId)).limit(1)
   if (!dealer) return { ok: false, error: "not_found" }
+  // A dealer whose trial ended unpaid can keep working on drafts but cannot put new cars live.
+  if (!billingState(dealer).hasAccess) return { ok: false, error: "suspended" }
 
   const base = carSlug({
     year: before.year!,
@@ -69,7 +72,7 @@ export async function publishCar(
         const alreadyLive = before.status === "live"
         if (!alreadyLive) {
           const live = await db.cars.count(eq(cars.status, "live"))
-          if (live >= getPlan(dealer.plan).maxLiveCars) return "cap_reached" as const
+          if (live >= getPlan(effectivePlanKey(dealer)).maxLiveCars) return "cap_reached" as const
         }
         const existing = await db.cars.select(like(cars.slug, `${base}%`))
         const taken = new Set(existing.filter((c) => c.id !== carId).map((c) => c.slug))

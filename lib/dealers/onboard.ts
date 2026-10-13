@@ -1,6 +1,8 @@
 import { z } from "zod"
 
 import type { BusinessHours, DayKey } from "../hours"
+import { INDUSTRY_KEYS } from "../industries"
+import { BILLING_CYCLES, SIGNUP_PLAN_KEYS, TRIAL_DAYS, isFreePlan } from "../plans"
 import { isValidSlug } from "../tenant/host"
 import { RADIUS_OPTIONS, type RadiusKey, dealerThemeSchema, readableOn } from "../theme/tokens"
 
@@ -38,6 +40,9 @@ const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use a time like 09:3
 const dayHours = z
   .object({ open: time, close: time })
   .refine((d) => d.open < d.close, "Closing time must be after opening time.")
+export const hoursSchema = z
+  .partialRecord(z.enum(DAYS.map((d) => d.key) as [DayKey, ...DayKey[]]), dayHours)
+  .refine((h) => Object.keys(h).length > 0, "Pick at least one day you are open.")
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Pick a valid colour.")
 
 export const slugSchema = z
@@ -48,7 +53,8 @@ export const slugSchema = z
   .refine(isValidSlug, "Use letters, numbers and hyphens only. This name is not available.")
 
 export const onboardSchema = z.object({
-  displayName: z.string().trim().min(2, "Enter your dealership name.").max(80),
+  industry: z.enum(INDUSTRY_KEYS).default("motors"),
+  displayName: z.string().trim().min(2, "Enter your business name.").max(80),
   slug: slugSchema,
   city: z.string().trim().min(2, "Enter your city.").max(60),
   phone: z
@@ -57,19 +63,19 @@ export const onboardSchema = z.object({
     .transform((v) => v.replace(/[\s-]/g, ""))
     .pipe(z.string().regex(/^(\+91|91|0)?[6-9][0-9]{9}$/, "Enter a valid 10-digit mobile number."))
     .transform((v) => `+91${v.slice(-10)}`),
-  hours: z
-    .partialRecord(z.enum(DAYS.map((d) => d.key) as [DayKey, ...DayKey[]]), dayHours)
-    .refine((h) => Object.keys(h).length > 0, "Pick at least one day you are open."),
+  hours: hoursSchema,
   primary: hex,
   accent: hex,
   radius: z.enum(RADIUS_KEYS),
+  plan: z.enum(SIGNUP_PLAN_KEYS),
+  billingCycle: z.enum(BILLING_CYCLES),
 })
 
 export type OnboardInput = z.infer<typeof onboardSchema>
 export type OnboardDraft = z.input<typeof onboardSchema>
 
 /** Dealer row values derived from validated input. The text colour is computed, never trusted from the client. */
-export function toDealerValues(input: OnboardInput) {
+export function toDealerValues(input: OnboardInput, logoUrl?: string) {
   const theme = dealerThemeSchema.parse({
     primary: input.primary,
     primaryForeground: readableOn(input.primary),
@@ -78,11 +84,16 @@ export function toDealerValues(input: OnboardInput) {
   })
   return {
     slug: input.slug,
+    industry: input.industry,
     displayName: input.displayName,
     city: input.city,
     phone: input.phone,
     businessHours: input.hours as BusinessHours,
     theme,
-    plan: "starter" as const,
+    logoUrl: logoUrl ?? null,
+    plan: input.plan,
+    billingCycle: input.billingCycle,
+    // The free plan has no trial and no end date.
+    trialEndsAt: isFreePlan(input.plan) ? null : new Date(Date.now() + TRIAL_DAYS * 86_400_000),
   }
 }

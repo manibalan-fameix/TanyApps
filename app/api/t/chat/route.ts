@@ -15,6 +15,8 @@ import { emptyMarketplaceDetails, marketplaceDetailsSchema } from "@/lib/cars/ma
 import { titleOf } from "@/lib/cars/title"
 import { cars } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
+import { deviceOf, isBot } from "@/lib/analytics/events"
+import { recordEvent } from "@/lib/analytics/track"
 import { allow } from "@/lib/rate-limit"
 import { TENANT_HEADER } from "@/lib/tenant/host"
 import { getDealerBySlug } from "@/lib/tenant/dealer"
@@ -105,6 +107,7 @@ export async function POST(req: Request) {
 
   const dealer = await getDealerBySlug(slug)
   if (!dealer) return NextResponse.json({ error: "unknown_dealer" }, { status: 404 })
+  if (dealer.suspended) return NextResponse.json({ error: "chat_unavailable" }, { status: 503 })
 
   const ip = clientIp(req)
   if (!allow(`chat:ip:${ip}`, PER_IP_LIMIT, WINDOW_MS)) {
@@ -134,6 +137,10 @@ export async function POST(req: Request) {
     const car = await loadCarContext(dealer.id, parsed.data.carSlug)
     if (!car) return NextResponse.json({ error: "car_not_found" }, { status: 404 })
     system = buildCarSystemPrompt(dealer.displayName, dealer.phone, car)
+    // One count per conversation: the first question about this car.
+    if (messages.length === 1 && !isBot(req.headers.get("user-agent"))) {
+      await recordEvent({ event: "chat", dealerId: dealer.id, carSlug: parsed.data.carSlug, source: "direct", device: deviceOf(req.headers.get("user-agent")), country: req.headers.get("cf-ipcountry") ?? "" })
+    }
   } else {
     const inventory = await loadInventory(dealer.id)
     system = buildGeneralSystemPrompt(dealer.displayName, dealer.phone, inventory)

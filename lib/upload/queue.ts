@@ -17,6 +17,8 @@ export type UploadItem = {
   nextAttemptAt: number
   error?: string
   createdAt: number
+  /** 0 to 1 while the bytes are being sent. Live only: never stored. */
+  progress?: number
 }
 
 export interface UploadStore {
@@ -31,7 +33,7 @@ export interface UploadTransport {
   /** Ask the server for a slot and a presigned URL. Idempotent per item id. */
   request(item: UploadItem): Promise<UploadTarget>
   /** Send the bytes straight to storage. */
-  send(target: UploadTarget, blob: Blob): Promise<void>
+  send(target: UploadTarget, blob: Blob, onProgress?: (fraction: number) => void): Promise<void>
   /** Tell the server the bytes landed. */
   confirm(item: UploadItem, target: UploadTarget): Promise<void>
 }
@@ -59,6 +61,8 @@ export class UploadQueue {
   private items = new Map<string, UploadItem>()
   private listeners = new Set<() => void>()
   private running = false
+  /** Send progress per item id. Kept out of the store: it is meaningless after a reload. */
+  private sent = new Map<string, number>()
 
   constructor(
     private store: UploadStore,
@@ -87,7 +91,9 @@ export class UploadQueue {
   }
 
   list(carId?: string): UploadItem[] {
-    return [...this.items.values()].filter((i) => !carId || i.carId === carId)
+    return [...this.items.values()]
+      .filter((i) => !carId || i.carId === carId)
+      .map((i) => (this.sent.has(i.id) ? { ...i, progress: this.sent.get(i.id) } : i))
   }
 
   progress(carId: string): Progress {
@@ -149,7 +155,14 @@ export class UploadQueue {
     try {
       await this.save({ ...item, state: "uploading" })
       const target = await this.transport.request(item)
-      await this.transport.send(target, item.blob)
+      await this.transport.send(target, item.blob, (fraction) => {
+        // Only repaint on visible steps: progress events arrive many times a second.
+        const next = Math.min(1, Math.max(0, fraction))
+        if (next - (this.sent.get(item.id) ?? 0) >= 0.02 || next === 1) {
+          this.sent.set(item.id, next)
+          this.emit()
+        }
+      })
       await this.transport.confirm(item, target)
       await this.save({ ...item, state: "done", blob: null, error: undefined })
     } catch (e) {
@@ -162,6 +175,7 @@ export class UploadQueue {
           : { ...item, state: "queued", attempts, nextAttemptAt: this.now() + backoffMs(attempts), error: message },
       )
     } finally {
+      this.sent.delete(item.id)
       this.running = false
     }
     return true

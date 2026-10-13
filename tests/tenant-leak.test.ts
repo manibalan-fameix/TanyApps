@@ -21,6 +21,17 @@ const UPDATE_PAYLOAD = {
   cars: { colour: "red" },
   leads: { name: "x" },
   dealerUsers: { role: "staff" },
+  menuCategories: { name: "x" },
+  menuItems: { name: "x" },
+  orders: { note: "x" },
+  coupons: { code: "x" },
+  reviews: { name: "x" },
+  enquiries: { name: "x" },
+  banners: { title: "x" },
+  deliveryPartners: { name: "x" },
+  deliveryZones: { name: "x" },
+  stockAdjustments: { reason: "x" },
+  orderLocations: { lat: 1 },
   dealerDomains: { hostname: "x.example" },
   carMedia: { r2Key: "k" },
   rcLookups: { provider: "p" },
@@ -39,7 +50,7 @@ function assertScopedTo(query: { toSQL(): { sql: string; params: unknown[] } }, 
 }
 
 describe("scopedDb: every operation carries the dealer scope", () => {
-  const direct = ["cars", "leads", "dealerUsers", "dealerDomains"] as const
+  const direct = ["cars", "leads", "dealerUsers", "dealerDomains", "menuCategories", "menuItems", "orders", "coupons", "reviews", "enquiries", "banners", "deliveryPartners", "deliveryZones", "stockAdjustments", "orderLocations"] as const
   const child = ["carMedia", "rcLookups", "carViews", "rcTransfers", "priceEvents"] as const
 
   for (const name of [...direct, ...child]) {

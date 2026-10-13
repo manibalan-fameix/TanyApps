@@ -14,7 +14,13 @@ import { FooterAction } from "@/components/cars/wizard-shell"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { copy } from "@/lib/copy"
@@ -36,12 +42,15 @@ export function DetailsStep({
   car,
   rc: initialRc,
   rcError: initialRcError,
+  hint,
   onCarChange,
   onNext,
 }: {
   car: CarState
   rc: RcSummary | null
   rcError: RcErrorCode | null
+  /** What the video said the car is, to start the variant search from. */
+  hint?: string
   onCarChange: (car: CarState) => void
   onNext: () => void
 }) {
@@ -49,13 +58,23 @@ export function DetailsStep({
   const [rcError, setRcError] = useState(initialRcError)
   const [retrying, setRetrying] = useState(false)
 
-  const [text, setText] = useState(() => [initialRc?.year ?? car.year, initialRc?.modelRaw].filter(Boolean).join(" "))
-  const [suggestions, setSuggestions] = useState<VariantSuggestion[] | null>(null)
+  const [text, setText] = useState(
+    () =>
+      hint ||
+      [initialRc?.year ?? car.year, initialRc?.modelRaw]
+        .filter(Boolean)
+        .join(" ")
+  )
+  const [suggestions, setSuggestions] = useState<VariantSuggestion[] | null>(
+    null
+  )
   const [finding, setFinding] = useState(false)
   const [choosing, setChoosing] = useState<string | null>(null)
 
   const [year, setYear] = useState(car.year ? String(car.year) : "")
-  const [owners, setOwners] = useState(car.ownerCount ? String(car.ownerCount) : "")
+  const [owners, setOwners] = useState(
+    car.ownerCount ? String(car.ownerCount) : ""
+  )
   const [colour, setColour] = useState(car.colour ?? "")
   const [error, setError] = useState<string | null>(null)
 
@@ -92,7 +111,7 @@ export function DetailsStep({
         setFinding(false)
       }
     },
-    [car.id],
+    [car.id]
   )
 
   // With RC data we can search straight away, so the dealer usually just taps a result.
@@ -133,40 +152,84 @@ export function DetailsStep({
       <Card>
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2">
-            {car.reg}
-            {car.rcVerified ? <Badge>{copy.admin.cars.manage.verified}</Badge> : null}
+            {car.reg || t.fromVideo}
+            {car.rcVerified ? (
+              <Badge>{copy.admin.cars.manage.verified}</Badge>
+            ) : null}
           </CardTitle>
-          <CardDescription>{rc ? (car.rcVerified ? t.rcTitle : t.rcUnverified) : rcError === "not_found" ? t.rcNotFound : t.rcMissing}</CardDescription>
+          <CardDescription>
+            {!car.reg
+              ? t.fromVideoBody
+              : rc
+                ? car.rcVerified
+                  ? t.rcTitle
+                  : t.rcUnverified
+                : rcError === "not_found"
+                  ? t.rcNotFound
+                  : t.rcMissing}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {rc ? (
             <dl className="divide-y divide-border">
-              <Row label="RC" value={[rc.makerRaw, rc.modelRaw].filter(Boolean).join(" · ")} />
+              <Row
+                label="RC"
+                value={[rc.makerRaw, rc.modelRaw].filter(Boolean).join(" · ")}
+              />
               <Row label={t.fuel} value={rc.fuel} />
               <Row label={t.year} value={rc.year} />
               <Row label={t.owners} value={rc.ownerCount} />
               <Row label={t.insurance} value={rc.insuranceValidTill} />
-              <Row label={t.loan} value={rc.hypothecated === null ? null : rc.hypothecated ? t.loanActive : t.loanCleared} />
+              <Row
+                label={t.loan}
+                value={
+                  rc.hypothecated === null
+                    ? null
+                    : rc.hypothecated
+                      ? t.loanActive
+                      : t.loanCleared
+                }
+              />
             </dl>
-          ) : (
+          ) : car.reg ? (
             <Button variant="outline" onClick={retryRc} disabled={retrying}>
               {t.retryRc}
             </Button>
-          )}
+          ) : null}
 
           {(!rc || needsFacts) && (
             <div className="mt-4 grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="year">{t.year}</Label>
-                <Input id="year" inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="2017" />
+                <Input
+                  id="year"
+                  inputMode="numeric"
+                  value={year}
+                  onChange={(e) =>
+                    setYear(e.target.value.replace(/\D/g, "").slice(0, 4))
+                  }
+                  placeholder="2017"
+                />
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="owners">{t.owners}</Label>
-                <Input id="owners" inputMode="numeric" value={owners} onChange={(e) => setOwners(e.target.value.replace(/\D/g, "").slice(0, 2))} placeholder="1" />
+                <Input
+                  id="owners"
+                  inputMode="numeric"
+                  value={owners}
+                  onChange={(e) =>
+                    setOwners(e.target.value.replace(/\D/g, "").slice(0, 2))
+                  }
+                  placeholder="1"
+                />
               </div>
               <div className="col-span-2 flex flex-col gap-1.5">
                 <Label htmlFor="colour">{t.colour}</Label>
-                <Input id="colour" value={colour} onChange={(e) => setColour(e.target.value)} />
+                <Input
+                  id="colour"
+                  value={colour}
+                  onChange={(e) => setColour(e.target.value)}
+                />
               </div>
             </div>
           )}
@@ -187,16 +250,28 @@ export function DetailsStep({
               await find(text)
             }}
           >
-            <Input value={text} onChange={(e) => setText(e.target.value)} placeholder={t.findPlaceholder} aria-label={t.findTitle} className="h-10" />
+            <Input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={t.findPlaceholder}
+              aria-label={t.findTitle}
+              className="h-10"
+            />
             <Button type="submit" disabled={finding || !text.trim()}>
               {finding ? t.finding : t.find}
             </Button>
           </form>
 
-          {suggestions && suggestions.length === 0 && !finding && <p className="text-sm text-muted-foreground">{t.noMatch}</p>}
+          {suggestions && suggestions.length === 0 && !finding && (
+            <p className="text-sm text-muted-foreground">{t.noMatch}</p>
+          )}
 
           {suggestions && suggestions.length > 0 && (
-            <div className="flex flex-col gap-2" role="group" aria-label={t.pick}>
+            <div
+              className="flex flex-col gap-2"
+              role="group"
+              aria-label={t.pick}
+            >
               <p className="text-sm text-muted-foreground">{t.pick}</p>
               {suggestions.map((s, i) => {
                 const selected = car.variant?.id === s.id
@@ -210,15 +285,28 @@ export function DetailsStep({
                     data-testid="variant-option"
                     className={cn(
                       "flex flex-col items-start gap-0.5 rounded-2xl border p-3 text-left transition-colors",
-                      selected ? "border-primary bg-primary/5" : "border-border hover:bg-muted",
+                      selected
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:bg-muted"
                     )}
                   >
                     <span className="flex w-full items-center justify-between gap-2 font-medium">
                       {s.label}
-                      {selected ? <Badge>{t.selected}</Badge> : i === 0 && s.source === "ai" ? <Badge variant="secondary">{t.matchAi}</Badge> : null}
+                      {selected ? (
+                        <Badge>{t.selected}</Badge>
+                      ) : i === 0 && s.source === "ai" ? (
+                        <Badge variant="secondary">{t.matchAi}</Badge>
+                      ) : null}
                     </span>
                     <span className="text-sm text-muted-foreground">
-                      {[s.fuel, s.transmission, s.engineCc ? `${s.engineCc} cc` : null, s.years].filter(Boolean).join(" · ")}
+                      {[
+                        s.fuel,
+                        s.transmission,
+                        s.engineCc ? `${s.engineCc} cc` : null,
+                        s.years,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </span>
                   </button>
                 )
@@ -242,7 +330,14 @@ export function DetailsStep({
       </Card>
 
       <FooterAction>
-        <Button size="lg" onClick={async () => { await saveFacts(); onNext() }} disabled={!car.variant}>
+        <Button
+          size="lg"
+          onClick={async () => {
+            await saveFacts()
+            onNext()
+          }}
+          disabled={!car.variant}
+        >
           {copy.admin.addCar.next}
         </Button>
       </FooterAction>

@@ -10,7 +10,7 @@ import { copy } from "@/lib/copy"
 
 export const metadata = { title: copy.admin.addCar.title }
 
-const STEPS = new Set(["plate", "car", "photos", "marketplace", "price"])
+const STEPS = new Set(["plate", "car", "photos", "marketplace", "price", "voice"])
 
 export default async function NewCarPage({ searchParams }: { searchParams: Promise<{ car?: string; step?: string }> }) {
   const ctx = await getDealerContext()
@@ -30,7 +30,9 @@ export default async function NewCarPage({ searchParams }: { searchParams: Promi
   return (
     <AddCarWizard
       key={car?.id ?? "new"}
+      dealer={{ name: ctx.dealer.displayName, logoUrl: ctx.dealer.logoUrl }}
       initialCar={car}
+      voiceAllowed={ctx.plan.voiceEntry}
       initialKit={kit}
       initialStep={step && STEPS.has(step) ? (step as Step) : undefined}
     />

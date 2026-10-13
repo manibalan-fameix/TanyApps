@@ -11,10 +11,11 @@ import {
   uuid,
 } from "drizzle-orm/pg-core"
 
-import { carStatus, leadSource, leadStatus, mediaAngle, mediaKind, mediaStatus, priceEventType } from "./enums.ts"
+import { bookingStatus, carStatus, leadSource, leadStatus, mediaAngle, mediaKind, mediaStatus, priceEventType } from "./enums.ts"
 import { dealers } from "./dealers.ts"
 import { variants } from "./variants.ts"
 import type { MarketplaceDetails } from "../../cars/marketplace.ts"
+import type { VoiceDraft } from "../../voice/draft.ts"
 
 export const cars = pgTable(
   "cars",
@@ -47,6 +48,8 @@ export const cars = pgTable(
     caption: text("caption"),
     /** Marketplace listing content: inspection, EMI, specs, features, plans and booking details. */
     marketplaceDetails: jsonb("marketplace_details").$type<MarketplaceDetails>(),
+    /** "Add by voice" progress, kept while the car is still a draft. */
+    voiceDraft: jsonb("voice_draft").$type<VoiceDraft>(),
   },
   (t) => [
     index("cars_dealer_idx").on(t.dealerId),
@@ -141,6 +144,29 @@ export const rcTransfers = pgTable(
     notes: text("notes"),
     buyerTrackingToken: text("buyer_tracking_token").notNull().unique(),
   },
+)
+
+/** A buyer's paid booking token, transferred straight to the dealer's Razorpay linked account. */
+export const bookings = pgTable(
+  "bookings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    dealerId: uuid("dealer_id").notNull().references(() => dealers.id),
+    carId: uuid("car_id").notNull().references(() => cars.id),
+    leadId: uuid("lead_id").references(() => leads.id, { onDelete: "set null" }),
+    buyerName: text("buyer_name").notNull(),
+    /** Encrypted, like leads.phone. */
+    buyerPhone: text("buyer_phone").notNull(),
+    /** Whole rupees, matching askingPrice/soldPrice. */
+    amount: integer("amount").notNull(),
+    razorpayOrderId: text("razorpay_order_id").notNull().unique(),
+    razorpayPaymentId: text("razorpay_payment_id"),
+    status: bookingStatus("status").notNull().default("created"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    refundedAt: timestamp("refunded_at", { withTimezone: true }),
+  },
+  (t) => [index("bookings_dealer_idx").on(t.dealerId), index("bookings_car_idx").on(t.carId)],
 )
 
 // Append-only (enforced by a trigger in the migration). The future valuation dataset.

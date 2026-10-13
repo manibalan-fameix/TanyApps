@@ -7,6 +7,7 @@
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
   "vars": {
     "ROOT_DOMAIN": "showmoto.in",
+    "CLOUDFLARE_ZONE_ID": "723f16f7cad8b2eb53542ecaa154e6b8",
     "AUTH_TRUST_HOST": "true",
     "FIREBASE_API_KEY": "AIzaSyA6ZzDrrxRERpRRQE3jb8s8jeBjgMI-6yc",
     "FIREBASE_AUTH_DOMAIN": "showmoto-5e1b2.firebaseapp.com",
@@ -15,7 +16,14 @@
     "R2_ACCOUNT_ID": "262572defdfe5c699680a2a02db9434b",
     "R2_BUCKET": "showmoto",
     "R2_PUBLIC_URL": "https://pub-7221cd485d6347b9bfa561f64eb7ce5c.r2.dev",
-    "RC_PROVIDER": "mock"
+    "RC_PROVIDER": "mock",
+    // Where phones open the live-location WebSocket. The ticket is signed with the TRACKER_SECRET secret, shared with the tracker.
+    "TRACKER_WS_URL": "wss://track.showmoto.in/ws"
   },
+  // Per-listing views, shared-link clicks and chats, read back by the dashboard through the Analytics Engine SQL API.
+  "analytics_engine_datasets": [{ "binding": "ANALYTICS", "dataset": "showmoto_listing_events" }],
+  // Each delivery's latest rider position lives in a Durable Object defined by workers/tracker. Deploy that worker first
+  // (`pnpm deploy:tracker`, which `pnpm deploy` does for you), then this one.
+  "durable_objects": { "bindings": [{ "name": "TRACKER", "class_name": "OrderTracker", "script_name": "showmoto-tracker" }] },
   "observability": { "enabled": true }
 }
