@@ -52,7 +52,7 @@ export default {
         return new Response(audio, { headers: { ...SECURITY, "content-type": "audio/wav" } })
       } catch (e) {
         console.error(String(e).slice(0, 200))
-        return json({ error: "Voice unavailable." }, 502)
+        return json({ error: "Voice unavailable.", detail: String(e?.message ?? e).slice(0, 140) }, 502)
       }
     }
 

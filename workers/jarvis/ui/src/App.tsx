@@ -211,6 +211,7 @@ export default function Jarvis() {
   // Jarvis: what was asked, what came back, and which step we are on.
   const [question, setQuestion] = useState("")
   const [reply, setReply] = useState("")
+  const [voiceNote, setVoiceNote] = useState("")
   const [phase, setPhase] = useState<"thinking" | "speaking" | "done">("thinking")
   const [voice, setVoiceState] = useState(getVoice())
   const askRef = useRef<(text: string) => void>(() => {})
@@ -368,6 +369,7 @@ export default function Jarvis() {
     updateConnectionState("answering")
     setQuestion(text)
     setReply("")
+    setVoiceNote("")
     setPhase("thinking")
     try {
       scribe.disconnect()
@@ -387,7 +389,7 @@ export default function Jarvis() {
         if (connectionStateRef.current !== "answering") return
         setReply(data.answer)
         setPhase("speaking")
-        await speakText(data.speech, voice, replyLanguage(selectedLanguage), () => setPhase("done"))
+        await speakText(data.speech, voice, replyLanguage(selectedLanguage), () => setPhase("done"), setVoiceNote)
         setPhase("done")
       } catch (error) {
         if (connectionStateRef.current !== "answering") return
@@ -646,7 +648,7 @@ export default function Jarvis() {
             )}
           >
             {showAnswer && (
-              <JarvisAnswer question={question} reply={reply} phase={phase} />
+              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} />
             )}
           </div>
 
@@ -881,10 +883,12 @@ const JarvisAnswer = React.memo(
     question,
     reply,
     phase,
+    note,
   }: {
     question: string
     reply: string
     phase: "thinking" | "speaking" | "done"
+    note: string
   }) => {
     const characters = useMemo(() => reply.split(""), [reply])
     const previousNumChars = useDebounce(usePrevious(characters.length) || 0, 100)
@@ -907,6 +911,7 @@ const JarvisAnswer = React.memo(
             })}
           </div>
         )}
+        {note && <p className="text-foreground/40 max-w-2xl text-center text-xs">{note}</p>}
       </div>
     )
   }

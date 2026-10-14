@@ -71,11 +71,17 @@ function deviceSpeak(text: string, lang: string, done: () => void) {
   speechSynthesis.speak(u)
 }
 
-/** Says the text with the chosen Gemini voice, or the device voice when asked or when Gemini is unavailable. Resolves when it ends. */
-export async function speakText(text: string, voice: string, lang: string, done: () => void): Promise<void> {
+/**
+ * Says the text with the chosen Gemini voice, or the device voice when asked or when Gemini is unavailable.
+ * `note` reports which voice was really used, and why when it is not the one chosen. Resolves when speech ends.
+ */
+export async function speakText(text: string, voice: string, lang: string, done: () => void, note: (n: string) => void = () => {}): Promise<void> {
   if (!text) return
   stopAudio()
-  if (voice === "device") return new Promise<void>((resolve) => deviceSpeak(text, lang, () => { done(); resolve() }))
+  if (voice === "device") {
+    note("Voice: device")
+    return new Promise<void>((resolve) => deviceSpeak(text, lang, () => { done(); resolve() }))
+  }
   try {
     const pass = passphrase()
     const res = await fetch("/api/speak", {
@@ -83,16 +89,21 @@ export async function speakText(text: string, voice: string, lang: string, done:
       headers: { "content-type": "application/json", authorization: `Bearer ${pass}` },
       body: JSON.stringify({ text, lang, voice }),
     })
-    if (!res.ok) throw new Error("voice")
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string; detail?: string }
+      throw new Error(body.detail || body.error || `status ${res.status}`)
+    }
     audioUrl = URL.createObjectURL(await res.blob())
     player.src = audioUrl
+    note(`Voice: ${voice} (Gemini)`)
     await new Promise<void>((resolve, reject) => {
       player.onended = () => resolve()
-      player.onerror = () => reject(new Error("play"))
-      player.play().catch(reject)
+      player.onerror = () => reject(new Error("the browser could not play the audio"))
+      player.play().catch((e: Error) => reject(new Error(`playback blocked: ${e.name}`)))
     })
     done()
-  } catch {
+  } catch (e) {
+    note(`Gemini voice failed (${e instanceof Error ? e.message : "unknown"}), using the device voice`)
     await new Promise<void>((resolve) => deviceSpeak(text, lang, () => { done(); resolve() }))
   }
 }
