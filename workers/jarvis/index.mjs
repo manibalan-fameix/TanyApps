@@ -34,7 +34,7 @@ export default {
     const url = new URL(request.url)
     // The page itself (built from workers/jarvis/ui) is served from the assets binding; only /api/* reaches this code.
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request)
-    if (!["/api/ask", "/api/speak", "/api/scribe-token"].includes(url.pathname)) return json({ error: "Not found." }, 404)
+    if (!["/api/ask", "/api/speak"].includes(url.pathname)) return json({ error: "Not found." }, 404)
     if (request.method !== "POST") return json({ error: "Use POST." }, 405)
 
     if (!env.JARVIS_PASSPHRASE) return json({ error: "JARVIS_PASSPHRASE is not set on the server." }, 500)
@@ -44,23 +44,6 @@ export default {
 
     let body
     try { body = await request.json() } catch { return json({ error: "Send JSON." }, 400) }
-
-    // A short-lived token so the browser can talk to ElevenLabs live speech-to-text without ever seeing the real key.
-    if (url.pathname === "/api/scribe-token") {
-      if (!env.ELEVENLABS_API_KEY) return json({ error: "Add ELEVENLABS_API_KEY to the Worker to turn on listening." }, 503)
-      try {
-        const res = await fetch("https://api.elevenlabs.io/v1/single-use-token/realtime_scribe", { method: "POST", headers: { "xi-api-key": env.ELEVENLABS_API_KEY }, signal: AbortSignal.timeout(10_000) })
-        if (!res.ok) { console.error(`scribe token ${res.status}`); return json({ error: "ElevenLabs refused the request. Check the key and your plan." }, 502) }
-        const data = await res.json()
-        return data.token ? json({ token: data.token }) : json({ error: "ElevenLabs sent no token." }, 502)
-      } catch (e) {
-        console.error(String(e).slice(0, 200))
-        return json({ error: "Could not reach ElevenLabs." }, 502)
-      }
-    }
-    const text = String(body?.text ?? "").trim().slice(0, url.pathname === "/api/speak" ? 900 : 300)
-    const lang = body?.lang === "ta" ? "ta" : "en"
-    if (!text) return json({ error: "Ask something." }, 400)
 
     if (url.pathname === "/api/speak") {
       if (!env.GEMINI_API_KEY) return json({ error: "No voice key." }, 503)

@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { CommitStrategy } from "@elevenlabs/client"
 import { AnimatePresence, motion } from "framer-motion"
 import { Copy } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { useDebounce } from "@/hooks/use-debounce"
 import { usePrevious } from "@/hooks/use-previous"
-import { useScribe } from "@/hooks/use-scribe"
+import { speechSupported, useSpeech } from "@/hooks/use-speech"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ShimmeringText } from "@/components/ui/shimmering-text"
@@ -222,6 +221,13 @@ export default function Jarvis() {
     setIsMac(/(Mac|iPhone|iPod|iPad)/i.test(navigator.userAgent))
   }, [])
 
+  // Listening uses the browser's speech recognition: say so up front when it is missing (for example in Firefox).
+  useEffect(() => {
+    if (!speechSupported()) {
+      setRecording((prev) => ({ ...prev, error: "This browser cannot listen. Use Chrome, Edge or Safari." }))
+    }
+  }, [])
+
   const segmentStartMsRef = useRef<number | null>(null)
   const lastTranscriptRef = useRef<string>("")
   const finalTranscriptsRef = useRef<string[]>([])
@@ -316,11 +322,11 @@ export default function Jarvis() {
   }, [])
 
   const onError = useCallback((error: Error | Event) => {
-    console.error("[Scribe] Error:", error)
+    console.error("[Jarvis] Error:", error)
 
     // Ignore errors if we're not supposed to be connected
     if (connectionStateRef.current !== "connected") {
-      console.log("[Scribe] Ignoring error - not connected")
+      console.log("[Jarvis] Ignoring error - not connected")
       return
     }
 
@@ -342,18 +348,13 @@ export default function Jarvis() {
     }, 500)
   }, [])
 
-  const scribeConfig = useMemo(
-    () => ({
-      modelId: "scribe_v2_realtime" as const,
-      onPartialTranscript,
-      // The upstream block passes "onFinalTranscript", which this version of the hook does not have.
-      onCommittedTranscript: onFinalTranscript,
-      onError,
-    }),
+  // The block listens with ElevenLabs Scribe. Jarvis listens with the browser's own speech recognition instead (no API key).
+  const speechConfig = useMemo(
+    () => ({ onPartialTranscript, onCommittedTranscript: onFinalTranscript, onError }),
     [onPartialTranscript, onFinalTranscript, onError]
   )
 
-  const scribe = useScribe(scribeConfig)
+  const scribe = useSpeech(speechConfig)
 
   // Clear transcript when not connected
   useEffect(() => {
@@ -437,7 +438,7 @@ export default function Jarvis() {
 
     // DISCONNECT
     if (connectionState === "connected" || connectionState === "connecting") {
-      console.log("[Scribe] Disconnecting...")
+      console.log("[Jarvis] Disconnecting...")
 
       // 1. Update UI state immediately
       updateConnectionState("idle")
@@ -465,55 +466,30 @@ export default function Jarvis() {
 
     // Debounce rapid clicks for CONNECT
     if (timeSinceLastOp < 200) {
-      console.log("[Scribe] Ignoring rapid click")
+      console.log("[Jarvis] Ignoring rapid click")
       return
     }
     lastOperationTimeRef.current = now
 
     // CONNECT
     if (connectionState !== "idle" && connectionState !== "answering") {
-      console.log("[Scribe] Not in idle state, ignoring")
+      console.log("[Jarvis] Not in idle state, ignoring")
       return
     }
 
     unlockAudio() // iOS only plays sound that was started by a tap
-    console.log("[Scribe] Connecting...")
+    console.log("[Jarvis] Connecting...")
     updateConnectionState("connecting")
     setLocalTranscript("")
     setRecording({ error: "", latenciesMs: [] })
     clearSessionRefs()
 
     try {
-      const result = await api<{ token?: string; error?: string }>("/api/scribe-token", {}).catch(
-        (e: Error) => ({ error: e.message, token: undefined })
-      )
-
-      // Check if user cancelled using ref (gets current value)
-      if (connectionStateRef.current === "idle") {
-        console.log("[Scribe] Cancelled during token fetch")
-        return
-      }
-
-      if (result.error || !result.token) {
-        throw new Error(result.error || "Failed to get token")
-      }
-
-      await scribe.connect({
-        token: result.token,
-        languageCode: selectedLanguage || undefined,
-        // Server-side voice detection ends the question after a pause, which is what hands it to Jarvis.
-        commitStrategy: CommitStrategy.VAD,
-        vadSilenceThresholdSecs: 1.2,
-        microphone: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: true,
-        },
-      })
+      await scribe.connect({ languageCode: selectedLanguage || undefined })
 
       // Check again after connect completes
       if (connectionStateRef.current !== "connecting") {
-        console.log("[Scribe] Cancelled after connection")
+        console.log("[Jarvis] Cancelled after connection")
         try {
           scribe.disconnect()
         } catch {
@@ -522,7 +498,7 @@ export default function Jarvis() {
         return
       }
 
-      console.log("[Scribe] Connected")
+      console.log("[Jarvis] Connected")
       updateConnectionState("connected")
 
       // Play start sound
@@ -531,7 +507,7 @@ export default function Jarvis() {
         startSoundRef.current.play().catch(() => {})
       }
     } catch (error) {
-      console.error("[Scribe] Connection error:", error)
+      console.error("[Jarvis] Connection error:", error)
       updateConnectionState("idle")
       setRecording((prev) => ({
         ...prev,
@@ -773,15 +749,8 @@ export default function Jarvis() {
                   </select>
                 </div>
 
-                <Badge variant="outline" asChild>
-                  <a
-                    href="https://elevenlabs.io/speech-to-text"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-foreground/60 hover:text-foreground/80 transition-colors"
-                  >
-                    Listening by ElevenLabs · Voice by Google Gemini
-                  </a>
+                <Badge variant="outline" className="text-foreground/60">
+                  Answers and voice by Google Gemini
                 </Badge>
               </div>
             </div>

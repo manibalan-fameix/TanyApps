@@ -1,4 +1,4 @@
-// Talks to the Jarvis Worker: the passphrase gate, /api/ask, /api/scribe-token and the Gemini voice.
+// Talks to the Jarvis Worker: the passphrase gate, /api/ask and the Gemini voice.
 const store = {
   get: (k: string) => { try { return localStorage.getItem(k) } catch { return null } },
   set: (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* private mode */ } },

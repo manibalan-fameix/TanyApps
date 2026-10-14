@@ -1,13 +1,12 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  // Voice assistant for the Tany project board. The page is the ElevenLabs "realtime-transcriber-01" block (workers/jarvis/ui),
+  // Voice assistant for the Tany project board. The page uses the ElevenLabs UI "realtime-transcriber-01" design (workers/jarvis/ui; listening is the browser's, no ElevenLabs key),
   // served as static assets; this Worker answers /api/*. Build the page first: `pnpm run deploy:jarvis` does it for you.
   // Secrets (set with `wrangler secret put <NAME> -c workers/jarvis/wrangler.jsonc`):
   //   JARVIS_TOKEN        classic GitHub token with repo + read:project
   //   GEMINI_API_KEY      Google AI Studio (or Vertex) key: answers and the spoken voice
   //   JARVIS_PASSPHRASE   the password the page asks for, so only you can use it
-  //   ELEVENLABS_API_KEY  ElevenLabs key for live listening (speech to text)
-  "name": "tany-jarvis",
+    "name": "tany-jarvis",
   "main": "index.mjs",
   "compatibility_date": "2026-09-21",
   "workers_dev": true,
