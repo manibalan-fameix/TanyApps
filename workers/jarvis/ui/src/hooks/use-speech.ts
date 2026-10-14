@@ -45,7 +45,7 @@ const ERRORS: Record<string, string> = {
 }
 
 /** How long a pause counts as "finished speaking". */
-const QUIET_MS = 750
+const QUIET_MS = 850
 
 export interface SpeechOptions {
   onPartialTranscript?: (data: { text: string }) => void

@@ -243,6 +243,19 @@ export async function askGemini(question, items, now = new Date(), opts = {}) {
   return text || "I could not produce an answer. Try rephrasing, or use `/sprint` or `/overdue`."
 }
 
+/** A one-token request that opens the connection to Gemini, so the first real question does not pay for it. */
+export async function pingGemini(opts = {}) {
+  const { key, model = "gemini-3.6-flash" } = opts
+  if (!key) return
+  const { url, headers } = geminiTarget(key, model)
+  await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: "Hi" }] }], generationConfig: { maxOutputTokens: 1, thinkingConfig: { thinkingBudget: 0 } } }),
+    signal: AbortSignal.timeout(10_000),
+  }).catch(() => {})
+}
+
 /** Same question, but yields the answer in pieces as Gemini writes it, so speech can start before the answer is finished. */
 export async function* streamGemini(question, items, now = new Date(), opts = {}) {
   const { key, model = "gemini-3.6-flash" } = opts

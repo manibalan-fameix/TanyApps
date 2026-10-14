@@ -1,6 +1,6 @@
 // Voice assistant for the Tany project board: serves a small page (microphone + speaker in the browser) and /api/ask.
 // The browser does the listening and speaking; this Worker reads the board from GitHub and asks Gemini for the answer.
-import { askGemini, loadBoard, overdue, speakable, sprintReport, streamGemini } from "../../scripts/jarvis/lib.mjs"
+import { askGemini, loadBoard, overdue, speakable, sprintReport, streamGemini, pingGemini } from "../../scripts/jarvis/lib.mjs"
 import { speakStream } from "./tts.mjs"
 
 const SECURITY = {
@@ -40,6 +40,7 @@ async function board(env, ctx) {
   await refresh(env)
   return cache.items
 }
+let lastPing = 0
 const hits = new Map()
 function limited(ip) {
   const now = Date.now(), recent = (hits.get(ip) ?? []).filter((t) => now - t < 60_000)
@@ -83,6 +84,10 @@ export default {
     // The page calls this as soon as it opens, so the first question does not wait for the GitHub board to load.
     if (url.pathname === "/api/warm") {
       ctx?.waitUntil?.(board(env, ctx).catch(() => {}))
+      if (env.GEMINI_API_KEY && Date.now() - lastPing > 4 * 60_000) {
+        lastPing = Date.now()
+        ctx?.waitUntil?.(pingGemini({ key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined }))
+      }
       return new Response(null, { status: 204, headers: SECURITY })
     }
 

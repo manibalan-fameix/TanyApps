@@ -52,13 +52,14 @@ export const cleanText = (t: string) => t.replace(/\[#?(\d+)\]\([^)]*\)/g, "task
  * Asks Jarvis and receives the answer piece by piece (server-sent events), so speech can start before the answer is complete.
  * Falls back to one normal reply when the server does not stream (for example when no Gemini key is set).
  */
-export async function askStream(text: string, lang: string, onDelta: (piece: string) => void): Promise<string> {
+export async function askStream(text: string, lang: string, onDelta: (piece: string) => void, signal?: AbortSignal): Promise<string> {
   const pass = passphrase()
   if (!pass) throw new Error("A passphrase is needed.")
   const res = await fetch("/api/ask", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${pass}` },
     body: JSON.stringify({ text, lang, stream: true }),
+    signal,
   })
   if (res.status === 401) { store.del("pass"); throw new Error("Wrong passphrase. Try again.") }
   if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error || "Something went wrong.")
@@ -126,20 +127,54 @@ function deviceSpeak(text: string, lang: string, done: () => void) {
   const voices = speechSynthesis.getVoices()
   const v = voices.find((x) => x.lang.replace("_", "-").toLowerCase().startsWith(u.lang.toLowerCase())) ?? voices.find((x) => x.lang.toLowerCase().startsWith(lang))
   if (v) u.voice = v
-  u.onend = done
-  u.onerror = done
+  // Some browsers never report the end of a spoken text (no voice installed, tab in the background): do not wait forever.
+  let finished = false
+  const finish = () => { if (!finished) { finished = true; clearTimeout(guard); done() } }
+  const guard = setTimeout(finish, 2500 + text.length * 90)
+  u.onend = finish
+  u.onerror = finish
   speechSynthesis.speak(u)
 }
 
+// Voice requests started ahead of time (the greeting), used once when the same text is asked for.
+const prefetched = new Map<string, Promise<Response | Error>>()
+const prefetchKey = (text: string, voice: string, lang: string) => `${voice}|${lang}|${text}`
+
+/** Starts a voice request now so it is ready the moment it is needed. */
+export function prefetchVoice(text: string, voice: string, lang: string) {
+  if (voice === "device" || !store.get("pass")) return
+  const key = prefetchKey(text, voice, lang)
+  if (!prefetched.has(key)) prefetched.set(key, requestVoice(text, voice, lang, true))
+}
+
+/** Greeting in two short pieces, so the first one starts quickly. */
+export function greetingParts(lang: string, now = new Date()): [string, string] {
+  if (lang === "ta") return ["வணக்கம், நான் ஜார்விஸ்.", "எப்படி உதவலாம்?"]
+  const h = now.getHours()
+  const part = h < 12 ? "morning" : h < 17 ? "afternoon" : "evening"
+  return [`Good ${part}, I'm Jarvis.`, "How can I help?"]
+}
+
+/** Starts the greeting's voice early (and again after each use). Needs the passphrase to have been entered once. */
+export function prefetchGreeting(voice: string, lang: string) {
+  for (const part of greetingParts(lang)) prefetchVoice(part, voice, lang)
+}
+
 /** Starts the voice request right away; the body keeps downloading while an earlier piece is still playing. */
-function requestVoice(text: string, voice: string, lang: string): Promise<Response | Error> {
+function requestVoice(text: string, voice: string, lang: string, fresh = false): Promise<Response | Error> {
+  if (!fresh) {
+    const key = prefetchKey(text, voice, lang)
+    const early = prefetched.get(key)
+    if (early) { prefetched.delete(key); return early }
+  }
   return fetch("/api/speak", {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${store.get("pass") ?? ""}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${passphrase() ?? ""}` },
     body: JSON.stringify({ text, lang, voice }),
   })
     .then(async (res) => {
       if (res.ok) return res
+      if (res.status === 401) store.del("pass")
       const body = (await res.json().catch(() => ({}))) as { error?: string; detail?: string }
       return new Error(body.detail || body.error || `status ${res.status}`)
     })

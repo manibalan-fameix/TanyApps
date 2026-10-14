@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { ShimmeringText } from "@/components/ui/shimmering-text"
 
 import { LanguageSelector } from "@/components/language-selector"
-import { askStream, cleanText, createSpeaker, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage } from "@/lib/jarvis"
+import { askStream, cleanText, createSpeaker, greetingParts, prefetchGreeting, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage, type Speaker } from "@/lib/jarvis"
 
 interface RecordingState {
   error: string
@@ -151,11 +151,15 @@ const BottomControls = React.memo(
     hasError,
     isMac,
     onStop,
+    speaking,
+    onStopVoice,
   }: {
     isConnected: boolean
     hasError: boolean
     isMac: boolean
     onStop: () => void
+    speaking: boolean
+    onStopVoice: () => void
   }) => {
     return (
       <AnimatePresence mode="popLayout">
@@ -175,6 +179,14 @@ const BottomControls = React.memo(
             }}
             className="fixed bottom-8 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2"
           >
+            {speaking && (
+              <button
+                onClick={onStopVoice}
+                className="bg-background text-foreground border-foreground/15 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-lg transition-opacity hover:opacity-90"
+              >
+                Stop voice
+              </button>
+            )}
             <button
               onClick={onStop}
               className="bg-foreground text-background border-foreground/10 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-lg transition-opacity hover:opacity-90"
@@ -193,6 +205,7 @@ const BottomControls = React.memo(
     if (prev.isConnected !== next.isConnected) return false
     if (prev.hasError !== next.hasError) return false
     if (prev.isMac !== next.isMac) return false
+    if (prev.speaking !== next.speaking) return false
     return true
   }
 )
@@ -212,10 +225,23 @@ export default function Jarvis() {
   const [question, setQuestion] = useState("")
   const [reply, setReply] = useState("")
   const [voiceNote, setVoiceNote] = useState("")
-  const [phase, setPhase] = useState<"thinking" | "speaking" | "done">("thinking")
+  // listening: waiting for you. thinking: Jarvis is working out the answer. speaking: Jarvis is talking (you can still interrupt).
+  const [phase, setPhaseState] = useState<"listening" | "thinking" | "speaking">("listening")
+  const phaseRef = useRef<"listening" | "thinking" | "speaking">("listening")
+  const setPhase = useCallback((next: "listening" | "thinking" | "speaking") => {
+    phaseRef.current = next
+    setPhaseState(next)
+  }, [])
   const [voice, setVoiceState] = useState(getVoice())
-  const askRef = useRef<(text: string) => void>(() => {})
-  const answeringRef = useRef(false)
+  const questionRef = useRef("")
+  const replyRef = useRef("") // what Jarvis is saying right now, to tell its own voice apart from yours
+  const turnRef = useRef(0) // bumped on every new question or interruption so older answers stop
+  const abortRef = useRef<AbortController | null>(null)
+  const speakerRef = useRef<Speaker | null>(null)
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stopRef = useRef<() => void>(() => {})
+  // On iPhone the microphone and the speaker cannot be used together, so Jarvis only listens between its sentences there.
+  const halfDuplex = useMemo(() => /iPhone|iPad|iPod/i.test(navigator.userAgent), [])
 
   const [isMac, setIsMac] = useState(true)
   useEffect(() => {
@@ -229,6 +255,11 @@ export default function Jarvis() {
       setRecording((prev) => ({ ...prev, error: "This browser cannot listen. Use Chrome, Edge or Safari." }))
     }
   }, [])
+
+  // Have the greeting's voice ready before the tap, so Jarvis answers the tap at once.
+  useEffect(() => {
+    if (connectionState === "idle") prefetchGreeting(voice, replyLanguage(selectedLanguage))
+  }, [voice, selectedLanguage, connectionState])
 
   const segmentStartMsRef = useRef<number | null>(null)
   const lastTranscriptRef = useRef<string>("")
@@ -266,21 +297,47 @@ export default function Jarvis() {
     finalTranscriptsRef.current = []
   }, [])
 
-  // === Callbacks for Scribe ===
+  // === Conversation ===
+  const words = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean)
+
+  /** True when what the microphone heard is just Jarvis's own voice coming back through the speaker. */
+  const isEcho = useCallback((heard: string) => {
+    if (phaseRef.current === "listening") return false
+    const hw = words(heard)
+    if (!hw.length) return true
+    const said = new Set(words(replyRef.current))
+    const inside = hw.filter((w) => said.has(w)).length
+    return hw.length >= 3 ? inside / hw.length >= 0.6 : inside === hw.length
+  }, [])
+
+  /** Resets the "nothing said for a while" timer. A silent session ends by itself after two minutes. */
+  const touch = useCallback(() => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+    idleTimerRef.current = setTimeout(() => stopRef.current(), 120_000)
+  }, [])
+
+  /** The user spoke over Jarvis: stop the voice and the answer that was still being written. */
+  const bargeIn = useCallback(() => {
+    turnRef.current++
+    abortRef.current?.abort()
+    speakerRef.current?.cancel()
+    stopAudio()
+    setPhase("listening")
+  }, [setPhase])
+
   const onPartialTranscript = useCallback((data: { text?: string }) => {
-    // Only process if we're connected
     if (connectionStateRef.current !== "connected") return
-
     const currentText = data.text || ""
-
     if (currentText === lastTranscriptRef.current) return
 
+    // While Jarvis talks, ignore its own echo. Real words (two or more) interrupt it.
+    if (phaseRef.current !== "listening") {
+      if (halfDuplex || isEcho(currentText) || words(currentText).length < 2) return
+      bargeIn()
+    }
+    touch()
     lastTranscriptRef.current = currentText
-
-    // Update local transcript with partial
-    const fullText = finalTranscriptsRef.current.join(" ")
-    const combined = fullText ? `${fullText} ${currentText}` : currentText
-    setLocalTranscript(combined)
+    setLocalTranscript(currentText)
 
     if (currentText.length > 0 && segmentStartMsRef.current != null) {
       const latency = performance.now() - segmentStartMsRef.current
@@ -290,38 +347,26 @@ export default function Jarvis() {
       }))
       segmentStartMsRef.current = null
     }
-  }, [])
+  }, [bargeIn, halfDuplex, isEcho, touch])
+
+  const askRef = useRef<(text: string) => void>(() => {})
 
   const onFinalTranscript = useCallback((data: { text?: string }) => {
-    // Only process if we're connected
     if (connectionStateRef.current !== "connected") return
-
     lastTranscriptRef.current = ""
-
-    if (data.text && data.text.length > 0) {
-      // Add to final transcripts
-      finalTranscriptsRef.current = [...finalTranscriptsRef.current, data.text]
-
-      // Update local transcript
-      setLocalTranscript(finalTranscriptsRef.current.join(" "))
-
-      // A complete phrase ends the question. Very short bursts ("hmm") keep listening.
-      const spoken = finalTranscriptsRef.current.join(" ").trim()
-      if (spoken.length >= 3 && !answeringRef.current) {
-        answeringRef.current = true
-        askRef.current(spoken)
-      }
-
-      if (segmentStartMsRef.current != null) {
-        const latency = performance.now() - segmentStartMsRef.current
-        setRecording((prev) => ({
-          ...prev,
-          latenciesMs: [...prev.latenciesMs.slice(-29), latency],
-        }))
-      }
-    }
+    const text = (data.text ?? "").trim()
     segmentStartMsRef.current = null
-  }, [])
+    if (text.length < 3) return // "hmm" and other short bursts keep listening
+    let asked = text
+    if (phaseRef.current !== "listening") {
+      if (halfDuplex || isEcho(text)) return
+      // You carried on a sentence after a pause and Jarvis has not started talking yet: it is one question, not two.
+      if (phaseRef.current === "thinking" && !replyRef.current) asked = `${questionRef.current} ${text}`.trim()
+      bargeIn()
+    }
+    touch()
+    askRef.current(asked)
+  }, [bargeIn, halfDuplex, isEcho, touch])
 
   const onError = useCallback((error: Error | Event) => {
     console.error("[Jarvis] Error:", error)
@@ -365,47 +410,67 @@ export default function Jarvis() {
     }
   }, [connectionState])
 
-  // Send the question to Jarvis, show the answer, then say it aloud.
+  // Send the question to Jarvis, show the answer as it is written, say it aloud, then carry on listening.
   askRef.current = (text: string) => {
-    updateConnectionState("answering")
+    const turn = ++turnRef.current
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    const live = () => turn === turnRef.current && connectionStateRef.current === "connected"
+
     setQuestion(text)
+    questionRef.current = text
     setReply("")
+    replyRef.current = ""
     setVoiceNote("")
-    setPhase("thinking")
-    try {
-      scribe.disconnect()
-      scribe.clearTranscripts()
-    } catch {
-      // Ignore
-    }
-    clearSessionRefs()
     setLocalTranscript("")
+    finalTranscriptsRef.current = []
+    setPhase("thinking")
     endSoundRef.current?.play().catch(() => {})
+
     void (async () => {
       const lang = replyLanguage(selectedLanguage)
-      const speaker = createSpeaker(voice, lang, setVoiceNote)
+      const speaker = createSpeaker(voice, lang, (n) => { if (live()) setVoiceNote(n) })
+      speakerRef.current = speaker
       try {
         let full = ""
         await askStream(text, lang, (piece) => {
-          if (connectionStateRef.current !== "answering") return
+          if (!live()) return
           full += piece
+          replyRef.current = cleanText(full)
           setReply(cleanText(full))
           setPhase("speaking")
           speaker.feed(piece)
-        })
+        }, controller.signal)
         speaker.end()
         await speaker.finished
-        setPhase("done")
       } catch (error) {
         speaker.cancel()
-        if (connectionStateRef.current !== "answering") return
+        if (!live() || (error instanceof DOMException && error.name === "AbortError")) return
         setReply(error instanceof Error ? error.message : "Something went wrong.")
-        setPhase("done")
       } finally {
-        answeringRef.current = false
+        if (live()) { setPhase("listening"); touch() }
       }
     })()
   }
+
+  /** Jarvis opens the conversation, so you know it is on and listening. */
+  const greet = useCallback(() => {
+    const turn = ++turnRef.current
+    const lang = replyLanguage(selectedLanguage)
+    const [first, rest] = greetingParts(lang)
+    const text = `${first} ${rest}`
+    setQuestion("")
+    setReply(text)
+    replyRef.current = text
+    setVoiceNote("")
+    setPhase("speaking")
+    const speaker = createSpeaker(voice, lang, (n) => { if (turn === turnRef.current) setVoiceNote(n) })
+    speakerRef.current = speaker
+    speaker.feed(text)
+    speaker.end()
+    void speaker.finished.then(() => { if (turn === turnRef.current) { setPhase("listening"); touch() } })
+  }, [selectedLanguage, setPhase, touch, voice])
 
   // Simulate audio chunk timing for latency measurement
   useEffect(() => {
@@ -435,18 +500,18 @@ export default function Jarvis() {
     const now = Date.now()
     const timeSinceLastOp = now - lastOperationTimeRef.current
 
-    // From an answer screen, "Ask again" goes straight back to listening.
-    if (connectionState === "answering") {
-      stopAudio()
-      answeringRef.current = false
-      setQuestion("")
-      setReply("")
-      updateConnectionState("idle")
-    }
-
     // DISCONNECT
     if (connectionState === "connected" || connectionState === "connecting") {
       console.log("[Jarvis] Disconnecting...")
+      turnRef.current++
+      abortRef.current?.abort()
+      speakerRef.current?.cancel()
+      stopAudio()
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+      setQuestion("")
+      setReply("")
+      replyRef.current = ""
+      setPhase("listening")
 
       // 1. Update UI state immediately
       updateConnectionState("idle")
@@ -480,7 +545,7 @@ export default function Jarvis() {
     lastOperationTimeRef.current = now
 
     // CONNECT
-    if (connectionState !== "idle" && connectionState !== "answering") {
+    if (connectionState !== "idle") {
       console.log("[Jarvis] Not in idle state, ignoring")
       return
     }
@@ -488,6 +553,7 @@ export default function Jarvis() {
     unlockAudio() // iOS only plays sound that was started by a tap
     console.log("[Jarvis] Connecting...")
     updateConnectionState("connecting")
+    greet() // starts talking while the microphone is still being switched on
     setLocalTranscript("")
     setRecording({ error: "", latenciesMs: [] })
     clearSessionRefs()
@@ -508,6 +574,7 @@ export default function Jarvis() {
 
       console.log("[Jarvis] Connected")
       updateConnectionState("connected")
+      touch()
 
       // Play start sound
       if (startSoundRef.current) {
@@ -516,6 +583,11 @@ export default function Jarvis() {
       }
     } catch (error) {
       console.error("[Jarvis] Connection error:", error)
+      turnRef.current++
+      speakerRef.current?.cancel()
+      stopAudio()
+      setReply("")
+      setPhase("listening")
       updateConnectionState("idle")
       setRecording((prev) => ({
         ...prev,
@@ -525,10 +597,14 @@ export default function Jarvis() {
   }, [
     clearSessionRefs,
     connectionState,
+    greet,
     scribe,
     selectedLanguage,
+    setPhase,
+    touch,
     updateConnectionState,
   ])
+  stopRef.current = () => { if (connectionStateRef.current !== "idle") void handleToggleRecording() }
 
   // Cmd+K / Ctrl+K shortcut
   useEffect(() => {
@@ -581,8 +657,10 @@ export default function Jarvis() {
 
   // Display text: prefer error, then local transcript
   const displayText = recording.error || localTranscript
-  const hasContent = Boolean(displayText) && connectionState === "connected"
-  const showAnswer = connectionState === "answering"
+  const inSession = connectionState === "connected" || connectionState === "connecting"
+  // Once Jarvis has said something, its answer stays on screen while you carry on talking.
+  const showAnswer = inSession && Boolean(reply || question)
+  const hasContent = Boolean(displayText) && connectionState === "connected" && !showAnswer
 
   // Determine if current transcript is partial (for styling)
   const isPartial = Boolean(lastTranscriptRef.current)
@@ -654,7 +732,7 @@ export default function Jarvis() {
             )}
           >
             {showAnswer && (
-              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} />
+              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} live={connectionState === "connected" ? localTranscript : ""} />
             )}
           </div>
 
@@ -774,22 +852,17 @@ export default function Jarvis() {
           </p>
         )}
 
-        <AnswerControls
-          visible={showAnswer}
-          speaking={phase === "speaking"}
-          isMac={isMac}
-          onAgain={handleToggleRecording}
-          onStop={() => {
-            stopAudio()
-            setPhase("done")
-          }}
-        />
-
         <BottomControls
           isConnected={connectionState === "connected"}
           hasError={Boolean(recording.error)}
           isMac={isMac}
           onStop={handleToggleRecording}
+          speaking={phase === "speaking"}
+          onStopVoice={() => {
+            speakerRef.current?.cancel()
+            stopAudio()
+            setPhase("listening")
+          }}
         />
       </div>
     </div>
@@ -883,26 +956,30 @@ const TranscriberTranscript = React.memo(
 TranscriberTranscript.displayName = "TranscriberTranscript"
 
 
-/** The question (muted) and the answer, using the same blur-in letters as the transcript. */
+/** The question (muted), the answer with the same blur-in letters as the transcript, and what you are saying right now. */
 const JarvisAnswer = React.memo(
   ({
     question,
     reply,
     phase,
     note,
+    live,
   }: {
     question: string
     reply: string
-    phase: "thinking" | "speaking" | "done"
+    phase: "listening" | "thinking" | "speaking"
     note: string
+    live: string
   }) => {
     const characters = useMemo(() => reply.split(""), [reply])
     const previousNumChars = useDebounce(usePrevious(characters.length) || 0, 100)
     return (
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 overflow-auto px-12 py-8">
-        <p className="text-foreground/50 max-w-2xl text-center text-lg leading-relaxed font-light">
-          {question}
-        </p>
+        {question && (
+          <p className="text-foreground/50 max-w-2xl text-center text-lg leading-relaxed font-light">
+            {question}
+          </p>
+        )}
         {phase === "thinking" && !reply ? (
           <ShimmeringText
             text="Thinking..."
@@ -917,56 +994,14 @@ const JarvisAnswer = React.memo(
             })}
           </div>
         )}
+        {live && (
+          <p className="text-foreground/60 max-w-2xl text-center text-lg leading-relaxed font-light" aria-live="polite">
+            {live}
+          </p>
+        )}
         {note && <p className="text-foreground/40 max-w-2xl text-center text-xs">{note}</p>}
       </div>
     )
   }
 )
 JarvisAnswer.displayName = "JarvisAnswer"
-
-const AnswerControls = React.memo(
-  ({
-    visible,
-    speaking,
-    isMac,
-    onAgain,
-    onStop,
-  }: {
-    visible: boolean
-    speaking: boolean
-    isMac: boolean
-    onAgain: () => void
-    onStop: () => void
-  }) => (
-    <AnimatePresence mode="popLayout">
-      {visible && (
-        <motion.div
-          key="answer-controls"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0, transition: { duration: 0.1 } }}
-          exit={{ opacity: 0, y: 10, transition: { duration: 0.1 } }}
-          className="fixed bottom-8 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2"
-        >
-          {speaking && (
-            <button
-              onClick={onStop}
-              className="bg-background text-foreground border-foreground/15 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-lg transition-opacity hover:opacity-90"
-            >
-              Stop voice
-            </button>
-          )}
-          <button
-            onClick={onAgain}
-            className="bg-foreground text-background border-foreground/10 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-lg transition-opacity hover:opacity-90"
-          >
-            Ask again
-            <kbd className="border-background/20 bg-background/10 inline-flex h-5 items-center rounded border px-1.5 font-mono text-xs">
-              {isMac ? "⌘K" : "Ctrl+K"}
-            </kbd>
-          </button>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  )
-)
-AnswerControls.displayName = "AnswerControls"
