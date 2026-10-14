@@ -13,8 +13,8 @@ import { type GuestLocation, parseStoredLocation } from "@/lib/restaurant/locati
 import { formatKm } from "@/lib/restaurant/service-area"
 import { cn } from "@/lib/utils"
 
-const LOCATION_KEY = "showmoto-location"
-const ASKED_KEY = "showmoto-location-asked"
+const LOCATION_KEY = "tany-location"
+const ASKED_KEY = "tany-location-asked"
 // Pages where a pop-up would get in the way: a rider's own page and the guest's order tracking.
 const NO_PROMPT = [/^\/delivery(\/|$)/, /^\/o\//, /^\/checkout/]
 

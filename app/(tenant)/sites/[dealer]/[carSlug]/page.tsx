@@ -8,13 +8,13 @@ import { BuyerGallery } from "@/components/cars/buyer-gallery"
 import { BuyerHeaderCard } from "@/components/cars/buyer-header-card"
 import { BuyerPurchasePanel } from "@/components/cars/buyer-purchase-panel"
 import { NewCarComparisonCard } from "@/components/cars/new-car-comparison-card"
-import { ShowMotoScoreCard } from "@/components/cars/showmoto-score-card"
+import { TanyScoreCard } from "@/components/cars/tany-score-card"
 import { ChatWidget } from "@/components/chat/chat-widget"
 import { ViewBeacon } from "@/components/tenant/view-beacon"
 import { SiteHeader } from "@/components/tenant/site-header"
 import { isChatEnabled } from "@/lib/ai/chat"
 import { copy } from "@/lib/copy"
-import { computeShowMotoScore } from "@/lib/cars/score"
+import { computeTanyScore } from "@/lib/cars/score"
 import { computeNewCarSavings } from "@/lib/cars/savings"
 import { titleOf } from "@/lib/cars/title"
 import { carMedia, cars } from "@/lib/db/schema"
@@ -122,7 +122,7 @@ export default async function CarPage({
     .catch(emptyMarketplaceDetails())
     .parse(car.marketplaceDetails ?? {})
   const title = titleOf(car.year, variant)
-  const score = computeShowMotoScore({
+  const score = computeTanyScore({
     year: car.year,
     kmDriven: car.kmDriven,
     ownerCount: car.ownerCount,
@@ -270,7 +270,7 @@ export default async function CarPage({
             />
           </div>
           <div className="mb-4">
-            <ShowMotoScoreCard result={score} />
+            <TanyScoreCard result={score} />
           </div>
           {savings ? (
             <div className="mb-4">

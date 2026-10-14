@@ -15,7 +15,7 @@ import {
 import { cn } from "@/lib/utils"
 
 const subscribe = () => () => {}
-const seenKey = (dealerId: string) => `showmoto:welcome-seen:${dealerId}`
+const seenKey = (dealerId: string) => `tany:welcome-seen:${dealerId}`
 function readSeen(dealerId: string) {
   try {
     return localStorage.getItem(seenKey(dealerId)) !== null
@@ -82,7 +82,7 @@ export function WelcomeDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Welcome to ShowMoto, {name}!</DialogTitle>
+          <DialogTitle>Welcome to TanyApps, {name}!</DialogTitle>
           <DialogDescription>
             Your {restaurant ? "menu page" : "showroom"} is live on the {planLabel} plan
             {free

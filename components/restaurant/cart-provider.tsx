@@ -21,7 +21,7 @@ const same = (a: { itemId: string; portion: string | null }, b: { itemId: string
 
 /** The guest's cart, kept in this browser only (one per restaurant). The server re-prices everything at checkout. */
 export function CartProvider({ slug, children }: { slug: string; children: React.ReactNode }) {
-  const key = `showmoto-cart:${slug}`
+  const key = `tany-cart:${slug}`
   const [lines, setLines] = useState<CartLine[]>([])
   const [loaded, setLoaded] = useState(false)
 

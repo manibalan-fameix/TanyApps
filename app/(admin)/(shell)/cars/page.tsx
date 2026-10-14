@@ -15,7 +15,7 @@ import {
   emptyMarketplaceDetails,
   marketplaceDetailsSchema,
 } from "@/lib/cars/marketplace"
-import { computeShowMotoScore } from "@/lib/cars/score"
+import { computeTanyScore } from "@/lib/cars/score"
 import { readVoiceDraft, voiceDraftTitle } from "@/lib/cars/from-voice"
 import { copy } from "@/lib/copy"
 import { carMedia, cars } from "@/lib/db/schema"
@@ -80,7 +80,7 @@ export default async function CarsPage() {
   // Drafts are unfinished, so a score would only mislead; they show a dash until published.
   const scoreOf = (car: (typeof rows)[number]) => {
     if (car.status === "draft") return null
-    return computeShowMotoScore({
+    return computeTanyScore({
       year: car.year,
       kmDriven: car.kmDriven,
       ownerCount: car.ownerCount,

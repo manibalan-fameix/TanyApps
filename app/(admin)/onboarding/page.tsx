@@ -12,7 +12,7 @@ export const metadata = { title: "Set up your showroom" }
 export const dynamic = "force-dynamic"
 
 // Shown to dealers as the suffix of their web address, regardless of the local ROOT_DOMAIN.
-const PUBLIC_DOMAIN = "showmoto.in"
+const PUBLIC_DOMAIN = "tany.in"
 
 // First sign-in: a new user has no dealership yet. Creating one makes them its owner.
 export default async function OnboardingPage() {

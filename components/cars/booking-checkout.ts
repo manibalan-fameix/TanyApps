@@ -51,7 +51,7 @@ export async function authoriseBookingPayment(
       order_id: checkout.orderId,
       amount: checkout.amount * 100,
       currency: "INR",
-      name: "ShowMoto",
+      name: "TanyApps",
       description: options.description,
       prefill: options.prefill,
       theme: { color: options.color },

@@ -14,7 +14,7 @@ export function tenantUrl(slug: string, path = "/"): string {
 
 /**
  * Links meant for someone else's phone (rider and guest messages). They use SHARE_ROOT_DOMAIN when set, so an admin
- * running locally can still send the live Cloudflare address (e.g. SHARE_ROOT_DOMAIN=showmoto.in) instead of localhost.
+ * running locally can still send the live Cloudflare address (e.g. SHARE_ROOT_DOMAIN=tany.in) instead of localhost.
  */
 export function shareUrl(slug: string, path = "/"): string {
   const root = process.env.SHARE_ROOT_DOMAIN?.trim() || getRootDomain() || "localhost:3000"

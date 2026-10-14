@@ -42,7 +42,7 @@ describe.skipIf(!url)("add-car server logic (live database)", () => {
     vi.stubEnv("NODE_ENV", "development") // local-disk storage adapter
     delete process.env.R2_BUCKET
     delete process.env.VISION_API_KEY
-    process.env.ROOT_DOMAIN = "showmoto.test"
+    process.env.ROOT_DOMAIN = "tany.test"
     m = {
       db: await import("../lib/db/client"),
       s: await import("../lib/db/schema"),
@@ -240,8 +240,8 @@ describe.skipIf(!url)("add-car server logic (live database)", () => {
       expect(s.status).toBe("live")
       expect(s.slug).toBe(`2017-maruti-testcar${tag}-alpha-tn11`)
       expect(s.askingPrice).toBe(565000)
-      expect(r.kit.shortLink).toBe(`https://cars-a-${tag}.showmoto.test/${s.shortCode}`)
-      expect(r.kit.canonicalUrl).toBe(`https://cars-a-${tag}.showmoto.test/${s.slug}`)
+      expect(r.kit.shortLink).toBe(`https://cars-a-${tag}.tany.test/${s.shortCode}`)
+      expect(r.kit.canonicalUrl).toBe(`https://cars-a-${tag}.tany.test/${s.slug}`)
       expect(r.kit.caption).toContain(r.kit.shortLink)
       expect(r.kit.caption).toContain("5,65,000")
       expect(r.kit.photos.map((p) => p.angle)).toEqual(["front_three_quarter", "dashboard"])

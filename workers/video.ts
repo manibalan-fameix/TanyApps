@@ -46,7 +46,7 @@ export async function processVideoJob(
   const [media] = await db.carMedia.select(eq(carMedia.id, job.mediaId), { limit: 1 })
   if (!media || media.kind !== "video" || media.carId !== job.carId) return // nothing to do, or not ours
 
-  const work = await mkdtemp(path.join(tmpdir(), "showmoto-video-"))
+  const work = await mkdtemp(path.join(tmpdir(), "tany-video-"))
   try {
     const input = path.join(work, "input" + path.extname(media.r2Key))
     await writeFile(input, await deps.storage.get(media.r2Key))

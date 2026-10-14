@@ -11,7 +11,7 @@ const Ctx = createContext<Favourites | null>(null)
 
 /** Dishes a guest has hearted. Kept in this browser only, one list per restaurant. */
 export function FavouritesProvider({ slug, children }: { slug: string; children: React.ReactNode }) {
-  const key = `showmoto-fav:${slug}`
+  const key = `tany-fav:${slug}`
   const [ids, setIds] = useState<string[]>([])
   const [loaded, setLoaded] = useState(false)
 

@@ -2,7 +2,7 @@ import { getRootDomain } from "../env"
 
 export type MapResult = { ok: true } | { ok: false; skipped?: boolean; reason: string }
 
-const WORKER_NAME = "showmoto"
+const WORKER_NAME = "tanyapps"
 
 /**
  * Attaches `<slug>.<ROOT_DOMAIN>` to the Worker as a Workers Custom Domain, so it appears under

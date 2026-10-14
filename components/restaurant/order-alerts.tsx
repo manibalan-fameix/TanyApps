@@ -10,7 +10,7 @@ import { toast } from "sonner"
 import { type OrderAlert, fetchOrderAlerts } from "@/lib/restaurant/admin-actions"
 
 const POLL_MS = 20_000
-const MUTE_KEY = "showmoto-alerts-muted"
+const MUTE_KEY = "tany-alerts-muted"
 const MAX = 30
 
 type Alerts = {

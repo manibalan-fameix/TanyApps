@@ -63,7 +63,7 @@ describe("sanitizeHistory", () => {
 
 describe("buildCarSystemPrompt", () => {
   it("includes the car facts and never invents a registration number", () => {
-    const prompt = buildCarSystemPrompt("ShowMoto Motors", "9876543210", carContext)
+    const prompt = buildCarSystemPrompt("Tany Motors", "9876543210", carContext)
     expect(prompt).toContain("2019 Maruti Baleno Alpha")
     expect(prompt).toContain("₹6,50,000")
     expect(prompt).toContain("No accident history")
@@ -73,14 +73,14 @@ describe("buildCarSystemPrompt", () => {
   })
 
   it("falls back to a generic contact line without a dealer phone", () => {
-    const prompt = buildCarSystemPrompt("ShowMoto Motors", null, carContext)
-    expect(prompt).toContain("contact ShowMoto Motors through the page")
+    const prompt = buildCarSystemPrompt("Tany Motors", null, carContext)
+    expect(prompt).toContain("contact Tany Motors through the page")
   })
 })
 
 describe("buildGeneralSystemPrompt", () => {
   it("lists only the given inventory", () => {
-    const prompt = buildGeneralSystemPrompt("ShowMoto Motors", "9876543210", [
+    const prompt = buildGeneralSystemPrompt("Tany Motors", "9876543210", [
       { title: "2020 Hyundai i20", price: 700000, fuel: "Petrol", transmission: "Automatic", kmDriven: 30000, ownerCount: 1 },
     ])
     expect(prompt).toContain("2020 Hyundai i20")
@@ -89,7 +89,7 @@ describe("buildGeneralSystemPrompt", () => {
   })
 
   it("says so when there's no stock", () => {
-    const prompt = buildGeneralSystemPrompt("ShowMoto Motors", null, [])
+    const prompt = buildGeneralSystemPrompt("Tany Motors", null, [])
     expect(prompt).toContain("no cars in stock right now")
   })
 })

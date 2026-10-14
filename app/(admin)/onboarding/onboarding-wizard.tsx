@@ -650,7 +650,7 @@ function OnboardShell({
         <div className="flex justify-center gap-2 md:justify-start">
           <Link
             href="/"
-            aria-label="ShowMoto home"
+            aria-label="TanyApps home"
             className="flex items-center gap-2 font-medium"
           >
             <Logo className="h-7" />

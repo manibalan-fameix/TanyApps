@@ -79,7 +79,7 @@ const settingsItem = navMain.find((i) => i.url === "/settings")!
 
 /**
  * Sidebar for restaurants: the same seven sections as the Lala Sweets admin (Main, Catalog, Delivery, Customers,
- * Payments, Insights, System). Only Settings opens a sub-list, because ShowMoto's settings are shared with every industry.
+ * Payments, Insights, System). Only Settings opens a sub-list, because TanyApps's settings are shared with every industry.
  */
 export const navRestaurantGroups: NavGroup[] = [
   {

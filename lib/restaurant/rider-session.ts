@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto"
 
-export const RIDER_COOKIE = "showmoto-rider"
+export const RIDER_COOKIE = "tany-rider"
 export const RIDER_SESSION_SECONDS = 12 * 60 * 60
 
 export type RiderSession = { partnerId: string; dealerId: string; exp: number }

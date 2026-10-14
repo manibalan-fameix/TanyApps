@@ -5,7 +5,7 @@ import {
   HelpCircleIcon,
 } from "@hugeicons/core-free-icons"
 
-import type { CheckStatus, ScoreBand, ShowMotoScore } from "@/lib/cars/score"
+import type { CheckStatus, ScoreBand, TanyScore } from "@/lib/cars/score"
 import { cn } from "@/lib/utils"
 
 const RADIUS = 52
@@ -33,7 +33,7 @@ function ScoreRing({ score, band }: { score: number; band: ScoreBand }) {
     <div
       className="relative size-32 shrink-0"
       role="img"
-      aria-label={`ShowMoto score ${score} out of 100`}
+      aria-label={`Tany Score ${score} out of 100`}
     >
       <svg viewBox="0 0 128 128" className="size-full -rotate-90">
         <circle
@@ -101,8 +101,8 @@ function CheckItem({
   )
 }
 
-// Buyer-facing summary of the ShowMoto score: the number, the reasoning behind it, and what to verify.
-export function ShowMotoScoreCard({ result }: { result: ShowMotoScore }) {
+// Buyer-facing summary of the Tany Score: the number, the reasoning behind it, and what to verify.
+export function TanyScoreCard({ result }: { result: TanyScore }) {
   const {
     score,
     band,
@@ -116,14 +116,14 @@ export function ShowMotoScoreCard({ result }: { result: ShowMotoScore }) {
   return (
     <section
       className="rounded-lg bg-muted p-5"
-      aria-labelledby="showmoto-score-heading"
+      aria-labelledby="tany-score-heading"
     >
       <div className="flex items-center justify-between gap-3">
         <h2
-          id="showmoto-score-heading"
+          id="tany-score-heading"
           className="text-xl font-medium tracking-tight"
         >
-          ShowMoto Score
+          Tany Score
         </h2>
         {coverage < 60 ? (
           <span className="rounded-md border border-border bg-background px-2 py-1 text-xs font-medium">

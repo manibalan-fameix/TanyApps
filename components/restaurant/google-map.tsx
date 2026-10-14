@@ -13,7 +13,7 @@ export function loadGoogle(): Promise<void> {
   if (typeof window === "undefined") return Promise.reject(new Error("no window"))
   if (window.google?.maps) return Promise.resolve()
   loading ??= new Promise<void>((resolve, reject) => {
-    const cb = "__showmotoGoogleReady"
+    const cb = "__tanyGoogleReady"
     ;(window as unknown as Record<string, () => void>)[cb] = () => resolve()
     const s = document.createElement("script")
     s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_KEY)}&callback=${cb}&v=weekly`

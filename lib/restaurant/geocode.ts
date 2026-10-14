@@ -4,7 +4,7 @@ import { type Geocoded, parseNominatim, validCoords } from "./location"
 // second, and no heavy use, so answers are cached and calls are spaced out. For serious traffic point GEOCODER_URL at
 // your own Nominatim or any compatible provider.
 const ENDPOINT = process.env.GEOCODER_URL?.trim() || "https://nominatim.openstreetmap.org/reverse"
-const USER_AGENT = `ShowMoto/1.0 (${process.env.GEOCODER_CONTACT?.trim() || "manibalan.fameix@gmail.com"})`
+const USER_AGENT = `TanyApps/1.0 (${process.env.GEOCODER_CONTACT?.trim() || "manibalan.fameix@gmail.com"})`
 const MIN_GAP_MS = 1100
 const CACHE_MS = 30 * 60_000
 

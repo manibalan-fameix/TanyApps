@@ -4,7 +4,7 @@
  */
 export const copy = {
   brand: {
-    name: "ShowMoto",
+    name: "TanyApps",
     tagline: "Your showroom. One smart link.",
     // Shown on the public privacy policy and terms pages. Replace with a support mailbox on your domain.
     contactEmail: "manibalan.fameix@gmail.com",
@@ -108,7 +108,7 @@ export const copy = {
       talkToUs: "Talk to us",
       plans: {
         free: {
-          blurb: "Try ShowMoto with your first cars. No card needed",
+          blurb: "Try TanyApps with your first cars. No card needed",
           features: [
             "Up to 5 cars live at once",
             "Your own showroom link",
@@ -135,7 +135,7 @@ export const copy = {
         },
         pro: {
           blurb: "For dealers who want their own brand, front and centre",
-          features: ["Up to 100 cars live at once", "Everything in Growth", "White label: no ShowMoto badge", "Your own domain name"],
+          features: ["Up to 100 cars live at once", "Everything in Growth", "White label: no Tany badge", "Your own domain name"],
         },
         scale: {
           blurb: "For large showrooms and dealer groups",
@@ -215,7 +215,7 @@ export const copy = {
         km: "Driven",
         owners: "Owners",
         price: "Price",
-        score: "ShowMoto score",
+        score: "Tany Score",
         listed: "Listed",
         search: "Search cars…",
         noOptions: "No values yet",

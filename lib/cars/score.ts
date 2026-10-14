@@ -1,4 +1,4 @@
-// ShowMoto Score: a transparent 0-100 rating computed from the details a dealer has added.
+// Tany Score: a transparent 0-100 rating computed from the details a dealer has added.
 // Pure and client-safe. A missing detail earns no points and is flagged "unknown", never "bad".
 import type { MarketplaceDetails } from "./marketplace.ts"
 
@@ -24,7 +24,7 @@ export type ScoreCategory = {
 
 export type ScoreBand = "excellent" | "good" | "fair" | "caution"
 
-export type ShowMotoScore = {
+export type TanyScore = {
   score: number
   band: ScoreBand
   verdict: string
@@ -68,7 +68,7 @@ function check(key: string, label: string, max: number, ratio: number | null, de
 
 const listPresent = (s: string | null | undefined) => (s && s.trim() ? s.trim() : null)
 
-export function computeShowMotoScore(input: ScoreInput): ShowMotoScore {
+export function computeTanyScore(input: ScoreInput): TanyScore {
   const { details } = input
   const now = input.now ?? new Date()
   const trust = details.trust

@@ -8,7 +8,7 @@ import { mediaKey, videoOutputKeys } from "../lib/media/keys"
 const facts: CaptionFacts = {
   dealerName: "Sri Murugan Motors", city: "Chennai", phone: "+919000000001", year: 2017, make: "Maruti Suzuki",
   model: "Baleno", variant: "Alpha", fuel: "Diesel", transmission: "Manual", kmDriven: 48200, ownerCount: 1,
-  price: 565000, rcVerified: true, link: "https://sri-murugan.showmoto.in/k7x2m",
+  price: 565000, rcVerified: true, link: "https://sri-murugan.tany.in/k7x2m",
 }
 
 describe("slugs", () => {

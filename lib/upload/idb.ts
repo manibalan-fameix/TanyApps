@@ -1,7 +1,7 @@
 // Browser-only: durable storage for the upload queue.
 import type { UploadItem, UploadStore } from "./queue.ts"
 
-const DB_NAME = "showmoto-uploads"
+const DB_NAME = "tany-uploads"
 const STORE = "items"
 
 function open(): Promise<IDBDatabase> {

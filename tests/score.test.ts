@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { emptyMarketplaceDetails } from "../lib/cars/marketplace"
-import { computeShowMotoScore, type ScoreInput } from "../lib/cars/score"
+import { computeTanyScore, type ScoreInput } from "../lib/cars/score"
 
 const now = new Date("2026-06-01")
 
@@ -34,9 +34,9 @@ function fullDetails() {
   return d
 }
 
-describe("ShowMoto score", () => {
+describe("Tany Score", () => {
   it("stays within 0-100 and reports categories that sum to 100", () => {
-    const r = computeShowMotoScore(base({ details: fullDetails() }))
+    const r = computeTanyScore(base({ details: fullDetails() }))
     expect(r.score).toBeGreaterThan(85)
     expect(r.score).toBeLessThanOrEqual(100)
     expect(r.categories.reduce((n, c) => n + c.max, 0)).toBe(100)
@@ -44,22 +44,22 @@ describe("ShowMoto score", () => {
   })
 
   it("treats missing details as unknown, not bad, and lowers coverage", () => {
-    const r = computeShowMotoScore(base({ hypothecationCleared: null, rcVerified: false, insuranceValidTill: null }))
+    const r = computeTanyScore(base({ hypothecationCleared: null, rcVerified: false, insuranceValidTill: null }))
     expect(r.coverage).toBeLessThan(60)
     expect(r.watchouts.some((c) => c.status === "unknown")).toBe(true)
     expect(r.watchouts.every((c) => c.status !== "concern" || c.key !== "rc")).toBe(true)
   })
 
   it("penalises high km per year and many owners", () => {
-    const low = computeShowMotoScore(base({ kmDriven: 15_000, ownerCount: 1 }))
-    const high = computeShowMotoScore(base({ kmDriven: 90_000, ownerCount: 4 }))
+    const low = computeTanyScore(base({ kmDriven: 15_000, ownerCount: 1 }))
+    const high = computeTanyScore(base({ kmDriven: 90_000, ownerCount: 4 }))
     expect(high.score).toBeLessThan(low.score)
   })
 
   it("caps a flood-affected car at 55 however good the rest is", () => {
     const d = fullDetails()
     d.trust.floodAffected = true
-    const r = computeShowMotoScore(base({ details: d }))
+    const r = computeTanyScore(base({ details: d }))
     expect(r.score).toBeLessThanOrEqual(55)
     expect(r.capNote).toMatch(/flood/i)
   })
@@ -67,11 +67,11 @@ describe("ShowMoto score", () => {
   it("caps a disclosed major repair at 70", () => {
     const d = fullDetails()
     d.trust.accidentHistory = "Major repair disclosed"
-    expect(computeShowMotoScore(base({ details: d })).score).toBeLessThanOrEqual(70)
+    expect(computeTanyScore(base({ details: d })).score).toBeLessThanOrEqual(70)
   })
 
   it("flags expired insurance and an active loan as concerns", () => {
-    const r = computeShowMotoScore(base({ insuranceValidTill: "2025-01-01", hypothecationCleared: false }))
+    const r = computeTanyScore(base({ insuranceValidTill: "2025-01-01", hypothecationCleared: false }))
     const concerns = r.watchouts.filter((c) => c.status === "concern").map((c) => c.key)
     expect(concerns).toEqual(expect.arrayContaining(["insurance", "loan"]))
   })

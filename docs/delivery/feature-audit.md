@@ -31,7 +31,7 @@ State rule: **Built** = UI, logic and data layer all present and connected. Anyt
 | Video-to-listing and video upload step | Inventory | Partly built | `app/api/cars/from-video/route.ts`, `lib/cars/from-video.ts`, `lib/ai/video-listing.ts`, `components/cars/video-step.tsx` | Depends on a Gemini key and client extraction. No real-device test. |
 | Walkaround video: HLS 360p/720p, poster, missing-angle check | Inventory | Partly built | `workers/index.ts`, `workers/video.ts`, `lib/video/*`, `lib/jobs/boss.ts` | Never run with real ffmpeg. No production host for the worker (memory note). Reads whole file into memory (400 MB cap). |
 | Duplicate plate detection | Inventory | Not started | DECISIONS.md | Plates are encrypted with random IV; needs a blind index. |
-| Tany score and savings cards | Inventory | Built | `lib/cars/score.ts`, `lib/cars/savings.ts`, `components/cars/showmoto-score-card.tsx`, tests | Scoring weights are a product call, unreviewed. |
+| Tany score and savings cards | Inventory | Built | `lib/cars/score.ts`, `lib/cars/savings.ts`, `components/cars/tany-score-card.tsx`, tests | Scoring weights are a product call, unreviewed. |
 
 ### E3 Public showroom and car pages
 | Feature | Area | State | Evidence | Gaps |

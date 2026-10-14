@@ -1,16 +1,16 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   // Holds each delivery's latest rider position. Deployed on its own so the app can bind to it by name.
-  "name": "showmoto-tracker",
+  "name": "tanyapps-tracker",
   "main": "index.ts",
   "compatibility_date": "2026-09-21",
   "workers_dev": false,
-  // Phones connect here for live positions: wss://track.showmoto.in/ws?t=<ticket>. Cloudflare creates the DNS record and certificate.
-  "routes": [{ "pattern": "track.showmoto.in", "custom_domain": true }],
+  // Phones connect here for live positions: wss://track.tany.in/ws?t=<ticket>. Cloudflare creates the DNS record and certificate.
+  "routes": [{ "pattern": "track.tany.in", "custom_domain": true }],
   // Pages on this domain (and its subdomains) may open a connection. Set the secret with:
   //   pnpm exec wrangler secret put TRACKER_SECRET -c workers/tracker/wrangler.jsonc
   // and give the main app the very same value (see wrangler.jsonc).
-  "vars": { "ALLOWED_ROOT": "showmoto.in" },
+  "vars": { "ALLOWED_ROOT": "tany.in" },
   "preview_urls": false,
   "durable_objects": { "bindings": [{ "name": "TRACKER", "class_name": "OrderTracker" }] },
   // SQLite-backed objects: available on every Cloudflare plan.

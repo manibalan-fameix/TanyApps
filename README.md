@@ -1,4 +1,8 @@
-# ShowMoto
+# TanyApps
+
+Tany is the brand and TanyApps is the product suite. Each vertical is its own app on the same platform:
+TanyCars (used-car dealers, this repo's `cars` module) and TanyEats (restaurants, the `restaurant` module)
+are built. TanyMarts, TanyGifts, TanyMeds and more follow.
 
 White-label used-car listing tool for independent dealers in Chennai. A dealer adds a car from
 their phone in about two minutes and gets a public page under their own brand, a short share link,

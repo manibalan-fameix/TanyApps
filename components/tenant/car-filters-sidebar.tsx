@@ -410,7 +410,7 @@ export function CarFiltersSidebar({
         </Button>
         <p className="text-center text-xs text-sidebar-foreground/60">
           {copy.tenant.poweredBy}{" "}
-          <Logo className="inline-block h-3.5 align-middle text-sidebar-foreground" />
+          <Logo className="inline-block h-3.5 align-middle" />
         </p>
       </SidebarFooter>
       <SidebarRail />

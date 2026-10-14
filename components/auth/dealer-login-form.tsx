@@ -61,7 +61,7 @@ import {
 const RESEND_SECONDS = 30
 const initialState: EmailPasswordLoginState = {}
 
-const REDIRECT_MODE_KEY = "showmoto:auth-redirect-mode"
+const REDIRECT_MODE_KEY = "tany:auth-redirect-mode"
 
 /**
  * shadcn `login-03`. Google and email/password sign in through Firebase; when local password login is enabled
@@ -590,7 +590,7 @@ export function DealerLoginForm({
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <div className="flex flex-col items-center">
-        <Link href="/" aria-label="ShowMoto">
+        <Link href="/" aria-label="TanyApps">
           <Logo className="h-10" />
         </Link>
       </div>

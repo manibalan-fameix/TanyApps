@@ -30,7 +30,7 @@ const planIds = new Map<string, string>()
 
 /** Finds the Razorpay plan for a plan and billing cycle, creating it on first use. Plans are keyed by notes.key. */
 async function ensurePlan(creds: Credentials, plan: SellablePlanKey, cycle: BillingCycle): Promise<string> {
-  const key = `showmoto_${plan}_${cycle}`
+  const key = `tany_${plan}_${cycle}`
   const amount = planPrice(plan, cycle) * 100
   const cached = planIds.get(`${key}:${amount}`)
   if (cached) return cached
@@ -47,7 +47,7 @@ async function ensurePlan(creds: Credentials, plan: SellablePlanKey, cycle: Bill
       period: cycle === "yearly" ? "yearly" : "monthly",
       interval: 1,
       item: {
-        name: `ShowMoto ${PLANS[plan].label} (${cycle})`,
+        name: `TanyApps ${PLANS[plan].label} (${cycle})`,
         amount,
         currency: "INR",
         description: `Up to ${PLANS[plan].maxLiveCars} live cars`,

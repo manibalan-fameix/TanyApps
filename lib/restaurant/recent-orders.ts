@@ -1,4 +1,4 @@
-const KEY = "showmoto-orders"
+const KEY = "tany-orders"
 const MAX = 10
 
 /** Order codes this browser placed, newest first. Kept on the device so a guest can come back to their order. */

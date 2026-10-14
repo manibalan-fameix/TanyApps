@@ -48,7 +48,7 @@ export async function authorisePayment(
     const rz = new window.Razorpay!({
       key: checkout.keyId,
       subscription_id: checkout.subscriptionId,
-      name: "ShowMoto",
+      name: "TanyApps",
       description: options.description,
       prefill: options.prefill,
       theme: { color: options.color },
