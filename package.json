@@ -19,7 +19,8 @@
     "test:e2e": "playwright test",
     "worker": "node --env-file-if-exists=.env.local workers/index.ts",
     "deploy:tracker": "wrangler deploy -c workers/tracker/wrangler.jsonc",
-    "deploy:jarvis": "wrangler deploy -c workers/jarvis/wrangler.jsonc",
+    "build:jarvis": "pnpm --dir workers/jarvis/ui install --ignore-workspace --frozen-lockfile && pnpm --dir workers/jarvis/ui exec --ignore-workspace vite build",
+    "deploy:jarvis": "pnpm run build:jarvis && wrangler deploy -c workers/jarvis/wrangler.jsonc",
     "deploy": "pnpm deploy:tracker && opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview"
   },

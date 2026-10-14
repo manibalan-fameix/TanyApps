@@ -1,7 +1,6 @@
 // Voice assistant for the Tany project board: serves a small page (microphone + speaker in the browser) and /api/ask.
 // The browser does the listening and speaking; this Worker reads the board from GitHub and asks Gemini for the answer.
 import { askGemini, loadBoard, overdue, speakable, sprintReport } from "../../scripts/jarvis/lib.mjs"
-import { HTML, JS } from "./page.mjs"
 import { speak as synth } from "./tts.mjs"
 
 const SECURITY = {
@@ -33,9 +32,9 @@ function limited(ip) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url)
-    if (request.method === "GET" && url.pathname === "/") return new Response(HTML, { headers: { ...SECURITY, "content-type": "text/html; charset=utf-8" } })
-    if (request.method === "GET" && url.pathname === "/app.js") return new Response(JS, { headers: { ...SECURITY, "content-type": "text/javascript; charset=utf-8" } })
-    if (url.pathname !== "/api/ask" && url.pathname !== "/api/speak") return new Response("Not found", { status: 404, headers: SECURITY })
+    // The page itself (built from workers/jarvis/ui) is served from the assets binding; only /api/* reaches this code.
+    if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request)
+    if (!["/api/ask", "/api/speak", "/api/scribe-token"].includes(url.pathname)) return json({ error: "Not found." }, 404)
     if (request.method !== "POST") return json({ error: "Use POST." }, 405)
 
     if (!env.JARVIS_PASSPHRASE) return json({ error: "JARVIS_PASSPHRASE is not set on the server." }, 500)
@@ -45,6 +44,20 @@ export default {
 
     let body
     try { body = await request.json() } catch { return json({ error: "Send JSON." }, 400) }
+
+    // A short-lived token so the browser can talk to ElevenLabs live speech-to-text without ever seeing the real key.
+    if (url.pathname === "/api/scribe-token") {
+      if (!env.ELEVENLABS_API_KEY) return json({ error: "Add ELEVENLABS_API_KEY to the Worker to turn on listening." }, 503)
+      try {
+        const res = await fetch("https://api.elevenlabs.io/v1/single-use-token/realtime_scribe", { method: "POST", headers: { "xi-api-key": env.ELEVENLABS_API_KEY }, signal: AbortSignal.timeout(10_000) })
+        if (!res.ok) { console.error(`scribe token ${res.status}`); return json({ error: "ElevenLabs refused the request. Check the key and your plan." }, 502) }
+        const data = await res.json()
+        return data.token ? json({ token: data.token }) : json({ error: "ElevenLabs sent no token." }, 502)
+      } catch (e) {
+        console.error(String(e).slice(0, 200))
+        return json({ error: "Could not reach ElevenLabs." }, 502)
+      }
+    }
     const text = String(body?.text ?? "").trim().slice(0, url.pathname === "/api/speak" ? 900 : 300)
     const lang = body?.lang === "ta" ? "ta" : "en"
     if (!text) return json({ error: "Ask something." }, 400)

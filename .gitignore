@@ -43,3 +43,7 @@ next-env.d.ts
 # OpenNext / Cloudflare
 .open-next
 .wrangler
+
+# Jarvis page (built on deploy)
+/workers/jarvis/ui/node_modules
+/workers/jarvis/ui/dist
