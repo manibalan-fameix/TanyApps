@@ -36,6 +36,7 @@ export const HTML = `<!doctype html>
   <h1>Tany Jarvis</h1>
   <div class="row">
     <select id="lang" aria-label="Language"><option value="en">English</option><option value="ta">தமிழ்</option></select>
+    <select id="voice" aria-label="Voice"><option value="Zephyr">Zephyr</option><option value="Puck">Puck</option><option value="Kore">Kore</option><option value="Charon">Charon</option><option value="Aoede">Aoede</option><option value="Leda">Leda</option><option value="Fenrir">Fenrir</option><option value="Orus">Orus</option><option value="device">Device voice</option></select>
     <button class="btn ghost" id="stop" type="button">Stop voice</button>
   </div>
 </header>
@@ -52,17 +53,23 @@ export const HTML = `<!doctype html>
 
 export const JS = `(() => {
   const $ = (id) => document.getElementById(id)
-  const log = $("log"), status = $("status"), mic = $("mic"), langSel = $("lang")
+  const log = $("log"), status = $("status"), mic = $("mic"), langSel = $("lang"), voiceSel = $("voice")
   const QUICK = [["Daily digest", "Give me today's digest"], ["Sprint status", "Is the current sprint on track?"], ["Overdue", "What is overdue?"], ["Blocked", "What is blocked?"], ["Gokul", "What is Gokul working on?"], ["Vishnu", "What is Vishnu working on?"]]
   const store = { get: (k) => { try { return localStorage.getItem(k) } catch { return null } }, set: (k, v) => { try { localStorage.setItem(k, v) } catch {} }, del: (k) => { try { localStorage.removeItem(k) } catch {} } }
   langSel.value = store.get("lang") || "en"
   langSel.onchange = () => store.set("lang", langSel.value)
+  voiceSel.value = store.get("voice") || "Zephyr"
+  voiceSel.onchange = () => store.set("voice", voiceSel.value)
   const locale = () => (langSel.value === "ta" ? "ta-IN" : "en-IN")
 
   function add(text, me) { const d = document.createElement("div"); d.className = "msg" + (me ? " me" : ""); d.textContent = text; log.appendChild(d); log.scrollTop = log.scrollHeight }
   const setStatus = (t) => { status.textContent = t || "" }
 
-  function speak(text) {
+  // One audio element for the whole session: iOS only lets it play if it was started by a tap, so unlock() warms it up.
+  const player = new Audio()
+  const SILENT = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA="
+  let audioUrl = null
+  function deviceSpeak(text) {
     if (!("speechSynthesis" in window) || !text) return
     speechSynthesis.cancel()
     const u = new SpeechSynthesisUtterance(text)
@@ -74,7 +81,24 @@ export const JS = `(() => {
     u.onend = () => setStatus("")
     speechSynthesis.speak(u)
   }
-  $("stop").onclick = () => { if ("speechSynthesis" in window) speechSynthesis.cancel(); setStatus("") }
+  async function speak(text, pass) {
+    if (!text) return
+    stopAudio()
+    const voice = voiceSel.value
+    if (voice === "device") return deviceSpeak(text)
+    setStatus("Getting the voice…")
+    try {
+      const res = await fetch("/api/speak", { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + pass }, body: JSON.stringify({ text, lang: langSel.value, voice }) })
+      if (!res.ok) throw new Error("voice")
+      audioUrl = URL.createObjectURL(await res.blob())
+      player.src = audioUrl
+      player.onended = () => setStatus("")
+      setStatus("Speaking…")
+      await player.play()
+    } catch { setStatus(""); deviceSpeak(text) }
+  }
+  function stopAudio() { try { player.pause() } catch {} if (audioUrl) { URL.revokeObjectURL(audioUrl); audioUrl = null } if ("speechSynthesis" in window) speechSynthesis.cancel() }
+  $("stop").onclick = () => { stopAudio(); setStatus("") }
 
   async function ask(text) {
     text = text.trim(); if (!text) return
@@ -86,7 +110,7 @@ export const JS = `(() => {
       if (res.status === 401) { store.del("pass"); add("Wrong passphrase. Try again."); setStatus(""); return }
       const data = await res.json()
       if (!res.ok) { add(data.error || "Something went wrong."); setStatus(""); return }
-      add(data.answer); setStatus(""); speak(data.speech)
+      add(data.answer); setStatus(""); speak(data.speech, pass)
     } catch { add("I could not reach the server."); setStatus("") }
   }
 
@@ -95,7 +119,10 @@ export const JS = `(() => {
   $("form").onsubmit = (e) => { e.preventDefault(); unlock(); const i = $("text"); const v = i.value; i.value = ""; ask(v) }
 
   // iOS only allows speech after a tap, so "speak" a silent utterance on every tap.
-  function unlock() { if ("speechSynthesis" in window) { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u) } }
+  function unlock() {
+    try { player.src = SILENT; player.play().catch(() => {}) } catch {}
+    if ("speechSynthesis" in window) { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u) }
+  }
 
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition
   let rec = null

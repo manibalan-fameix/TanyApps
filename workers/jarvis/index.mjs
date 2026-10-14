@@ -2,6 +2,7 @@
 // The browser does the listening and speaking; this Worker reads the board from GitHub and asks Gemini for the answer.
 import { askGemini, loadBoard, overdue, speakable, sprintReport } from "../../scripts/jarvis/lib.mjs"
 import { HTML, JS } from "./page.mjs"
+import { speak as synth } from "./tts.mjs"
 
 const SECURITY = {
   "content-security-policy": "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
@@ -26,7 +27,7 @@ function limited(ip) {
   const now = Date.now(), recent = (hits.get(ip) ?? []).filter((t) => now - t < 60_000)
   recent.push(now); hits.set(ip, recent)
   if (hits.size > 500) hits.clear()
-  return recent.length > 20
+  return recent.length > 40
 }
 
 export default {
@@ -34,7 +35,7 @@ export default {
     const url = new URL(request.url)
     if (request.method === "GET" && url.pathname === "/") return new Response(HTML, { headers: { ...SECURITY, "content-type": "text/html; charset=utf-8" } })
     if (request.method === "GET" && url.pathname === "/app.js") return new Response(JS, { headers: { ...SECURITY, "content-type": "text/javascript; charset=utf-8" } })
-    if (url.pathname !== "/api/ask") return new Response("Not found", { status: 404, headers: SECURITY })
+    if (url.pathname !== "/api/ask" && url.pathname !== "/api/speak") return new Response("Not found", { status: 404, headers: SECURITY })
     if (request.method !== "POST") return json({ error: "Use POST." }, 405)
 
     if (!env.JARVIS_PASSPHRASE) return json({ error: "JARVIS_PASSPHRASE is not set on the server." }, 500)
@@ -44,9 +45,20 @@ export default {
 
     let body
     try { body = await request.json() } catch { return json({ error: "Send JSON." }, 400) }
-    const text = String(body?.text ?? "").trim().slice(0, 300)
+    const text = String(body?.text ?? "").trim().slice(0, url.pathname === "/api/speak" ? 900 : 300)
     const lang = body?.lang === "ta" ? "ta" : "en"
     if (!text) return json({ error: "Ask something." }, 400)
+
+    if (url.pathname === "/api/speak") {
+      if (!env.GEMINI_API_KEY) return json({ error: "No voice key." }, 503)
+      try {
+        const audio = await synth(text, { key: env.GEMINI_API_KEY, model: env.JARVIS_TTS_MODEL || undefined, voice: String(body?.voice ?? "") })
+        return new Response(audio, { headers: { ...SECURITY, "content-type": "audio/wav" } })
+      } catch (e) {
+        console.error(String(e).slice(0, 200))
+        return json({ error: "Voice unavailable." }, 502)
+      }
+    }
 
     try {
       if (!cache.items || Date.now() - cache.at > 60_000) cache = { at: Date.now(), items: await loadBoard(env.JARVIS_TOKEN) }

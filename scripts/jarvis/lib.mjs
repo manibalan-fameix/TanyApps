@@ -184,6 +184,15 @@ export function compact(items, now = new Date()) {
   return [head, ...rows].join("\n")
 }
 
+/** Same two key styles as lib/ai/gemini.ts: AI Studio keys go in a header, Vertex keys (they start with "AQ.") in the query string. */
+export function geminiTarget(key, model) {
+  const path = `${encodeURIComponent(model)}:generateContent`
+  if (key.startsWith("AQ.")) {
+    return { url: `https://aiplatform.googleapis.com/v1/publishers/google/models/${path}?key=${encodeURIComponent(key)}`, headers: { "content-type": "application/json" } }
+  }
+  return { url: `https://generativelanguage.googleapis.com/v1beta/models/${path}`, headers: { "content-type": "application/json", "x-goog-api-key": key } }
+}
+
 /** Markdown to plain sentences a voice can read: no links, symbols or bullets. */
 export function speakable(md) {
   return String(md)
@@ -216,15 +225,10 @@ export async function askGemini(question, items, now = new Date(), opts = {}) {
       : "Be brief: at most 8 short lines. Refer to tasks as #number. Use plain words.",
     lang === "ta" ? "Reply in Tamil (தமிழ்), keeping task numbers and names of people in digits and English." : "",
   ].filter(Boolean).join(" ")
-  // Same two key styles as lib/ai/gemini.ts: AI Studio keys go in a header, Vertex keys (they start with "AQ.") in the query string.
-  const path = `${encodeURIComponent(model)}:generateContent`
-  const vertex = key.startsWith("AQ.")
-  const url = vertex
-    ? `https://aiplatform.googleapis.com/v1/publishers/google/models/${path}?key=${encodeURIComponent(key)}`
-    : `https://generativelanguage.googleapis.com/v1beta/models/${path}`
+  const { url, headers } = geminiTarget(key, model)
   const res = await fetch(url, {
     method: "POST",
-    headers: vertex ? { "content-type": "application/json" } : { "content-type": "application/json", "x-goog-api-key": key },
+    headers,
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents: [{ role: "user", parts: [{ text: `TASKS\n${compact(items, now)}\n\nQUESTION\n${question.slice(0, 500)}` }] }],
