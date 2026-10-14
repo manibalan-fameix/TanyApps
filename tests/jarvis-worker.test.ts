@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-// @ts-expect-error plain JavaScript Worker
 import worker from "../workers/jarvis/index.mjs"
 
 const env = { JARVIS_PASSPHRASE: "correct-horse-battery", JARVIS_TOKEN: "ghp_fake", GEMINI_API_KEY: "AIzaFake", ASSETS: { fetch: async () => new Response("<html>page</html>") } }
