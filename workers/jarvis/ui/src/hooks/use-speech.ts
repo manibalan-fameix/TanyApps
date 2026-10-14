@@ -44,6 +44,9 @@ const ERRORS: Record<string, string> = {
   "language-not-supported": "This browser cannot listen in that language.",
 }
 
+/** How long a pause counts as "finished speaking". */
+const QUIET_MS = 750
+
 export interface SpeechOptions {
   onPartialTranscript?: (data: { text: string }) => void
   onCommittedTranscript?: (data: { text: string }) => void
@@ -58,9 +61,13 @@ export function useSpeech(options: SpeechOptions) {
   const wanted = useRef(false)
   const lang = useRef("")
   const restarts = useRef<number[]>([])
+  const quiet = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const heard = useRef("")
 
   const stop = useCallback(() => {
     wanted.current = false
+    if (quiet.current) clearTimeout(quiet.current)
+    heard.current = ""
     const r = rec.current
     rec.current = null
     if (r) { r.onend = null; r.onresult = null; r.onerror = null; try { r.abort() } catch { /* already stopped */ } }
@@ -80,9 +87,25 @@ export function useSpeech(options: SpeechOptions) {
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const res = e.results[i]
         const text = res[0].transcript.trim()
-        if (res.isFinal) { if (text) opts.current.onCommittedTranscript?.({ text }) } else interim += ` ${text}`
+        if (res.isFinal) {
+          if (quiet.current) clearTimeout(quiet.current)
+          heard.current = ""
+          if (text) opts.current.onCommittedTranscript?.({ text })
+        } else interim += ` ${text}`
       }
-      if (interim.trim()) { setStatus("transcribing"); opts.current.onPartialTranscript?.({ text: interim.trim() }) }
+      if (interim.trim()) {
+        setStatus("transcribing")
+        const text = interim.trim()
+        opts.current.onPartialTranscript?.({ text })
+        // Browsers wait a second or two before calling a phrase "final". Treat a short quiet as the end of the question instead.
+        heard.current = text
+        if (quiet.current) clearTimeout(quiet.current)
+        quiet.current = setTimeout(() => {
+          const said = heard.current
+          heard.current = ""
+          if (said && wanted.current) opts.current.onCommittedTranscript?.({ text: said })
+        }, QUIET_MS)
+      }
     }
     r.onerror = (e) => {
       if (e.error === "no-speech" || e.error === "aborted") return

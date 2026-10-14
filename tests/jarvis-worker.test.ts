@@ -29,8 +29,13 @@ function stubNetwork() {
       const u = String(url)
       if (u.includes("api.github.com/graphql")) return new Response(JSON.stringify(board))
       if (u.includes("generativelanguage.googleapis.com") && u.includes("tts")) {
-        const pcm = btoa("abcd")
-        return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: "audio/L16;codec=pcm;rate=24000", data: pcm } }] } }] }))
+        // Two chunks of 16-bit PCM (4 bytes each), as server-sent events.
+        const chunk = (b: string) => `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: "audio/L16;codec=pcm;rate=24000", data: btoa(b) } }] } }] })}\n\n`
+        return new Response(chunk("abcd") + chunk("efgh"), { headers: { "content-type": "text/event-stream" } })
+      }
+      if (u.includes("streamGenerateContent")) {
+        const sse = ["Task 14 is open.", " It is due on 23 October."].map((t) => `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: t }] } }] })}\n\n`).join("")
+        return new Response(sse, { headers: { "content-type": "text/event-stream" } })
       }
       if (u.includes("generativelanguage.googleapis.com")) return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "Task 14 is open." }] } }] }))
       return new Response("{}", { status: 404 })
@@ -69,13 +74,43 @@ describe("Jarvis worker", () => {
     expect(json.speech).not.toMatch(/[*#`\[\]]/)
   })
 
-  it("returns spoken audio as a WAV file", async () => {
+  it("streams the answer in pieces so speech can start early", async () => {
+    stubNetwork()
+    const res = await call("/api/ask", { text: "What is open?", stream: true })
+    expect(res.headers.get("content-type")).toContain("text/event-stream")
+    const body = await res.text()
+    const deltas = [...body.matchAll(/data: (.*)\n/g)].map((m) => JSON.parse(m[1]))
+    expect(deltas.filter((d) => d.delta).map((d) => d.delta).join("")).toBe("Task 14 is open. It is due on 23 October.")
+    expect(deltas.at(-1)).toEqual({ done: true })
+  })
+
+  it("warms the board cache without a body", async () => {
+    stubNetwork()
+    const res = await call("/api/warm", {})
+    expect(res.status).toBe(204)
+  })
+
+  it("streams spoken audio as raw PCM", async () => {
     stubNetwork()
     const res = await call("/api/speak", { text: "Hello", voice: "Kore" })
     expect(res.status).toBe(200)
-    expect(res.headers.get("content-type")).toBe("audio/wav")
+    expect(res.headers.get("x-pcm-rate")).toBe("24000")
     const bytes = new Uint8Array(await res.arrayBuffer())
-    expect(String.fromCharCode(...bytes.slice(0, 4))).toBe("RIFF")
+    expect(String.fromCharCode(...bytes)).toBe("abcdefgh")
+  })
+
+  it("tries other voice models when the first is unknown to the key", async () => {
+    const seen: string[] = []
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const u = String(url)
+      seen.push(u.split("/models/")[1]?.split(":")[0] ?? "")
+      if (u.includes("gemini-3.1-flash-tts-preview")) return new Response("{}", { status: 404 })
+      const chunk = `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { data: btoa("abcd") } }] } }] })}\n\n`
+      return new Response(chunk, { headers: { "content-type": "text/event-stream" } })
+    }))
+    const res = await call("/api/speak", { text: "Hello" })
+    expect(res.status).toBe(200)
+    expect(seen.length).toBeGreaterThan(1)
   })
 
   it("explains why the voice failed instead of staying silent", async () => {

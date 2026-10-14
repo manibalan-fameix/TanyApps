@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { ShimmeringText } from "@/components/ui/shimmering-text"
 
 import { LanguageSelector } from "@/components/language-selector"
-import { api, stopAudio, speakText, unlockAudio, VOICES, getVoice, setVoice, replyLanguage } from "@/lib/jarvis"
+import { askStream, cleanText, createSpeaker, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage } from "@/lib/jarvis"
 
 interface RecordingState {
   error: string
@@ -224,6 +224,7 @@ export default function Jarvis() {
 
   // Listening uses the browser's speech recognition: say so up front when it is missing (for example in Firefox).
   useEffect(() => {
+    warmUp() // load the board on the server while the page is still idle
     if (!speechSupported()) {
       setRecording((prev) => ({ ...prev, error: "This browser cannot listen. Use Chrome, Edge or Safari." }))
     }
@@ -381,17 +382,22 @@ export default function Jarvis() {
     setLocalTranscript("")
     endSoundRef.current?.play().catch(() => {})
     void (async () => {
+      const lang = replyLanguage(selectedLanguage)
+      const speaker = createSpeaker(voice, lang, setVoiceNote)
       try {
-        const data = await api<{ answer: string; speech: string }>("/api/ask", {
-          text,
-          lang: replyLanguage(selectedLanguage),
+        let full = ""
+        await askStream(text, lang, (piece) => {
+          if (connectionStateRef.current !== "answering") return
+          full += piece
+          setReply(cleanText(full))
+          setPhase("speaking")
+          speaker.feed(piece)
         })
-        if (connectionStateRef.current !== "answering") return
-        setReply(data.answer)
-        setPhase("speaking")
-        await speakText(data.speech, voice, replyLanguage(selectedLanguage), () => setPhase("done"), setVoiceNote)
+        speaker.end()
+        await speaker.finished
         setPhase("done")
       } catch (error) {
+        speaker.cancel()
         if (connectionStateRef.current !== "answering") return
         setReply(error instanceof Error ? error.message : "Something went wrong.")
         setPhase("done")
