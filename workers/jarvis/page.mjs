@@ -95,7 +95,7 @@ export const JS = `(() => {
       player.onended = () => setStatus("")
       setStatus("Speaking…")
       await player.play()
-    } catch { setStatus(""); deviceSpeak(text) }
+    } catch { setStatus("Natural voice unavailable, using the device voice."); deviceSpeak(text) }
   }
   function stopAudio() { try { player.pause() } catch {} if (audioUrl) { URL.revokeObjectURL(audioUrl); audioUrl = null } if ("speechSynthesis" in window) speechSynthesis.cancel() }
   $("stop").onclick = () => { stopAudio(); setStatus("") }

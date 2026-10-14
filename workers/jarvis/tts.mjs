@@ -2,7 +2,6 @@
 import { geminiTarget } from "../../scripts/jarvis/lib.mjs"
 
 export const VOICES = ["Zephyr", "Puck", "Kore", "Charon", "Aoede", "Leda", "Fenrir", "Orus"]
-export const DEFAULT_TTS_MODEL = "gemini-2.5-flash-preview-tts"
 
 /** Wraps raw 16-bit mono PCM in a WAV header. */
 function wav(pcm, rate) {
@@ -17,9 +16,21 @@ function wav(pcm, rate) {
   return out
 }
 
-/** @returns {Promise<Uint8Array>} a WAV file. Throws on any failure so the page can fall back to the device voice. */
-export async function speak(text, { key, model = DEFAULT_TTS_MODEL, voice = "Zephyr" }) {
-  if (!key) throw new Error("no key")
+const FALLBACK_MODELS = ["gemini-2.5-flash-preview-tts", "gemini-2.5-flash-tts", "gemini-2.5-pro-preview-tts", "gemini-3.1-flash-tts-preview"]
+let workingModel = null // remembered per isolate once one has worked
+
+/** AI Studio keys can list their models: pick any that does speech. Vertex keys cannot, so this returns []. */
+async function discover(key) {
+  if (key.startsWith("AQ.")) return []
+  try {
+    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers: { "x-goog-api-key": key }, signal: AbortSignal.timeout(10_000) })
+    if (!res.ok) return []
+    const { models = [] } = await res.json()
+    return models.filter((m) => /tts/i.test(m.name) && (m.supportedGenerationMethods ?? []).includes("generateContent")).map((m) => m.name.replace(/^models\//, ""))
+  } catch { return [] }
+}
+
+async function once(text, key, model, voice) {
   const { url, headers } = geminiTarget(key, model)
   const res = await fetch(url, {
     method: "POST",
@@ -33,12 +44,39 @@ export async function speak(text, { key, model = DEFAULT_TTS_MODEL, voice = "Zep
     }),
     signal: AbortSignal.timeout(30_000),
   })
-  if (!res.ok) throw new Error(`tts status ${res.status}`)
+  if (!res.ok) { const e = new Error(`tts ${res.status} (${model})`); e.status = res.status; throw e }
   const part = (await res.json()).candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)
-  if (!part) throw new Error("tts returned no audio")
+  if (!part) throw new Error(`tts returned no audio (${model})`)
   const rate = Number(/rate=(\d+)/.exec(part.inlineData.mimeType ?? "")?.[1] ?? 24000)
   const bin = atob(part.inlineData.data)
   const pcm = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) pcm[i] = bin.charCodeAt(i)
   return wav(pcm, rate)
+}
+
+/**
+ * @returns {Promise<Uint8Array>} a WAV file. Throws on any failure so the page can fall back to the device voice.
+ * A 404 means this key does not know that model name, so other names are tried before giving up.
+ */
+export async function speak(text, { key, model, voice = "Zephyr" }) {
+  if (!key) throw new Error("no key")
+  const tried = new Set()
+  const queue = [workingModel, model, ...FALLBACK_MODELS].filter(Boolean)
+  let discovered = false
+  let last = new Error("tts failed")
+  while (queue.length) {
+    const m = queue.shift()
+    if (tried.has(m)) continue
+    tried.add(m)
+    try {
+      const audio = await once(text, key, m, voice)
+      workingModel = m
+      return audio
+    } catch (e) {
+      last = e
+      if (e.status !== 404 && e.status !== 400) throw e // quota, auth or server problems will not change with another model name
+      if (!queue.length && !discovered) { discovered = true; queue.push(...(await discover(key))) }
+    }
+  }
+  throw last
 }
