@@ -1,0 +1,14 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  // Voice assistant for the Tany project board. One Worker serves the page and the API.
+  // Secrets (set with `wrangler secret put <NAME> -c workers/jarvis/wrangler.jsonc`):
+  //   JARVIS_TOKEN       classic GitHub token with repo + read:project
+  //   GEMINI_API_KEY     Google AI Studio (or Vertex) key
+  //   JARVIS_PASSPHRASE  the password the page asks for, so only you can use it
+  "name": "tany-jarvis",
+  "main": "index.mjs",
+  "compatibility_date": "2026-09-21",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true }
+}

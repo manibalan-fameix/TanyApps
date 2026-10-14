@@ -8,7 +8,10 @@ if (!/^\s*\//.test(text)) process.exit(0)
 
 let reply
 try {
-  reply = await respond(text, await loadBoard())
+  reply = await respond(text, await loadBoard(process.env.JARVIS_TOKEN), new Date(), {
+    key: process.env.GEMINI_API_KEY,
+    model: process.env.JARVIS_MODEL || undefined,
+  })
 } catch (e) {
   console.error(e)
   reply = "Jarvis could not read the board just now. The run log has details."

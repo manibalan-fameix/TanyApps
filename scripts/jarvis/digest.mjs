@@ -6,7 +6,7 @@ import { cfg, digest, loadBoard } from "./lib.mjs"
 const repo = `${cfg.owner}/${cfg.repo}`
 const gh = (...args) => execFileSync("gh", args, { encoding: "utf8" }).trim()
 
-const items = await loadBoard()
+const items = await loadBoard(process.env.JARVIS_TOKEN)
 const body = digest(items)
 if (process.env.DRY_RUN) { console.log(body); process.exit(0) }
 
