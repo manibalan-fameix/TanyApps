@@ -44,6 +44,9 @@ export default {
 
     let body
     try { body = await request.json() } catch { return json({ error: "Send JSON." }, 400) }
+    const text = String(body?.text ?? "").trim().slice(0, url.pathname === "/api/speak" ? 900 : 300)
+    const lang = body?.lang === "ta" ? "ta" : "en"
+    if (!text) return json({ error: "Ask something." }, 400)
 
     if (url.pathname === "/api/speak") {
       if (!env.GEMINI_API_KEY) return json({ error: "No voice key." }, 503)
