@@ -1,0 +1,28 @@
+name: Jarvis daily digest
+
+on:
+  schedule:
+    - cron: "30 3 * * *" # 09:00 IST (GitHub cron is UTC and can start a few minutes late)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: jarvis-digest
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/jarvis/digest.mjs
+        env:
+          JARVIS_TOKEN: ${{ secrets.JARVIS_TOKEN }}
+          GH_TOKEN: ${{ github.token }}

@@ -1,0 +1,34 @@
+name: Ask Jarvis
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  answer:
+    # Only the pinned "Ask Jarvis" issue, only people with write access to the repo, never bots (so Jarvis cannot answer itself).
+    if: >-
+      contains(github.event.issue.labels.*.name, 'jarvis-ask') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
+      github.event.comment.user.type != 'Bot' &&
+      startsWith(github.event.comment.body, '/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The comment text goes in through an environment variable, never pasted into the shell command.
+      - run: node scripts/jarvis/ask.mjs
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          JARVIS_TOKEN: ${{ secrets.JARVIS_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          JARVIS_MODEL: ${{ vars.JARVIS_MODEL }}
+          GH_TOKEN: ${{ github.token }}
