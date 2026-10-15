@@ -198,14 +198,17 @@ export function prefetchVoice(text: string, voice: string, lang: string) {
   if (!prefetched.has(key)) prefetched.set(key, requestVoice(text, voice, lang, true))
 }
 
-/** Greeting in two short pieces, so the first one starts quickly. */
+/**
+ * The welcome, in two short pieces so the first one starts quickly. It says who Jarvis is for (Tany) and uses the form of address.
+ * With the briefing on, only the first piece is spoken and the briefing carries on from it.
+ */
 export function greetingParts(lang: string, persona: Persona = getPersona(), callMe: string = getCallMe(), now = new Date()): [string, string] {
-  if (lang === "ta") return ["வணக்கம், நான் ஜார்விஸ்.", "எப்படி உதவலாம்?"]
+  if (lang === "ta") return ["வணக்கம் ஐயா, நான் ஜார்விஸ், உங்கள் Tany உதவியாளர்.", "எப்படி உதவலாம்?"]
   const h = now.getHours()
   const part = h < 12 ? "morning" : h < 17 ? "afternoon" : "evening"
-  if (persona === "subtle") return [`Good ${part}. I'm Jarvis.`, "How can I help?"]
-  if (persona === "full") return [`Good ${part}, ${callMe}. All systems are standing by.`, "How may I be of service?"]
-  return [`Good ${part}, ${callMe}. Jarvis at your service.`, "How may I help?"]
+  if (persona === "subtle") return [`Good ${part}, ${callMe}. I'm Jarvis, your Tany assistant.`, "How can I help?"]
+  if (persona === "full") return [`Good ${part}, ${callMe}. All Tany systems are standing by.`, "How may I be of service?"]
+  return [`Good ${part}, ${callMe}. Jarvis at your service, for everything Tany.`, "How may I help?"]
 }
 
 /** Starts the greeting's voice early (and again after each use). Needs the passphrase to have been entered once. */

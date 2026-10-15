@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import worker from "../workers/jarvis/index.mjs"
 import { briefingFacts, cleanCallMe, hearEvents, personaRules, showEvents } from "../scripts/jarvis/lib.mjs"
 import { annotate } from "../workers/jarvis/ui/src/lib/entities"
+import { greetingParts } from "../workers/jarvis/ui/src/lib/jarvis"
 import { wordAt, wordsOf } from "../workers/jarvis/ui/src/lib/karaoke"
 import { bandRatio, judge, level, nextBaseline, variation } from "../workers/jarvis/ui/src/lib/vad"
 import { detectAlerts, intentView, mentioned, parseShow, groupsFor, statusLine } from "../workers/jarvis/ui/src/lib/cards"
@@ -506,5 +507,28 @@ describe("picking out the important words", () => {
 
   it("leaves ordinary sentences alone", () => {
     expect(Object.keys(tagged("Might I suggest we have a look at that first?"))).toEqual([])
+  })
+})
+
+describe("the welcome", () => {
+  const morning = new Date("2026-10-16T08:00:00"), evening = new Date("2026-10-16T19:00:00")
+
+  it("is about Tany and uses the form of address, at every strength", () => {
+    for (const persona of ["subtle", "classic", "full"] as const) {
+      const [first, rest] = greetingParts("en", persona, "sir", morning)
+      expect(first).toMatch(/^Good morning, sir\./)
+      expect(first).toContain("Tany")
+      expect(rest.length).toBeGreaterThan(5)
+    }
+  })
+
+  it("follows the time of day and the name the user chose", () => {
+    expect(greetingParts("en", "classic", "Bala", evening)[0]).toMatch(/^Good evening, Bala\./)
+    expect(greetingParts("en", "classic", "sir", new Date("2026-10-16T14:00:00"))[0]).toMatch(/^Good afternoon/)
+  })
+
+  it("has a first sentence long enough to be spoken on its own, and a Tamil version that names Tany", () => {
+    expect(greetingParts("en", "classic", "sir", morning)[0].split(".")[0].length).toBeGreaterThanOrEqual(12)
+    expect(greetingParts("ta")[0]).toContain("Tany")
   })
 })
