@@ -15,6 +15,7 @@ import { cleanText, createSpeaker, duck, greetingParts, hearStream, prefetchGree
 import { createListener, type Listener } from "@/lib/mic"
 import { CardView } from "@/components/card-view"
 import { BriefingPanel } from "@/components/briefing-panel"
+import { SpokenText } from "@/components/spoken-text"
 import { detectAlerts, groupsFor, intentView, mentioned, parseShow, statusLine, type View } from "@/lib/cards"
 
 interface RecordingState {
@@ -229,6 +230,13 @@ export default function Jarvis() {
   const [question, setQuestion] = useState("")
   const [reply, setReply] = useState("")
   const [voiceNote, setVoiceNote] = useState("")
+  // The sentences Jarvis has started to say, in order. Only these are on screen, and the one being spoken is highlighted word by word.
+  const [spoken, setSpoken] = useState<string[]>([])
+  const spokenCount = useRef(0) // how many sentences are on screen, so a follow-on speaker carries on after them
+  const showPiece = useCallback((text: string, index: number) => {
+    if (index >= 0) { spokenCount.current = index + 1; setSpoken((prev) => { const next = prev.slice(0, index); next[index] = text; return next }) }
+    setHighlight(mentioned(text))
+  }, [])
   // listening: waiting for you. thinking: Jarvis is working out the answer. speaking: Jarvis is talking (you can still interrupt).
   const [phase, setPhaseState] = useState<"listening" | "thinking" | "speaking">("listening")
   const phaseRef = useRef<"listening" | "thinking" | "speaking">("listening")
@@ -506,6 +514,7 @@ export default function Jarvis() {
     setQuestion(text)
     questionRef.current = text
     setReply("")
+    setSpoken([]); spokenCount.current = 0
     replyRef.current = ""
     setVoiceNote("")
     setLocalTranscript("")
@@ -554,7 +563,7 @@ export default function Jarvis() {
             heardText = heard
             turn = beginTurn(heard.trim() || "…")
             touch()
-            st.speaker = createSpeaker(voice, lang, (n) => { if (turnLive()) setVoiceNote(n) }, (t) => { if (turnLive()) setHighlight(mentioned(t)) })
+            st.speaker = createSpeaker(voice, lang, (n) => { if (turnLive()) setVoiceNote(n) }, (t, i) => { if (turnLive()) showPiece(t, i) })
             speakerRef.current = st.speaker
           },
           onDelta: (piece) => {
@@ -596,22 +605,23 @@ export default function Jarvis() {
     const lang = replyLanguage(selectedLanguage)
     langRef.current = lang
     const [first, rest] = greetingParts(lang, persona, callMe)
-    const text = `${first} ${rest}`
+    // With the briefing on, the welcome is one line and the briefing carries straight on from it: one greeting, not two.
+    const withBriefing = briefingRef.current && lang === "en"
+    const text = withBriefing ? first : `${first} ${rest}`
     setQuestion("")
     setReply(text)
+    setSpoken([]); spokenCount.current = 0
+    setView({ kind: "none" })
     replyRef.current = text
     setVoiceNote("")
     setPhase("speaking")
-    const speaker = createSpeaker(voice, lang, (n) => { if (turn === turnRef.current) setVoiceNote(n) })
+    const speaker = createSpeaker(voice, lang, (n) => { if (turn === turnRef.current) setVoiceNote(n) }, (t, i) => { if (turn === turnRef.current) showPiece(t, i) })
     speakerRef.current = speaker
     speaker.feed(text)
     speaker.end()
-    void speaker.finished.then(() => {
-      if (turn !== turnRef.current) return
-      if (briefingRef.current) briefRef.current()
-      else { setPhase("listening"); touch() }
-    })
-  }, [callMe, persona, selectedLanguage, setPhase, touch, voice])
+    if (withBriefing) briefRef.current(turn, speaker.finished)
+    else void speaker.finished.then(() => { if (turn === turnRef.current) { setPhase("listening"); touch() } })
+  }, [callMe, persona, selectedLanguage, setPhase, showPiece, touch, voice])
 
   /** Jarvis speaks up on its own: only between turns, never while you are talking. Returns whether it did. */
   raiseRef.current = (text, n) => {
@@ -623,10 +633,11 @@ export default function Jarvis() {
     setReply(text)
     replyRef.current = text
     setVoiceNote("")
+    setSpoken([]); spokenCount.current = 0
     setView({ kind: "focus", ids: [n] })
     setHighlight([n])
     setPhase("speaking")
-    const speaker = createSpeaker(voice, lang, (note) => { if (turn === turnRef.current) setVoiceNote(note) })
+    const speaker = createSpeaker(voice, lang, (note) => { if (turn === turnRef.current) setVoiceNote(note) }, (t, i) => { if (turn === turnRef.current) showPiece(t, i) })
     speakerRef.current = speaker
     speaker.feed(text)
     speaker.end()
@@ -634,44 +645,58 @@ export default function Jarvis() {
     return true
   }
 
-  /** After the greeting, Jarvis says what needs attention today, with the cards on screen. */
-  const briefRef = useRef<() => void>(() => {})
-  briefRef.current = () => {
+  /**
+   * After the one-line welcome, the full project briefing carries on in the same turn. The request starts while the welcome is
+   * still being spoken; the briefing's voice only starts once the welcome has finished.
+   */
+  const briefRef = useRef<(turn: number, after: Promise<void>) => void>(() => {})
+  briefRef.current = (turn, after) => {
     const controller = new AbortController()
     abortRef.current?.abort()
     abortRef.current = controller
     const lang = langRef.current
-    const turn = beginTurn("")
     const live = () => turn === turnRef.current && connectionStateRef.current === "connected"
-    const speaker = createSpeaker(voice, lang, (n) => { if (live()) setVoiceNote(n) }, (t) => { if (live()) setHighlight(mentioned(t)) })
-    speakerRef.current = speaker
+    const waiting: string[] = []
+    let speaker: Speaker | null = null
+    let streamDone = false
     let full = ""
+    const begin = () => {
+      if (!live()) return
+      speaker = createSpeaker(voice, lang, (n) => { if (live()) setVoiceNote(n) }, (t, i) => { if (live()) showPiece(t, i) }, spokenCount.current)
+      speakerRef.current = speaker
+      if (waiting.length) setPhase("speaking") // the answer was already written while the welcome was playing
+      waiting.splice(0).forEach((p) => speaker!.feed(p))
+      if (streamDone) speaker.end()
+    }
+    void after.then(() => { if (live()) { setPhase("thinking"); begin() } })
     void (async () => {
       try {
         await askStream(
-          "Give me a short briefing: what needs my attention today? Mention at most three tasks, the most important first.",
+          "The greeting has already been spoken, so do not greet again. Give me the full project briefing now.",
           lang,
           (piece) => {
             if (!live()) return
             full += piece
             replyRef.current = cleanText(full)
             setReply(cleanText(full))
-            setPhase("speaking")
-            speaker.feed(piece)
+            if (speaker) { setPhase("speaking"); speaker.feed(piece) } else waiting.push(piece)
           },
           controller.signal,
-          (raw) => { if (live()) { shownRef.current = true; setView(parseShow(raw)) } }
+          (raw) => { if (live()) { shownRef.current = true; setView(pickView(raw)) } }
         )
-        speaker.end()
+        streamDone = true
+        if (speaker) (speaker as Speaker).end()
         if (live() && !shownRef.current) { const ids = mentioned(replyRef.current); if (ids.length) setView({ kind: "focus", ids: ids.slice(0, 6) }) }
-        await speaker.finished
+        await after
+        if (speaker) await (speaker as Speaker).finished
       } catch {
-        speaker.cancel()
+        ;(speaker as Speaker | null)?.cancel()
       } finally {
         if (live()) { setPhase("listening"); touch() }
       }
     })()
   }
+  const pickView = (raw: unknown): View => parseShow(raw)
 
   // Simulate audio chunk timing for latency measurement
   useEffect(() => {
@@ -949,7 +974,7 @@ export default function Jarvis() {
             )}
           >
             {showAnswer && (
-              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} live={connectionState === "connected" ? localTranscript || (userSpeaking ? "…" : "") : ""} top={view.kind === "briefing" && board?.facts ? <BriefingPanel facts={board.facts} /> : null} cards={groups.length ? <CardView groups={groups} highlight={highlight} wall={view.kind === "sprint" || view.kind === "briefing"} /> : null} />
+              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} spoken={spoken} live={connectionState === "connected" ? localTranscript || (userSpeaking ? "…" : "") : ""} top={view.kind === "briefing" && board?.facts ? <BriefingPanel facts={board.facts} /> : null} cards={groups.length ? <CardView groups={groups} highlight={highlight} wall={view.kind === "sprint" || view.kind === "briefing"} /> : null} />
             )}
           </div>
 
@@ -1266,6 +1291,7 @@ const JarvisAnswer = React.memo(
     live,
     cards,
     top,
+    spoken,
   }: {
     question: string
     reply: string
@@ -1274,9 +1300,8 @@ const JarvisAnswer = React.memo(
     live: string
     cards: React.ReactNode
     top?: React.ReactNode
+    spoken: string[]
   }) => {
-    const characters = useMemo(() => reply.split(""), [reply])
-    const previousNumChars = useDebounce(usePrevious(characters.length) || 0, 100)
     return (
       <div
         className={cn(
@@ -1290,20 +1315,16 @@ const JarvisAnswer = React.memo(
             {question}
           </p>
         )}
-        {phase === "thinking" && !reply ? (
+        {phase === "thinking" && !spoken.length && !reply ? (
           <ShimmeringText
             text="Thinking..."
             className="text-2xl font-light tracking-wide whitespace-nowrap"
           />
-        ) : (
-          <div className={cn("text-foreground/90 max-w-3xl text-center leading-relaxed font-light", reply.length > 350 ? "text-base" : "text-xl")}>
-            {characters.map((char, index) => {
-              const delay =
-                index >= previousNumChars ? (index - previousNumChars + 1) * 0.012 : 0
-              return <TranscriptCharacter key={index} char={char} delay={delay} />
-            })}
-          </div>
-        )}
+        ) : spoken.length ? (
+          <SpokenText pieces={spoken} live={phase === "speaking"} />
+        ) : reply && phase === "listening" ? (
+          <p className="text-foreground/90 max-w-3xl text-center text-lg leading-relaxed font-light sm:text-xl">{reply}</p>
+        ) : null}
         {live && (
           <p className="text-foreground/60 max-w-2xl text-center text-lg leading-relaxed font-light" aria-live="polite">
             {live}

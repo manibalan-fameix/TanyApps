@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import worker from "../workers/jarvis/index.mjs"
 import { briefingFacts, cleanCallMe, hearEvents, personaRules, showEvents } from "../scripts/jarvis/lib.mjs"
+import { wordAt, wordsOf } from "../workers/jarvis/ui/src/lib/karaoke"
 import { bandRatio, judge, level, nextBaseline, variation } from "../workers/jarvis/ui/src/lib/vad"
 import { detectAlerts, intentView, mentioned, parseShow, groupsFor, statusLine } from "../workers/jarvis/ui/src/lib/cards"
 
@@ -143,8 +144,8 @@ describe("hearing a recorded question", () => {
     expect(await collect(["Q: \n\n"])).toEqual([{ nospeech: true }])
   })
 
-  it("still answers when the model forgets the Q line", async () => {
-    expect(await collect(["Task 14 is open.\n", "It is urgent."])).toEqual([{ heard: "" }, { delta: "Task 14 is open.\n" }, { delta: "It is urgent." }])
+  it("ignores a reply that does not follow the format, instead of answering a sound that was not a question", async () => {
+    expect(await collect(["Task 14 is open.\n", "It is urgent."])).toEqual([{ nospeech: true }])
   })
 
   it("turns an uploaded recording into heard text and an answer", async () => {
@@ -429,5 +430,24 @@ describe("the project briefing", () => {
     expect(groups[0].label).toBe("Needs your attention")
     expect(groups.map((g) => g.label).slice(1)).toEqual(["Gokul", "Pavi"])
     expect(groups[1].note).toBe("2 open · 1 overdue")
+  })
+})
+
+describe("following the voice word by word", () => {
+  it("moves through a sentence as the audio plays, weighting longer words and pauses", () => {
+    const words = wordsOf("Good morning, sir. Jarvis at your service.")
+    expect(words.map((w) => w.text)).toEqual(["Good", "morning,", "sir.", "Jarvis", "at", "your", "service."])
+    expect(wordAt(words, 0)).toBe(0)
+    expect(wordAt(words, 1)).toBe(words.length - 1)
+    expect(wordAt(words, 5)).toBe(words.length - 1) // never past the end
+    expect(wordAt(words, -1)).toBe(0)
+    const seen = [0, 0.2, 0.4, 0.6, 0.8, 1].map((f) => wordAt(words, f))
+    expect([...seen].sort((a, b) => a - b)).toEqual(seen) // only ever moves forward
+    expect(wordAt(words, 0.35)).toBe(2) // "sir." is the third word, after the pause at the comma
+  })
+
+  it("copes with empty text", () => {
+    expect(wordsOf("   ")).toEqual([])
+    expect(wordAt([], 0.5)).toBe(0)
   })
 })

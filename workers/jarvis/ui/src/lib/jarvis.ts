@@ -117,6 +117,22 @@ let master: GainNode | null = null
 let playing: { sources: AudioBufferSourceNode[]; reader: ReadableStreamDefaultReader<Uint8Array> | null } | null = null
 let current: Speaker | null = null
 
+/** Where the voice is in the sentence being spoken, so the page can highlight the word as it is said. */
+interface Clock { start: number; end: number; final: boolean; chars: number | null; length: number; text: string }
+let clock: Clock | null = null
+
+/** 0 to 1: how far through the current sentence the voice is. Null when nothing is being spoken. */
+export function speechFraction(): number | null {
+  if (!clock) return null
+  if (clock.chars !== null) return clock.length ? Math.min(1, clock.chars / clock.length) : 0 // the device voice reports characters
+  if (!ctx) return null
+  const spoken = Math.max(0, ctx.currentTime - clock.start)
+  // Until the whole sentence has arrived, guess its length from the words (about 2.7 words a second), never less than what is queued.
+  const guess = Math.max(clock.end - clock.start, clock.text.split(/\s+/).length / 2.7)
+  const total = clock.final ? Math.max(0.1, clock.end - clock.start) : guess
+  return Math.min(1, spoken / total)
+}
+
 export function audioContext(): AudioContext {
   if (!ctx) {
     const C = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
@@ -164,6 +180,8 @@ function deviceSpeak(text: string, lang: string, done: () => void) {
   let finished = false
   const finish = () => { if (!finished) { finished = true; clearTimeout(guard); done() } }
   const guard = setTimeout(finish, 2500 + text.length * 90)
+  clock = { start: 0, end: 0, final: false, chars: 0, length: text.length, text }
+  u.onboundary = (e) => { if (clock && clock.chars !== null) clock.chars = e.charIndex }
   u.onend = finish
   u.onerror = finish
   speechSynthesis.speak(u)
@@ -226,6 +244,7 @@ async function playPcm(res: Response, rate: number): Promise<void> {
   let carry = new Uint8Array(0)
   let at = 0
   let last: AudioBufferSourceNode | null = null
+  if (clock) { clock.chars = null; clock.start = 0; clock.end = 0; clock.final = false }
   for (;;) {
     const { done, value } = await reader.read()
     if (playing !== state) return // stopped
@@ -245,10 +264,13 @@ async function playPcm(res: Response, rate: number): Promise<void> {
     src.connect(master!)
     at = Math.max(at, ac.currentTime + 0.03)
     src.start(at)
+    if (clock && !clock.start) clock.start = at
     at += buffer.duration
+    if (clock) clock.end = at
     state.sources.push(src)
     last = src
   }
+  if (clock) clock.final = true
   if (!last) throw new Error("the voice sent no audio")
   await new Promise<void>((resolve) => { last!.onended = () => resolve() })
   if (playing === state) playing = null
@@ -268,16 +290,23 @@ export interface Speaker {
  */
 const MAX_PIECES = 8 // voice requests per answer
 
-export function createSpeaker(voice: string, lang: string, note: (n: string) => void = () => {}, onPiece: (text: string) => void = () => {}): Speaker {
-  stopAudio()
+export function createSpeaker(voice: string, lang: string, note: (n: string) => void = () => {}, onPiece: (text: string, index: number) => void = () => {}, indexOffset = 0): Speaker {
+  if (indexOffset === 0) stopAudio() // a follow-on speaker (same turn) must not cut off the one before it
   const texts: string[] = []
   const voices: Promise<Response | Error>[] = []
+  // Voice requests go out only two sentences ahead of the one being played: a long answer would otherwise send a dozen at once,
+  // and they would slow down the first one.
+  const ensure = (upTo: number) => {
+    for (let j = 0; j <= upTo && j < texts.length; j++) {
+      if (!voices[j]) voices[j] = voice === "device" ? Promise.resolve(new Error("device")) : requestVoice(texts[j], voice, lang)
+    }
+  }
   let buffer = "", dispatched = 0, dispatchedCount = 0, ended = false, cancelled = false, wake: (() => void) | null = null
   let usedGemini = false, failure = ""
 
   const dispatch = (t: string) => {
     texts.push(t)
-    voices.push(voice === "device" ? Promise.resolve(new Error("device")) : requestVoice(t, voice, lang))
+    ensure(1) // the first two sentences are requested at once, so speech starts as early as possible
     wake?.()
   }
 
@@ -286,9 +315,11 @@ export function createSpeaker(voice: string, lang: string, note: (n: string) => 
       while (i >= texts.length && !ended && !cancelled) await new Promise<void>((r) => { wake = r })
       wake = null
       if (cancelled || i >= texts.length) break
+      ensure(i + 2)
       const got = await voices[i]
       if (cancelled) break
-      onPiece(texts[i]) // the screen can light up whatever this sentence talks about
+      clock = { start: 0, end: 0, final: false, chars: null, length: texts[i].length, text: texts[i] }
+      onPiece(texts[i], indexOffset + i) // the screen shows this sentence now and can light up whatever it talks about
       if (got instanceof Response) {
         try {
           await playPcm(got, Number(got.headers.get("x-pcm-rate")) || 24000)
@@ -299,7 +330,8 @@ export function createSpeaker(voice: string, lang: string, note: (n: string) => 
       if (cancelled) break
       await new Promise<void>((r) => deviceSpeak(texts[i], lang, r))
     }
-    onPiece("")
+    clock = null
+    onPiece("", -1)
     note(voice === "device" ? "Voice: device" : usedGemini && !failure ? `Voice: ${voice} (Gemini)` : `Gemini voice failed (${failure || "unknown"}), used the device voice`)
   })()
 
