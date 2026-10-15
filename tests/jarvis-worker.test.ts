@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import worker from "../workers/jarvis/index.mjs"
+import { hearEvents } from "../scripts/jarvis/lib.mjs"
 
 const env = { JARVIS_PASSPHRASE: "correct-horse-battery", JARVIS_TOKEN: "ghp_fake", GEMINI_API_KEY: "AIzaFake", ASSETS: { fetch: async () => new Response("<html>page</html>") } }
 
@@ -118,5 +119,51 @@ describe("Jarvis worker", () => {
     const res = await call("/api/speak", { text: "Hello" })
     expect(res.status).toBe(502)
     expect(((await res.json()) as { detail: string }).detail).toContain("429")
+  })
+})
+
+async function collect(pieces: string[]) {
+  async function* gen() { for (const p of pieces) yield p }
+  const out: unknown[] = []
+  for await (const e of hearEvents(gen())) out.push(e)
+  return out
+}
+
+describe("hearing a recorded question", () => {
+  it("splits what was heard from the answer, however the text is chunked", async () => {
+    expect(await collect(["Q: what is", " up\n\nTask 14", " is open."])).toEqual([{ heard: "what is up" }, { delta: "Task 14" }, { delta: " is open." }])
+    expect(await collect(["Q: hello\n\nHi."])).toEqual([{ heard: "hello" }, { delta: "Hi." }])
+  })
+
+  it("reports silence and noise as no speech", async () => {
+    expect(await collect(["NOSPEECH"])).toEqual([{ nospeech: true }])
+    expect(await collect(["NO", "SPEECH"])).toEqual([{ nospeech: true }])
+    expect(await collect(["Q: \n\n"])).toEqual([{ nospeech: true }])
+  })
+
+  it("still answers when the model forgets the Q line", async () => {
+    expect(await collect(["Task 14 is open.\n", "It is urgent."])).toEqual([{ heard: "" }, { delta: "Task 14 is open.\n" }, { delta: "It is urgent." }])
+  })
+
+  it("turns an uploaded recording into heard text and an answer", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const u = String(url)
+      if (u.includes("api.github.com/graphql")) return new Response(JSON.stringify(board))
+      const sse = ["Q: is task 14 open?\n\n", "Yes, task 14 is open."].map((t) => `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: t }] } }] })}\n\n`).join("")
+      return new Response(sse, { headers: { "content-type": "text/event-stream" } })
+    }))
+    const res = await worker.fetch(new Request("https://x/api/hear", { method: "POST", headers: { authorization: "Bearer correct-horse-battery", "x-lang": "en", "x-history": encodeURIComponent("[]") }, body: new Uint8Array([82, 73, 70, 70, 0, 0, 0, 0]) }), env)
+    expect(res.status).toBe(200)
+    const events = [...(await res.text()).matchAll(/data: (.*)\n/g)].map((m) => JSON.parse(m[1]))
+    expect(events[0]).toEqual({ heard: "is task 14 open?" })
+    expect(events.filter((e) => e.delta).map((e) => e.delta).join("")).toBe("Yes, task 14 is open.")
+  })
+
+  it("refuses an empty recording and a wrong passphrase", async () => {
+    stubNetwork()
+    const empty = await worker.fetch(new Request("https://x/api/hear", { method: "POST", headers: { authorization: "Bearer correct-horse-battery" }, body: new Uint8Array() }), env)
+    expect(empty.status).toBe(400)
+    const wrong = await worker.fetch(new Request("https://x/api/hear", { method: "POST", headers: { authorization: "Bearer nope" }, body: new Uint8Array([1]) }), env)
+    expect(wrong.status).toBe(401)
   })
 })

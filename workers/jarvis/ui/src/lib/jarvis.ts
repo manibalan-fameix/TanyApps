@@ -90,15 +90,24 @@ export async function askStream(text: string, lang: string, onDelta: (piece: str
 // so speech starts after the first chunk instead of after the whole sentence. iOS only lets an AudioContext start after a
 // tap, so unlockAudio() is called from the button.
 let ctx: AudioContext | null = null
+let master: GainNode | null = null
 let playing: { sources: AudioBufferSourceNode[]; reader: ReadableStreamDefaultReader<Uint8Array> | null } | null = null
 let current: Speaker | null = null
 
-function audioContext(): AudioContext {
+export function audioContext(): AudioContext {
   if (!ctx) {
     const C = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
     ctx = new C()
+    master = ctx.createGain()
+    master.connect(ctx.destination)
   }
   return ctx
+}
+
+/** Turns Jarvis down while you are speaking over it, and back up if it turns out you were not. */
+export function duck(on: boolean) {
+  if (!ctx || !master) return
+  master.gain.setTargetAtTime(on ? 0.12 : 1, ctx.currentTime, 0.04)
 }
 
 export function unlockAudio() {
@@ -111,6 +120,7 @@ export function unlockAudio() {
 }
 
 export function stopAudio() {
+  duck(false)
   current?.cancel()
   if (playing) {
     playing.reader?.cancel().catch(() => {})
@@ -207,7 +217,7 @@ async function playPcm(res: Response, rate: number): Promise<void> {
     buffer.copyToChannel(samples, 0)
     const src = ac.createBufferSource()
     src.buffer = buffer
-    src.connect(ac.destination)
+    src.connect(master!)
     at = Math.max(at, ac.currentTime + 0.03)
     src.start(at)
     at += buffer.duration
@@ -286,4 +296,43 @@ export function createSpeaker(voice: string, lang: string, note: (n: string) => 
   }
   current = speaker
   return speaker
+}
+
+export interface HearEvents {
+  onHeard(text: string): void
+  onDelta(piece: string): void
+  onNoSpeech(): void
+}
+
+export interface Turn { q: string; a: string; interrupted?: boolean }
+
+/** Sends one recorded question. Gemini hears it and answers in the same request; the reply streams back as events. */
+export async function hearStream(wav: Blob, lang: string, history: Turn[], on: HearEvents, signal?: AbortSignal): Promise<void> {
+  const pass = passphrase()
+  if (!pass) throw new Error("A passphrase is needed.")
+  const res = await fetch("/api/hear", {
+    method: "POST",
+    headers: { "content-type": "audio/wav", authorization: `Bearer ${pass}`, "x-lang": lang, "x-history": encodeURIComponent(JSON.stringify(history.slice(-3))) },
+    body: wav,
+    signal,
+  })
+  if (res.status === 401) { store.del("pass"); throw new Error("Wrong passphrase. Try again.") }
+  if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error || "Something went wrong.")
+  const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader()
+  let buffer = ""
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += value
+    const lines = buffer.split("\n")
+    buffer = lines.pop() ?? ""
+    for (const line of lines) {
+      if (!line.startsWith("data:")) continue
+      const msg = JSON.parse(line.slice(5)) as { heard?: string; delta?: string; nospeech?: boolean; error?: string }
+      if (msg.error) throw new Error(msg.error)
+      if (msg.nospeech) on.onNoSpeech()
+      else if (msg.heard !== undefined) on.onHeard(msg.heard)
+      else if (msg.delta) on.onDelta(msg.delta)
+    }
+  }
 }

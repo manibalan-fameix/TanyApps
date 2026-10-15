@@ -1,6 +1,6 @@
 // Voice assistant for the Tany project board: serves a small page (microphone + speaker in the browser) and /api/ask.
 // The browser does the listening and speaking; this Worker reads the board from GitHub and asks Gemini for the answer.
-import { askGemini, loadBoard, overdue, speakable, sprintReport, streamGemini, pingGemini } from "../../scripts/jarvis/lib.mjs"
+import { askGemini, loadBoard, overdue, speakable, sprintReport, streamGemini, streamHear, hearEvents, pingGemini } from "../../scripts/jarvis/lib.mjs"
 import { speakStream } from "./tts.mjs"
 
 const SECURITY = {
@@ -49,14 +49,14 @@ function limited(ip) {
   return recent.length > 40
 }
 
-/** Server-sent events: {"delta": "..."} pieces as Gemini writes, then {"done": true}. */
-function streamAnswer(text, items, lang, env) {
+/** Server-sent events: one JSON object per event, then {"done": true}. `events` is an async iterable of objects. */
+function sse(events) {
   const enc = new TextEncoder()
   const send = (c, o) => c.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`))
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        for await (const delta of streamGemini(text, items, new Date(), { key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined, voice: true, lang })) send(controller, { delta })
+        for await (const event of events) send(controller, event)
         send(controller, { done: true })
       } catch (e) {
         console.error(String(e?.message ?? e).slice(0, 200))
@@ -68,12 +68,20 @@ function streamAnswer(text, items, lang, env) {
   return new Response(stream, { headers: { ...SECURITY, "content-type": "text/event-stream; charset=utf-8", "x-accel-buffering": "no" } })
 }
 
+async function* deltas(text, items, lang, env) {
+  for await (const delta of streamGemini(text, items, new Date(), { key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined, voice: true, lang })) yield { delta }
+}
+
+function streamAnswer(text, items, lang, env) {
+  return sse(deltas(text, items, lang, env))
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url)
     // The page itself (built from workers/jarvis/ui) is served from the assets binding; only /api/* reaches this code.
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request)
-    if (!["/api/ask", "/api/speak", "/api/warm"].includes(url.pathname)) return json({ error: "Not found." }, 404)
+    if (!["/api/ask", "/api/speak", "/api/warm", "/api/hear"].includes(url.pathname)) return json({ error: "Not found." }, 404)
     if (request.method !== "POST") return json({ error: "Use POST." }, 405)
 
     if (!env.JARVIS_PASSPHRASE) return json({ error: "JARVIS_PASSPHRASE is not set on the server." }, 500)
@@ -89,6 +97,26 @@ export default {
         ctx?.waitUntil?.(pingGemini({ key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined }))
       }
       return new Response(null, { status: 204, headers: SECURITY })
+    }
+
+    // The microphone recording (a 16 kHz WAV) goes straight to Gemini, which hears the question and writes the answer.
+    if (url.pathname === "/api/hear") {
+      if (!env.GEMINI_API_KEY) return json({ error: "No Gemini key." }, 503)
+      const audio = new Uint8Array(await request.arrayBuffer())
+      if (!audio.length || audio.length > 3_000_000) return json({ error: "Send one short recording." }, 400)
+      let history = []
+      try { history = JSON.parse(decodeURIComponent(request.headers.get("x-history") ?? "[]")) } catch { /* no history */ }
+      if (!Array.isArray(history)) history = []
+      let bin = ""
+      for (let i = 0; i < audio.length; i += 0x8000) bin += String.fromCharCode(...audio.subarray(i, i + 0x8000))
+      try {
+        const items = await board(env, ctx)
+        const events = hearEvents(streamHear({ mime: "audio/wav", data: btoa(bin) }, items, new Date(), { key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined, lang: request.headers.get("x-lang") === "ta" ? "ta" : "en", history }))
+        return sse(events)
+      } catch (e) {
+        console.error(String(e?.message ?? e).slice(0, 200))
+        return json({ error: "I could not read the board right now." }, 502)
+      }
     }
 
     let body

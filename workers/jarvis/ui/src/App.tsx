@@ -5,13 +5,14 @@ import { Copy } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useDebounce } from "@/hooks/use-debounce"
 import { usePrevious } from "@/hooks/use-previous"
-import { speechSupported, useSpeech } from "@/hooks/use-speech"
+import { useSpeech } from "@/hooks/use-speech"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ShimmeringText } from "@/components/ui/shimmering-text"
 
 import { LanguageSelector } from "@/components/language-selector"
-import { askStream, cleanText, createSpeaker, greetingParts, prefetchGreeting, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage, type Speaker } from "@/lib/jarvis"
+import { cleanText, createSpeaker, duck, greetingParts, hearStream, prefetchGreeting, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage, type Speaker, type Turn } from "@/lib/jarvis"
+import { createListener, type Listener } from "@/lib/mic"
 
 interface RecordingState {
   error: string
@@ -236,7 +237,13 @@ export default function Jarvis() {
   const questionRef = useRef("")
   const replyRef = useRef("") // what Jarvis is saying right now, to tell its own voice apart from yours
   const turnRef = useRef(0) // bumped on every new question or interruption so older answers stop
-  const abortRef = useRef<AbortController | null>(null)
+  const abortRef = useRef<AbortController | null>(null) // the request that owns the current answer
+  const listenerRef = useRef<Listener | null>(null)
+  const confirmedRef = useRef(0) // newest recording that turned out to be you speaking (not an echo)
+  const hearCountRef = useRef(0)
+  const historyRef = useRef<Turn[]>([])
+  const langRef = useRef("en")
+  const [userSpeaking, setUserSpeaking] = useState(false)
   const speakerRef = useRef<Speaker | null>(null)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const stopRef = useRef<() => void>(() => {})
@@ -251,10 +258,15 @@ export default function Jarvis() {
   // Listening uses the browser's speech recognition: say so up front when it is missing (for example in Firefox).
   useEffect(() => {
     warmUp() // load the board on the server while the page is still idle
-    if (!speechSupported()) {
-      setRecording((prev) => ({ ...prev, error: "This browser cannot listen. Use Chrome, Edge or Safari." }))
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setRecording((prev) => ({ ...prev, error: "This browser cannot use the microphone. Use Chrome, Edge or Safari." }))
     }
   }, [])
+
+  // While Jarvis talks, only clearly louder speech counts as you (a leftover echo must not interrupt it).
+  useEffect(() => {
+    listenerRef.current?.setStrict(phase !== "listening")
+  }, [phase])
 
   // Have the greeting's voice ready before the tap, so Jarvis answers the tap at once.
   useEffect(() => {
@@ -318,6 +330,9 @@ export default function Jarvis() {
 
   /** The user spoke over Jarvis: stop the voice and the answer that was still being written. */
   const bargeIn = useCallback(() => {
+    if (phaseRef.current !== "listening" && questionRef.current) {
+      historyRef.current = [...historyRef.current, { q: questionRef.current, a: replyRef.current.slice(0, 200), interrupted: true }].slice(-6)
+    }
     turnRef.current++
     abortRef.current?.abort()
     speakerRef.current?.cancel()
@@ -325,48 +340,20 @@ export default function Jarvis() {
     setPhase("listening")
   }, [setPhase])
 
+  // The browser's own speech recognition only draws the live captions. Gemini does the real listening (see handleUtterance).
   const onPartialTranscript = useCallback((data: { text?: string }) => {
     if (connectionStateRef.current !== "connected") return
     const currentText = data.text || ""
     if (currentText === lastTranscriptRef.current) return
-
-    // While Jarvis talks, ignore its own echo. Real words (two or more) interrupt it.
-    if (phaseRef.current !== "listening") {
-      if (halfDuplex || isEcho(currentText) || words(currentText).length < 2) return
-      bargeIn()
-    }
+    if (phaseRef.current !== "listening" && (isEcho(currentText) || words(currentText).length < 2)) return // Jarvis's own voice
     touch()
     lastTranscriptRef.current = currentText
     setLocalTranscript(currentText)
+  }, [isEcho, touch])
 
-    if (currentText.length > 0 && segmentStartMsRef.current != null) {
-      const latency = performance.now() - segmentStartMsRef.current
-      setRecording((prev) => ({
-        ...prev,
-        latenciesMs: [...prev.latenciesMs.slice(-29), latency],
-      }))
-      segmentStartMsRef.current = null
-    }
-  }, [bargeIn, halfDuplex, isEcho, touch])
-
-  const askRef = useRef<(text: string) => void>(() => {})
-
-  const onFinalTranscript = useCallback((data: { text?: string }) => {
-    if (connectionStateRef.current !== "connected") return
+  const onFinalTranscript = useCallback(() => {
     lastTranscriptRef.current = ""
-    const text = (data.text ?? "").trim()
-    segmentStartMsRef.current = null
-    if (text.length < 3) return // "hmm" and other short bursts keep listening
-    let asked = text
-    if (phaseRef.current !== "listening") {
-      if (halfDuplex || isEcho(text)) return
-      // You carried on a sentence after a pause and Jarvis has not started talking yet: it is one question, not two.
-      if (phaseRef.current === "thinking" && !replyRef.current) asked = `${questionRef.current} ${text}`.trim()
-      bargeIn()
-    }
-    touch()
-    askRef.current(asked)
-  }, [bargeIn, halfDuplex, isEcho, touch])
+  }, [])
 
   const onError = useCallback((error: Error | Event) => {
     console.error("[Jarvis] Error:", error)
@@ -410,54 +397,83 @@ export default function Jarvis() {
     }
   }, [connectionState])
 
-  // Send the question to Jarvis, show the answer as it is written, say it aloud, then carry on listening.
-  askRef.current = (text: string) => {
+  /** A new turn: show the question, switch to "thinking" and return the turn number. */
+  const beginTurn = useCallback((text: string) => {
     const turn = ++turnRef.current
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-    const live = () => turn === turnRef.current && connectionStateRef.current === "connected"
-
     setQuestion(text)
     questionRef.current = text
     setReply("")
     replyRef.current = ""
     setVoiceNote("")
     setLocalTranscript("")
-    finalTranscriptsRef.current = []
+    lastTranscriptRef.current = ""
     setPhase("thinking")
     endSoundRef.current?.play().catch(() => {})
+    return turn
+  }, [setPhase])
+
+  /**
+   * One recorded question from the microphone. Gemini hears it and answers in the same request. If what it heard is just
+   * Jarvis's own voice, or nothing, the recording is dropped and Jarvis carries on. Otherwise it interrupts itself and answers.
+   */
+  const handleUtterance = useCallback((wav: Blob) => {
+    setUserSpeaking(false)
+    if (wav.size === 0) { duck(false); return }
+    if (connectionStateRef.current !== "connected") return
+    const mine = ++hearCountRef.current
+    const controller = new AbortController()
+    const lang = langRef.current
+    let turn = 0
+    const st: { speaker: Speaker | null; full: string } = { speaker: null, full: "" }
+    const turnLive = () => turn === turnRef.current && connectionStateRef.current === "connected"
 
     void (async () => {
-      const lang = replyLanguage(selectedLanguage)
-      const speaker = createSpeaker(voice, lang, (n) => { if (live()) setVoiceNote(n) })
-      speakerRef.current = speaker
       try {
-        let full = ""
-        await askStream(text, lang, (piece) => {
-          if (!live()) return
-          full += piece
-          replyRef.current = cleanText(full)
-          setReply(cleanText(full))
-          setPhase("speaking")
-          speaker.feed(piece)
+        await hearStream(wav, lang, historyRef.current, {
+          onHeard: (heard) => {
+            if (connectionStateRef.current !== "connected" || mine < confirmedRef.current) { controller.abort(); return }
+            const talking = phaseRef.current !== "listening"
+            if (talking && (halfDuplex || isEcho(heard))) { controller.abort(); duck(false); setLocalTranscript(""); return }
+            confirmedRef.current = mine
+            if (talking) bargeIn() // you really did speak over Jarvis
+            abortRef.current?.abort()
+            abortRef.current = controller
+            turn = beginTurn(heard.trim() || "…")
+            touch()
+            st.speaker = createSpeaker(voice, lang, (n) => { if (turnLive()) setVoiceNote(n) })
+            speakerRef.current = st.speaker
+          },
+          onDelta: (piece) => {
+            if (!st.speaker || !turnLive()) return
+            st.full += piece
+            replyRef.current = cleanText(st.full)
+            setReply(cleanText(st.full))
+            setPhase("speaking")
+            st.speaker.feed(piece)
+          },
+          onNoSpeech: () => { duck(false); setLocalTranscript("") },
         }, controller.signal)
-        speaker.end()
-        await speaker.finished
+        if (st.speaker && turnLive()) {
+          st.speaker.end()
+          await st.speaker.finished
+          if (turnLive()) historyRef.current = [...historyRef.current, { q: questionRef.current, a: replyRef.current.slice(0, 200) }].slice(-6)
+        }
       } catch (error) {
-        speaker.cancel()
-        if (!live() || (error instanceof DOMException && error.name === "AbortError")) return
-        setReply(error instanceof Error ? error.message : "Something went wrong.")
+        if (controller.signal.aborted) return
+        st.speaker?.cancel()
+        if (turn && turnLive()) setReply(error instanceof Error ? error.message : "Something went wrong.")
+        duck(false)
       } finally {
-        if (live()) { setPhase("listening"); touch() }
+        if (st.speaker && turnLive()) { setPhase("listening"); touch() }
       }
     })()
-  }
+  }, [bargeIn, beginTurn, halfDuplex, isEcho, setPhase, touch, voice])
 
   /** Jarvis opens the conversation, so you know it is on and listening. */
   const greet = useCallback(() => {
     const turn = ++turnRef.current
     const lang = replyLanguage(selectedLanguage)
+    langRef.current = lang
     const [first, rest] = greetingParts(lang)
     const text = `${first} ${rest}`
     setQuestion("")
@@ -507,6 +523,11 @@ export default function Jarvis() {
       abortRef.current?.abort()
       speakerRef.current?.cancel()
       stopAudio()
+      listenerRef.current?.stop()
+      listenerRef.current = null
+      historyRef.current = []
+      confirmedRef.current = 0
+      setUserSpeaking(false)
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
       setQuestion("")
       setReply("")
@@ -559,7 +580,13 @@ export default function Jarvis() {
     clearSessionRefs()
 
     try {
-      await scribe.connect({ languageCode: selectedLanguage || undefined })
+      listenerRef.current?.stop()
+      listenerRef.current = await createListener({
+        onSpeechStart: () => { touch(); setUserSpeaking(true); if (phaseRef.current === "speaking") duck(true) },
+        onUtterance: (wav) => handleUtterance(wav),
+      })
+      // Live captions from the browser are a bonus: Jarvis still hears you if they are not available.
+      void scribe.connect({ languageCode: selectedLanguage || undefined }).catch(() => {})
 
       // Check again after connect completes
       if (connectionStateRef.current !== "connecting") {
@@ -583,6 +610,8 @@ export default function Jarvis() {
       }
     } catch (error) {
       console.error("[Jarvis] Connection error:", error)
+      listenerRef.current?.stop()
+      listenerRef.current = null
       turnRef.current++
       speakerRef.current?.cancel()
       stopAudio()
@@ -591,13 +620,16 @@ export default function Jarvis() {
       updateConnectionState("idle")
       setRecording((prev) => ({
         ...prev,
-        error: error instanceof Error ? error.message : "Connection failed",
+        error: error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "SecurityError")
+          ? "Allow the microphone to talk to Jarvis."
+          : error instanceof Error ? error.message : "Connection failed",
       }))
     }
   }, [
     clearSessionRefs,
     connectionState,
     greet,
+    handleUtterance,
     scribe,
     selectedLanguage,
     setPhase,
@@ -732,7 +764,7 @@ export default function Jarvis() {
             )}
           >
             {showAnswer && (
-              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} live={connectionState === "connected" ? localTranscript : ""} />
+              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} live={connectionState === "connected" ? localTranscript || (userSpeaking ? "…" : "") : ""} />
             )}
           </div>
 
