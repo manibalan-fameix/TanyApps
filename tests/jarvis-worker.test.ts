@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import worker from "../workers/jarvis/index.mjs"
-import { cleanCallMe, hearEvents, personaRules, showEvents } from "../scripts/jarvis/lib.mjs"
+import { briefingFacts, cleanCallMe, hearEvents, personaRules, showEvents } from "../scripts/jarvis/lib.mjs"
 import { bandRatio, judge, level, nextBaseline, variation } from "../workers/jarvis/ui/src/lib/vad"
 import { detectAlerts, intentView, mentioned, parseShow, groupsFor, statusLine } from "../workers/jarvis/ui/src/lib/cards"
 
@@ -362,5 +362,72 @@ describe("telling you apart from the room", () => {
     expect(prompts[1]).not.toContain("on standby")
     expect(prompts[2]).not.toContain("on standby")
     for (const p of prompts) expect(p).toContain("other people talking to each other, a TV")
+  })
+})
+
+describe("the project briefing", () => {
+  const D = (iso: string) => new Date(`${iso}T00:00:00Z`)
+  const now = new Date("2026-10-16T05:00:00Z") // a Friday: day 5 of the 10 working days of Sprint 1
+  const task = (number: number, o: Record<string, unknown> = {}) => ({ number, title: `T${number}`, short: `Task ${number} title`, open: true, closedAt: null, updatedAt: D("2026-10-15"), due: D("2026-10-23"), labels: [], blocked: false, project: "TanyCars", team: ["Gokul"], sprint: "Sprint 1", priority: "Normal", points: 2, epic: "", status: "", url: "", ...o })
+  const items = [
+    task(1, { priority: "Urgent", due: D("2026-10-14") }), // overdue, Gokul
+    task(2, { team: ["Pavi"], blocked: true, priority: "High" }),
+    task(3, { team: ["Mala"], open: false, closedAt: new Date("2026-10-15T09:00:00Z") }), // a win
+    task(4, { team: [] }), // unassigned
+    task(5, { team: ["Gokul"], sprint: "Backlog" }),
+    task(6, { team: ["Gokul"], priority: "Low", due: D("2026-10-30") }),
+  ]
+  const facts = briefingFacts(items, now, ["Gokul", "Pavi", "Mala", "Bala"])
+
+  it("works out the sprint position and the numbers", () => {
+    expect(facts.today).toBe("Friday 16 October")
+    expect(facts.sprint).toMatchObject({ name: "Sprint 1", dayOf: 5, ofDays: 10 })
+    expect(facts.progress).toMatchObject({ doneTasks: 1, totalTasks: 5, donePoints: 2, totalPoints: 10, expectedPct: 50, actualPct: 20 })
+    expect(facts.counts).toMatchObject({ overdue: 1, blocked: 1, urgentOpen: 1, unassigned: 1 })
+  })
+
+  it("calls the health from the facts", () => {
+    expect(facts.health).toBe("at_risk") // 30 points behind the calendar, with something overdue and something blocked
+    expect(briefingFacts([task(1), task(2), task(3)], now).health).toBe("off_track") // nothing done at the half-way point
+    const calm = briefingFacts([task(1, { open: false, closedAt: now }), task(2, { open: false, closedAt: now }), task(3)], now)
+    expect(calm.health).toBe("on_track")
+    const risky = briefingFacts([task(1, { open: false }), task(2, { open: false }), task(3, { open: false }), task(4, { blocked: true })], now)
+    expect(risky.health).toBe("at_risk")
+  })
+
+  it("gives every teammate their own picture, most important task first", () => {
+    const [gokul, pavi, mala, bala] = facts.people
+    expect(gokul).toMatchObject({ name: "Gokul", openInSprint: 2, overdue: 1, laterOpen: 1 })
+    expect(gokul.next.map((t: { n: number }) => t.n)).toEqual([1, 6]) // overdue first
+    expect(pavi).toMatchObject({ openInSprint: 1, blocked: 1 })
+    expect(mala).toMatchObject({ openInSprint: 0, doneInSprint: 1 })
+    expect(mala.wins.map((t: { n: number }) => t.n)).toEqual([3])
+    expect(bala).toMatchObject({ openInSprint: 0, next: [] }) // someone with nothing open is still listed
+  })
+
+  it("lists what needs attention and what is coming", () => {
+    expect(facts.attention.overdue.map((t: { n: number }) => t.n)).toEqual([1])
+    expect(facts.attention.blocked.map((t: { n: number }) => t.n)).toEqual([2])
+    expect(facts.attention.unassigned.map((t: { n: number }) => t.n)).toEqual([4])
+    expect(facts.wins.map((t: { n: number }) => t.n)).toEqual([3])
+    expect(JSON.parse(JSON.stringify(facts))).toEqual(facts) // plain data, safe to send to the page and the model
+  })
+
+  it("chooses the briefing for a project question and the sprint wall for a sprint question", () => {
+    const team = ["Gokul"]
+    expect(intentView("Good morning, Jarvis. How is the project going?", team)).toEqual({ kind: "briefing" })
+    expect(intentView("how is the sprint going", team)).toEqual({ kind: "sprint" })
+    expect(intentView("give me a status update", team)).toEqual({ kind: "briefing" })
+    expect(parseShow({ view: "briefing" })).toEqual({ kind: "briefing" })
+  })
+
+  it("builds the briefing view from the facts: attention first, then each teammate", () => {
+    const card = (n: number, o: Record<string, unknown> = {}) => ({ n, title: `t${n}`, full: "", summary: "", steps: [], open: true, blocked: false, project: "TanyCars", team: ["Gokul"], sprint: "Sprint 1", priority: "Normal", points: 1, epic: "", due: null, updated: "", ...o })
+    const cards = [card(1), card(2, { team: ["Pavi"] }), card(6)]
+    const board = { items: cards, sprint: { name: "Sprint 1", end: "2026-10-23", daysLeft: 5 }, team: ["Gokul", "Pavi"], facts: JSON.parse(JSON.stringify(facts)) }
+    const groups = groupsFor({ kind: "briefing" }, board)
+    expect(groups[0].label).toBe("Needs your attention")
+    expect(groups.map((g) => g.label).slice(1)).toEqual(["Gokul", "Pavi"])
+    expect(groups[1].note).toBe("2 open · 1 overdue")
   })
 })

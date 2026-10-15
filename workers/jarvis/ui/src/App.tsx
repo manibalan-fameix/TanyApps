@@ -14,6 +14,7 @@ import { LanguageSelector } from "@/components/language-selector"
 import { cleanText, createSpeaker, duck, greetingParts, hearStream, prefetchGreeting, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage, loadCards, askStream, LISTENING, getListening, setListening, type Listening, PERSONAS, getPersona, setPersona, getCallMe, setCallMe, type Persona, type BoardData, type Speaker, type Turn } from "@/lib/jarvis"
 import { createListener, type Listener } from "@/lib/mic"
 import { CardView } from "@/components/card-view"
+import { BriefingPanel } from "@/components/briefing-panel"
 import { detectAlerts, groupsFor, intentView, mentioned, parseShow, statusLine, type View } from "@/lib/cards"
 
 interface RecordingState {
@@ -948,7 +949,7 @@ export default function Jarvis() {
             )}
           >
             {showAnswer && (
-              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} live={connectionState === "connected" ? localTranscript || (userSpeaking ? "…" : "") : ""} cards={groups.length ? <CardView groups={groups} highlight={highlight} wall={view.kind === "sprint"} /> : null} />
+              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} live={connectionState === "connected" ? localTranscript || (userSpeaking ? "…" : "") : ""} top={view.kind === "briefing" && board?.facts ? <BriefingPanel facts={board.facts} /> : null} cards={groups.length ? <CardView groups={groups} highlight={highlight} wall={view.kind === "sprint" || view.kind === "briefing"} /> : null} />
             )}
           </div>
 
@@ -1264,6 +1265,7 @@ const JarvisAnswer = React.memo(
     note,
     live,
     cards,
+    top,
   }: {
     question: string
     reply: string
@@ -1271,6 +1273,7 @@ const JarvisAnswer = React.memo(
     note: string
     live: string
     cards: React.ReactNode
+    top?: React.ReactNode
   }) => {
     const characters = useMemo(() => reply.split(""), [reply])
     const previousNumChars = useDebounce(usePrevious(characters.length) || 0, 100)
@@ -1281,6 +1284,7 @@ const JarvisAnswer = React.memo(
           cards ? "justify-start pb-32" : "justify-center"
         )}
       >
+        {top}
         {question && (
           <p className="text-foreground/50 max-w-2xl text-center text-lg leading-relaxed font-light">
             {question}
@@ -1292,7 +1296,7 @@ const JarvisAnswer = React.memo(
             className="text-2xl font-light tracking-wide whitespace-nowrap"
           />
         ) : (
-          <div className="text-foreground/90 max-w-2xl text-center text-xl leading-relaxed font-light">
+          <div className={cn("text-foreground/90 max-w-3xl text-center leading-relaxed font-light", reply.length > 350 ? "text-base" : "text-xl")}>
             {characters.map((char, index) => {
               const delay =
                 index >= previousNumChars ? (index - previousNumChars + 1) * 0.012 : 0

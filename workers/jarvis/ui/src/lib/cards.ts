@@ -7,6 +7,7 @@ export type View =
   | { kind: "person"; person: string }
   | { kind: "sprint" }
   | { kind: "attention" }
+  | { kind: "briefing" }
 
 export interface Group { label: string; note?: string; items: CardItem[] }
 
@@ -24,6 +25,7 @@ export function parseShow(raw: unknown): View {
     case "person": return typeof r.person === "string" && r.person.trim() ? { kind: "person", person: r.person.trim() } : { kind: "none" }
     case "sprint": return { kind: "sprint" }
     case "attention": return { kind: "attention" }
+    case "briefing": return { kind: "briefing" }
     default: return { kind: "none" }
   }
 }
@@ -38,7 +40,8 @@ export function intentView(heard: string, team: string[]): View | null {
   const person = team.find((n) => new RegExp(`\\b${n.toLowerCase()}(?:'s)?\\b`).test(t))
   if (person && !/\bsprint\b/.test(t)) return { kind: "person", person }
   if (/\b(overdue|blocked|late|risks?|behind|attention|urgent)\b/.test(t)) return { kind: "attention" }
-  if (/\b(sprint|progress|on track|status)\b/.test(t)) return { kind: "sprint" }
+  if (/\bsprint\b/.test(t)) return { kind: "sprint" }
+  if (/\b(project|team|overall|everything|everyone|morning|briefing|summary|update|progress|status|on track|going)\b/.test(t)) return { kind: "briefing" }
   return null
 }
 
@@ -83,6 +86,20 @@ export function groupsFor(view: View, board: BoardData | null): Group[] {
           return { label: person, note: mine.length > 3 ? `+${mine.length - 3} more` : undefined, items: mine.slice(0, 3) }
         })
         .filter((g) => g.items.length)
+    }
+    case "briefing": {
+      const facts = board.facts
+      const byNumber = new Map(items.map((i) => [i.n, i]))
+      const pickCards = (nums: number[]) => nums.map((n) => byNumber.get(n)).filter((i): i is CardItem => Boolean(i))
+      const attention = facts ? pickCards([...new Set([...facts.attention.overdue, ...facts.attention.blocked, ...facts.attention.unassigned].map((t) => t.n))]).slice(0, 4) : []
+      const people = (facts?.people ?? [])
+        .map((p) => ({
+          label: p.name,
+          note: [`${p.openInSprint} open`, p.overdue ? `${p.overdue} overdue` : "", p.blocked ? `${p.blocked} blocked` : ""].filter(Boolean).join(" · "),
+          items: pickCards(p.next.map((t) => t.n)),
+        }))
+        .filter((g) => g.items.length)
+      return [...(attention.length ? [{ label: "Needs your attention", items: attention }] : []), ...people]
     }
     case "attention": {
       const late = open.filter((i) => (daysUntil(i.due) ?? 1) < 0).sort(byUrgency(sprint))

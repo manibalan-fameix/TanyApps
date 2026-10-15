@@ -390,7 +390,23 @@ export interface CardItem {
   updated: string
 }
 
-export interface BoardData { items: CardItem[]; sprint: { name: string; end: string; daysLeft: number }; team: string[] }
+export interface BriefTask { n: number; title: string; due: string | null; daysToDue: number | null; priority: string; blocked: boolean; owners: string[] }
+export interface PersonFacts { name: string; openInSprint: number; doneInSprint: number; pointsOpen: number; overdue: number; blocked: number; laterOpen: number; next: BriefTask[]; wins: BriefTask[] }
+
+/** The numbers behind a project briefing, worked out on the server so the screen and the spoken status always agree. */
+export interface Facts {
+  today: string
+  sprint: { name: string; dayOf: number; ofDays: number; daysLeft: number; between: boolean }
+  progress: { doneTasks: number; totalTasks: number; donePoints: number; totalPoints: number; expectedPct: number; actualPct: number }
+  health: "on_track" | "at_risk" | "off_track"
+  counts: { overdue: number; blocked: number; urgentOpen: number; dueSoon: number; unassigned: number }
+  attention: { overdue: BriefTask[]; blocked: BriefTask[]; unassigned: BriefTask[] }
+  upcoming: BriefTask[]
+  wins: BriefTask[]
+  people: PersonFacts[]
+}
+
+export interface BoardData { items: CardItem[]; sprint: { name: string; end: string; daysLeft: number }; team: string[]; facts?: Facts }
 
 /** Every task as a card, with the current sprint and the team list. */
 export async function loadCards(): Promise<BoardData> {

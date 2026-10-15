@@ -1,6 +1,6 @@
 // Voice assistant for the Tany project board: serves a small page (microphone + speaker in the browser) and /api/ask.
 // The browser does the listening and speaking; this Worker reads the board from GitHub and asks Gemini for the answer.
-import { PERSONAS, cleanCallMe, askGemini, cfg, currentSprint, loadBoard, overdue, speakable, sprintReport, streamGemini, streamHear, hearEvents, showEvents, pingGemini } from "../../scripts/jarvis/lib.mjs"
+import { PERSONAS, cleanCallMe, askGemini, cfg, currentSprint, loadBoard, overdue, speakable, sprintReport, streamGemini, streamHear, hearEvents, showEvents, pingGemini, briefingFacts } from "../../scripts/jarvis/lib.mjs"
 import cards from "../../scripts/jarvis/task-cards.json" with { type: "json" }
 import { speakStream } from "./tts.mjs"
 
@@ -117,7 +117,7 @@ export default {
 
     // Every task as a card, for the screen. Cached on the server, so this is quick.
     if (url.pathname === "/api/board") {
-      try { const sp = currentSprint(); return json({ items: (await board(env, ctx)).map(forPage), sprint: { name: sp.name, end: sp.end.toISOString().slice(0, 10), daysLeft: sp.daysLeft }, team: cfg.team }) } catch (e) { console.error(String(e?.message ?? e).slice(0, 200)); return json({ error: "I could not read the board right now." }, 502) }
+      try { const sp = currentSprint(); const items = await board(env, ctx); return json({ items: items.map(forPage), sprint: { name: sp.name, end: sp.end.toISOString().slice(0, 10), daysLeft: sp.daysLeft }, team: cfg.team, facts: briefingFacts(items) }) } catch (e) { console.error(String(e?.message ?? e).slice(0, 200)); return json({ error: "I could not read the board right now." }, 502) }
     }
 
     // The microphone recording (a 16 kHz WAV) goes straight to Gemini, which hears the question and writes the answer.
