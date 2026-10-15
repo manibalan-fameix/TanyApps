@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { ShimmeringText } from "@/components/ui/shimmering-text"
 
 import { LanguageSelector } from "@/components/language-selector"
-import { cleanText, createSpeaker, duck, isPaused, pauseAudio, resumeAudio, greetingParts, hearStream, prefetchGreeting, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage, loadCards, askStream, LISTENING, getListening, setListening, type Listening, createTaskApi, sendSlackApi, type SlackMsg, getCreate, setCreate, type Draft, PERSONAS, getPersona, setPersona, getCallMe, setCallMe, type Persona, type BoardData, type Speaker, type Turn } from "@/lib/jarvis"
+import { cleanText, createSpeaker, duck, isPaused, pauseAudio, resumeAudio, greetingParts, hearStream, prefetchGreeting, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage, loadCards, askStream, LISTENING, getListening, setListening, type Listening, createTaskApi, sendSlackApi, getReplies, type SlackMsg, type SlackReply, getCreate, setCreate, type Draft, PERSONAS, getPersona, setPersona, getCallMe, setCallMe, type Persona, type BoardData, type Speaker, type Turn } from "@/lib/jarvis"
 import { createListener, type Listener } from "@/lib/mic"
 import { Pause, Play } from "lucide-react"
 import { CardView } from "@/components/card-view"
@@ -19,6 +19,7 @@ import { BriefingPanel } from "@/components/briefing-panel"
 import { SpokenText } from "@/components/spoken-text"
 import { DraftPanel } from "@/components/draft-panel"
 import { MessagePanel } from "@/components/message-panel"
+import { ReplyPanel } from "@/components/reply-panel"
 import { isNo, isYes } from "@/lib/format"
 import { detectAlerts, groupsFor, intentView, mentioned, parseShow, statusLine, type View } from "@/lib/cards"
 
@@ -327,6 +328,30 @@ export default function Jarvis() {
   useEffect(() => { msgStatusRef.current = msgStatus }, [msgStatus])
   const [msgError, setMsgError] = useState("")
   const sendRef = useRef<() => void>(() => {})
+  // Replies from teammates to messages Jarvis sent: checked now and then while connected; a new one is read out once.
+  const [replies, setReplies] = useState<SlackReply[]>([])
+  const announcedRef = useRef(new Set<string>())
+  const sayRef = useRef<(t: string) => Promise<void>>(async () => {})
+  const markSeen = useCallback((ids: string[]) => { setReplies((r) => r.filter((x) => !ids.includes(x.id))); void getReplies(ids) }, [])
+  useEffect(() => {
+    if (connectionState !== "connected") return
+    let first = true
+    const check = () => {
+      void getReplies().then((list) => {
+        setReplies(list)
+        const fresh = list.filter((r) => !announcedRef.current.has(r.id))
+        fresh.forEach((r) => announcedRef.current.add(r.id))
+        if (!first && fresh.length && phaseRef.current === "listening" && !pausedRef.current) {
+          const r = fresh[0]
+          void sayRef.current(`${r.from} has replied on Slack${r.about ? ` about task ${r.about}` : ""}: ${r.text.slice(0, 160)}`)
+        }
+        first = false
+      }).catch(() => {})
+    }
+    check()
+    const id = window.setInterval(check, 45_000)
+    return () => window.clearInterval(id)
+  }, [connectionState])
   const clearMsg = useCallback(() => { setMsg(null); setMsgStatus("idle"); setMsgError("") }, [setMsg])
   const [persona, setPersonaState] = useState<Persona>(getPersona())
   const [callMe, setCallMeState] = useState(getCallMe())
@@ -756,6 +781,8 @@ export default function Jarvis() {
     void speaker.finished.then(() => { if (turn === turnRef.current) { setPhase("listening"); touch() } })
   }, [showPiece, setPhase, touch, voice])
 
+  sayRef.current = sayLine
+
   /** Sends the drafted Slack message. Called by the Send button and by a spoken "yes". */
   sendRef.current = () => {
     const m = msgRef.current
@@ -1122,7 +1149,7 @@ export default function Jarvis() {
             )}
           >
             {showAnswer && (
-              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} spoken={spoken} team={board?.team ?? []} titles={boardTitles} onFocus={onFocus} live={connectionState === "connected" ? localTranscript || (userSpeaking ? "…" : "") : ""} top={draft || msg || (view.kind === "briefing" && board?.facts) ? <>{msg && <MessagePanel message={msg} status={msgStatus} error={msgError} onSend={() => sendRef.current()} onCancel={clearMsg} />}{draft && <DraftPanel draft={draft} status={draftStatus} error={draftError} onCreate={() => submitRef.current()} onCancel={() => { setDraft(null); setDraftStatus("idle"); setDraftError("") }} />}{view.kind === "briefing" && board?.facts && <BriefingPanel facts={board.facts} />}</> : null} cards={groups.length ? <CardView groups={groups} highlight={highlight} focusPerson={focusPerson} wall={view.kind === "sprint" || view.kind === "briefing"} /> : null} />
+              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} spoken={spoken} team={board?.team ?? []} titles={boardTitles} onFocus={onFocus} live={connectionState === "connected" ? localTranscript || (userSpeaking ? "…" : "") : ""} top={draft || msg || replies.length > 0 || (view.kind === "briefing" && board?.facts) ? <>{replies.length > 0 && <ReplyPanel replies={replies} onSeen={markSeen} />}{msg && <MessagePanel message={msg} status={msgStatus} error={msgError} onSend={() => sendRef.current()} onCancel={clearMsg} />}{draft && <DraftPanel draft={draft} status={draftStatus} error={draftError} onCreate={() => submitRef.current()} onCancel={() => { setDraft(null); setDraftStatus("idle"); setDraftError("") }} />}{view.kind === "briefing" && board?.facts && <BriefingPanel facts={board.facts} />}</> : null} cards={groups.length ? <CardView groups={groups} highlight={highlight} focusPerson={focusPerson} wall={view.kind === "sprint" || view.kind === "briefing"} /> : null} />
             )}
           </div>
 

@@ -6,6 +6,7 @@
   //   JARVIS_TOKEN        classic GitHub token with repo + read:project
   //   GEMINI_API_KEY      Google AI Studio (or Vertex) key: answers and the spoken voice
   //   JARVIS_PASSPHRASE   the password the page asks for, so only you can use it
+  //   SLACK_BOT_TOKEN / SLACK_USER_TOKEN / SLACK_CHANNEL / SLACK_SIGNING_SECRET   Slack (messages, and replies via /api/slack/events)
     "name": "tany-jarvis",
   "main": "index.mjs",
   "compatibility_date": "2026-09-21",
@@ -19,5 +20,7 @@
   },
   // How the voice says "Tany". Change the spelling here if it should sound different (it is only used for speech, never shown).
   "vars": { "JARVIS_TANY_SPOKEN": "Thani" },
+  // Slack replies to messages Jarvis sent (kept 3 days). Create once: `wrangler kv namespace create tany-jarvis-replies`.
+  "kv_namespaces": [{ "binding": "REPLIES", "id": "83d0220ca74444acad0e15866077e5e6" }],
   "observability": { "enabled": true }
 }

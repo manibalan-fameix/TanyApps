@@ -862,3 +862,49 @@ describe("slack messages by voice", () => {
     expect(out).toEqual([{ delta: "I will tell Gokul. Shall I send it?" }, { message: { to: "Gokul", text: "Hi" } }, { show: { view: "none" } }])
   })
 })
+
+describe("slack replies", () => {
+  const memoryKv = () => {
+    const m = new Map<string, string>()
+    return { get: async (k: string) => m.get(k) ?? null, put: async (k: string, v: string) => { m.set(k, v) } }
+  }
+  const sign = async (secret: string, ts: string, body: string) => {
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"])
+    const raw = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`v0:${ts}:${body}`))
+    return `v0=${[...new Uint8Array(raw)].map((b) => b.toString(16).padStart(2, "0")).join("")}`
+  }
+  const call = async (body: unknown, secret = "sec", env: Record<string, unknown> = {}) => {
+    const raw = JSON.stringify(body), ts = String(Math.floor(Date.now() / 1000))
+    return worker.fetch(new Request("https://x/api/slack/events", { method: "POST", headers: { "x-slack-request-timestamp": ts, "x-slack-signature": await sign(secret, ts, raw) }, body: raw }), { SLACK_SIGNING_SECRET: "sec", ...env }, { waitUntil: (p: Promise<unknown>) => p })
+  }
+
+  it("answers Slack's URL check only when the signature is valid", async () => {
+    const ok = await call({ type: "url_verification", challenge: "abc" })
+    expect(await ok.json()).toEqual({ challenge: "abc" })
+    const bad = await call({ type: "url_verification", challenge: "abc" }, "wrong")
+    expect(bad.status).toBe(401)
+  })
+
+  it("keeps only the reply from the person Jarvis messaged, in that conversation", async () => {
+    const { rememberSent, takeEvent, listReplies } = await import("../workers/jarvis/replies.mjs")
+    const kv = memoryKv()
+    await rememberSent(kv, { channel: "D1", userId: "U1", to: "Gokul", text: "Task #39 is overdue", ts: "100.1" })
+    const msg = (o: Record<string, unknown>) => ({ type: "message", channel_type: "im", channel: "D1", user: "U1", ts: "101.2", text: "On it", ...o })
+    expect(await takeEvent(kv, msg({ user: "U9" }))).toBe(false) // someone else
+    expect(await takeEvent(kv, msg({ channel: "D2" }))).toBe(false) // another conversation
+    expect(await takeEvent(kv, msg({ bot_id: "B1" }))).toBe(false)
+    expect(await takeEvent(kv, msg({ ts: "99.0" }))).toBe(false) // older than what Jarvis sent
+    expect(await takeEvent(kv, msg({}))).toBe(true)
+    expect(await takeEvent(kv, msg({}))).toBe(false) // same event twice
+    const list = await listReplies(kv)
+    expect(list).toHaveLength(1)
+    expect(list[0]).toMatchObject({ from: "Gokul", about: "39", text: "On it" })
+  })
+
+  it("lists unseen replies for the page, behind the passphrase", async () => {
+    const kv = memoryKv()
+    await kv.put("replies", JSON.stringify([{ id: "1", from: "Gokul", text: "Done", about: "39", asked: "x", at: "", seen: false }, { id: "2", from: "Pavi", text: "ok", about: null, asked: "y", at: "", seen: true }]))
+    const res = await worker.fetch(new Request("https://x/api/replies", { method: "POST", headers: { authorization: "Bearer p", "content-type": "application/json" }, body: "{}" }), { JARVIS_PASSPHRASE: "p", REPLIES: kv })
+    expect(((await res.json()) as { replies: { id: string }[] }).replies.map((r) => r.id)).toEqual(["1"])
+  })
+})

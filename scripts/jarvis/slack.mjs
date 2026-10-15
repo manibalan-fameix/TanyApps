@@ -95,6 +95,6 @@ export async function sendMessage(token, channel, message, by = "Bala", userToke
   if (message.to === "channel") { await call(sender, "chat.postMessage", { channel, text: toSlack(text), unfurl_links: false }); return { to: "the team channel" } }
   const ids = await memberIds(token)
   if (!ids[message.to]) throw new Error(`${message.to} is not on Slack yet`)
-  await call(sender, "chat.postMessage", { channel: ids[message.to], text: toSlack(text), unfurl_links: false })
-  return { to: message.to }
+  const sent = await call(sender, "chat.postMessage", { channel: ids[message.to], text: toSlack(text), unfurl_links: false })
+  return { to: message.to, channel: sent.channel, ts: sent.ts, userId: ids[message.to], text: message.text }
 }

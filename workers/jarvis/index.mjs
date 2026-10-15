@@ -2,6 +2,7 @@
 // The browser does the listening and speaking; this Worker reads the board from GitHub and asks Gemini for the answer.
 import { createTask, createdToday } from "./github.mjs"
 import { validateDraft, doneLine } from "../../scripts/jarvis/tasks.mjs"
+import { listReplies, markSeen, rememberSent, takeEvent, verifySlack } from "./replies.mjs"
 import { post as slackPost, sendMessage, validateMessage } from "../../scripts/jarvis/slack.mjs"
 import { PERSONAS, cleanCallMe, recoverDraft, writeDetails, withoutActions, cardFromBody, askGemini, cfg, currentSprint, loadBoard, overdue, speakable, sprintReport, streamGemini, streamHear, hearEvents, showEvents, pingGemini, briefingFacts } from "../../scripts/jarvis/lib.mjs"
 import cards from "../../scripts/jarvis/task-cards.json" with { type: "json" }
@@ -157,6 +158,7 @@ async function slackRoute(body, env) {
     const by = cleanCallMe(body?.by) === "sir" ? "Bala" : cleanCallMe(body?.by)
     const sent = await sendMessage(env.SLACK_BOT_TOKEN, env.SLACK_CHANNEL, v.message, by, env.SLACK_USER_TOKEN || "")
     slackSentInThisIsolate++
+    if (sent.channel) await rememberSent(env.REPLIES, sent).catch(() => {})
     return json({ ok: true, to: sent.to, line: `Sent to ${sent.to} on Slack, ${by === "Bala" ? "sir" : by}.` })
   } catch (e) {
     console.error(String(e?.message ?? e).slice(0, 200))
@@ -194,7 +196,19 @@ export default {
     const url = new URL(request.url)
     // The page itself (built from workers/jarvis/ui) is served from the assets binding; only /api/* reaches this code.
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request)
-    if (!["/api/ask", "/api/speak", "/api/warm", "/api/hear", "/api/board", "/api/task/create", "/api/slack/send"].includes(url.pathname)) return json({ error: "Not found." }, 404)
+
+    // Slack calls this itself (no passphrase): the request is trusted only if it carries a valid Slack signature.
+    if (url.pathname === "/api/slack/events") {
+      if (request.method !== "POST") return json({ error: "Use POST." }, 405)
+      const raw = await request.text()
+      if (!(await verifySlack(env.SLACK_SIGNING_SECRET, request.headers, raw))) return json({ error: "Unauthorised." }, 401)
+      let body = {}
+      try { body = JSON.parse(raw) } catch { return json({ error: "Bad request." }, 400) }
+      if (body.type === "url_verification") return json({ challenge: String(body.challenge ?? "") })
+      if (body.type === "event_callback") ctx?.waitUntil?.(takeEvent(env.REPLIES, body.event).catch((e) => console.error(String(e?.message ?? e).slice(0, 200))))
+      return new Response(null, { status: 200, headers: SECURITY })
+    }
+    if (!["/api/ask", "/api/speak", "/api/warm", "/api/hear", "/api/board", "/api/task/create", "/api/slack/send", "/api/replies"].includes(url.pathname)) return json({ error: "Not found." }, 404)
     if (request.method !== "POST") return json({ error: "Use POST." }, 405)
 
     if (!env.JARVIS_PASSPHRASE) return json({ error: "JARVIS_PASSPHRASE is not set on the server." }, 500)
@@ -229,7 +243,7 @@ export default {
       for (let i = 0; i < audio.length; i += 0x8000) bin += String.fromCharCode(...audio.subarray(i, i + 0x8000))
       try {
         const items = await board(env, ctx)
-        const events = hearEvents(streamHear({ mime: "audio/wav", data: btoa(bin) }, items, new Date(), { key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined, lang: request.headers.get("x-lang") === "ta" ? "ta" : "en", history, canCreate: Boolean(env.JARVIS_WRITE_TOKEN) && request.headers.get("x-create") === "1", canSlack: Boolean(env.SLACK_BOT_TOKEN) && request.headers.get("x-create") === "1", message: readMessage(request.headers.get("x-message")), createRequested: request.headers.get("x-create") === "1", draft: readDraft(request.headers.get("x-draft")), wake: request.headers.get("x-wake") === "1", awake: request.headers.get("x-awake") !== "0", persona: personaOf(request.headers.get("x-persona")), callMe: cleanCallMe(decodeURIComponent(request.headers.get("x-callme") ?? "")) }))
+        const events = hearEvents(streamHear({ mime: "audio/wav", data: btoa(bin) }, items, new Date(), { key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined, lang: request.headers.get("x-lang") === "ta" ? "ta" : "en", history, canCreate: Boolean(env.JARVIS_WRITE_TOKEN) && request.headers.get("x-create") === "1", replies: (await listReplies(env.REPLIES).catch(() => [])).slice(-8), canSlack: Boolean(env.SLACK_BOT_TOKEN) && request.headers.get("x-create") === "1", message: readMessage(request.headers.get("x-message")), createRequested: request.headers.get("x-create") === "1", draft: readDraft(request.headers.get("x-draft")), wake: request.headers.get("x-wake") === "1", awake: request.headers.get("x-awake") !== "0", persona: personaOf(request.headers.get("x-persona")), callMe: cleanCallMe(decodeURIComponent(request.headers.get("x-callme") ?? "")) }))
         return sse(checkedDrafts(showEvents(events), (Boolean(env.JARVIS_WRITE_TOKEN) || Boolean(env.SLACK_BOT_TOKEN)) && request.headers.get("x-create") === "1", (heard, said) => recoverDraft(heard, said, new Date(), { key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined })))
       } catch (e) {
         console.error(String(e?.message ?? e).slice(0, 200))
@@ -241,6 +255,10 @@ export default {
     try { body = await request.json() } catch { return json({ error: "Send JSON." }, 400) }
     if (url.pathname === "/api/task/create") return createRoute(body, env, ctx)
     if (url.pathname === "/api/slack/send") return slackRoute(body, env)
+    if (url.pathname === "/api/replies") {
+      if (Array.isArray(body?.seen)) await markSeen(env.REPLIES, body.seen.map(String).slice(0, 30))
+      return json({ replies: (await listReplies(env.REPLIES)).filter((r) => !r.seen) })
+    }
 
     const text = String(body?.text ?? "").trim().slice(0, url.pathname === "/api/speak" ? 900 : 300)
     const lang = body?.lang === "ta" ? "ta" : "en"

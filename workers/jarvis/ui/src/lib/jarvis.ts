@@ -526,3 +526,15 @@ export async function sendSlackApi(message: SlackMsg): Promise<{ ok: true; to: s
   if (!res.ok) throw new Error(data.error || "The message could not be sent.")
   return data
 }
+
+/** A teammate's Slack reply to a message Jarvis sent for you. */
+export interface SlackReply { id: string; from: string; text: string; about: string | null; asked: string; at: string }
+
+/** Unseen replies. Pass ids to mark them as seen first. */
+export async function getReplies(seen: string[] = []): Promise<SlackReply[]> {
+  const pass = passphrase()
+  if (!pass) return []
+  const res = await fetch("/api/replies", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${pass}` }, body: JSON.stringify({ seen }) })
+  if (!res.ok) return []
+  return ((await res.json().catch(() => ({}))) as { replies?: SlackReply[] }).replies ?? []
+}
