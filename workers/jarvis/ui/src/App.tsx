@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { ShimmeringText } from "@/components/ui/shimmering-text"
 
 import { LanguageSelector } from "@/components/language-selector"
-import { cleanText, createSpeaker, duck, greetingParts, hearStream, prefetchGreeting, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage, loadCards, askStream, PERSONAS, getPersona, setPersona, getCallMe, setCallMe, type Persona, type BoardData, type Speaker, type Turn } from "@/lib/jarvis"
+import { cleanText, createSpeaker, duck, greetingParts, hearStream, prefetchGreeting, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage, loadCards, askStream, LISTENING, getListening, setListening, type Listening, PERSONAS, getPersona, setPersona, getCallMe, setCallMe, type Persona, type BoardData, type Speaker, type Turn } from "@/lib/jarvis"
 import { createListener, type Listener } from "@/lib/mic"
 import { CardView } from "@/components/card-view"
 import { detectAlerts, groupsFor, intentView, mentioned, parseShow, statusLine, type View } from "@/lib/cards"
@@ -231,10 +231,18 @@ export default function Jarvis() {
   // listening: waiting for you. thinking: Jarvis is working out the answer. speaking: Jarvis is talking (you can still interrupt).
   const [phase, setPhaseState] = useState<"listening" | "thinking" | "speaking">("listening")
   const phaseRef = useRef<"listening" | "thinking" | "speaking">("listening")
+  // In "Say Jarvis" mode Jarvis answers without the wake word for 30 seconds after it last spoke, then goes on standby.
+  const awakeUntilRef = useRef(Infinity)
+  const [asleep, setAsleep] = useState(false)
   const setPhase = useCallback((next: "listening" | "thinking" | "speaking") => {
     phaseRef.current = next
     setPhaseState(next)
+    awakeUntilRef.current = next === "listening" ? Date.now() + 30_000 : Infinity
+    if (next !== "listening") setAsleep(false)
   }, [])
+  const [listening, setListeningState] = useState<Listening>(getListening())
+  const listeningRef = useRef(listening)
+  useEffect(() => { listeningRef.current = listening }, [listening])
   const [voice, setVoiceState] = useState(getVoice())
   const questionRef = useRef("")
   const replyRef = useRef("") // what Jarvis is saying right now, to tell its own voice apart from yours
@@ -313,6 +321,25 @@ export default function Jarvis() {
     const t = setInterval(load, 60_000)
     return () => { stop = true; clearInterval(t) }
   }, [connectionState])
+
+  // Show the "say Jarvis" hint once the follow-up window has passed.
+  useEffect(() => {
+    if (connectionState !== "connected") return
+    const t = setInterval(() => setAsleep(listeningRef.current === "wake" && phaseRef.current === "listening" && Date.now() > awakeUntilRef.current), 1000)
+    return () => clearInterval(t)
+  }, [connectionState])
+
+  // Push to talk: hold the Space bar (or the button) while you speak.
+  const hold = useCallback((open: boolean) => { if (open) unlockAudio(); listenerRef.current?.setGate(open) }, [])
+  useEffect(() => {
+    if (listening !== "push") return
+    const typing = (e: KeyboardEvent) => e.target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)
+    const down = (e: KeyboardEvent) => { if (e.code === "Space" && !e.repeat && !typing(e)) { e.preventDefault(); hold(true) } }
+    const up = (e: KeyboardEvent) => { if (e.code === "Space" && !typing(e)) { e.preventDefault(); hold(false) } }
+    window.addEventListener("keydown", down)
+    window.addEventListener("keyup", up)
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up) }
+  }, [listening, hold])
 
   // A soft chime when cards appear on screen.
   const hadCards = useRef(false)
@@ -539,7 +566,7 @@ export default function Jarvis() {
           },
           onNoSpeech: () => { duck(false); setLocalTranscript("") },
           onShow: (raw) => { if (turnLive()) { shownRef.current = true; setView(pick(raw)) } },
-        }, controller.signal)
+        }, controller.signal, undefined, { wake: listeningRef.current === "wake", awake: Date.now() <= awakeUntilRef.current })
         if (st.speaker && turnLive()) {
           st.speaker.end()
           if (!shownRef.current) {
@@ -741,7 +768,7 @@ export default function Jarvis() {
       listenerRef.current = await createListener({
         onSpeechStart: () => { touch(); setUserSpeaking(true); if (phaseRef.current === "speaking") duck(true) },
         onUtterance: (wav) => handleUtterance(wav),
-      })
+      }, { manual: listeningRef.current === "push" })
       // Live captions from the browser are a bonus: Jarvis still hears you if they are not available.
       void scribe.connect({ languageCode: selectedLanguage || undefined }).catch(() => {})
 
@@ -1049,6 +1076,18 @@ export default function Jarvis() {
                   </div>
                 </div>
 
+                <div className="w-full space-y-2">
+                  <label className="text-foreground/70 text-sm font-medium" htmlFor="listening">Listening</label>
+                  <select
+                    id="listening"
+                    value={listening}
+                    onChange={(e) => { setListening(e.target.value as Listening); setListeningState(e.target.value as Listening) }}
+                    className="border-input bg-background text-foreground focus-visible:ring-ring/50 h-9 w-full rounded-md border px-3 text-sm shadow-xs outline-none focus-visible:ring-[3px]"
+                  >
+                    {LISTENING.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+                  </select>
+                </div>
+
                 <label className="flex w-full cursor-pointer items-center justify-between gap-3 text-sm">
                   <span className="text-foreground/70 font-medium">Briefing when I start</span>
                   <input
@@ -1069,6 +1108,24 @@ export default function Jarvis() {
             </div>
           </div>
         </div>
+
+        {connectionState === "connected" && listening === "push" && (
+          <button
+            type="button"
+            onPointerDown={(e) => { e.preventDefault(); hold(true) }}
+            onPointerUp={() => hold(false)}
+            onPointerLeave={() => hold(false)}
+            onPointerCancel={() => hold(false)}
+            className="bg-foreground/90 text-background fixed bottom-24 left-1/2 z-50 -translate-x-1/2 touch-none rounded-full px-6 py-3 text-sm font-medium shadow-lg select-none active:scale-95"
+          >
+            Hold to talk · Space
+          </button>
+        )}
+        {connectionState === "connected" && asleep && (
+          <p className="text-foreground/60 fixed bottom-24 left-1/2 z-40 -translate-x-1/2 text-sm" role="status">
+            On standby. Say “Jarvis” to wake me.
+          </p>
+        )}
 
         {inSession && board && (
           <div className="text-foreground/50 fixed top-4 left-4 z-40 max-w-[60vw] font-mono text-[10px] leading-tight tracking-widest holo:text-cyan-300/70" aria-label="Sprint status">

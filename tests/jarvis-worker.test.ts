@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import worker from "../workers/jarvis/index.mjs"
 import { cleanCallMe, hearEvents, personaRules, showEvents } from "../scripts/jarvis/lib.mjs"
+import { bandRatio, judge, level, nextBaseline, variation } from "../workers/jarvis/ui/src/lib/vad"
 import { detectAlerts, intentView, mentioned, parseShow, groupsFor, statusLine } from "../workers/jarvis/ui/src/lib/cards"
 
 const env = { JARVIS_PASSPHRASE: "correct-horse-battery", JARVIS_TOKEN: "ghp_fake", GEMINI_API_KEY: "AIzaFake", ASSETS: { fetch: async () => new Response("<html>page</html>") } }
@@ -306,5 +307,60 @@ describe("Jarvis speaking up on its own", () => {
     const board = { items: [card(1), card(2, { blocked: true }), card(3, { due: "2020-01-01" }), card(4, { open: false })], sprint: { name: "Sprint 1", end: "2026-10-23", daysLeft: 1 }, team: [] }
     expect(statusLine(board)).toBe("SPRINT 1 · 1 DAY LEFT  ·  3 OPEN  ·  1 BLOCKED  ·  1 OVERDUE")
     expect(statusLine(null)).toBe("")
+  })
+})
+
+describe("telling you apart from the room", () => {
+  const speech = { voicedMs: 1800, levels: [0.05, 0.12, 0.08, 0.15, 0.06, 0.11, 0.09, 0.14, 0.07, 0.13], band: 0.8 }
+
+  it("accepts a normal spoken question", () => {
+    expect(judge(speech, null).ok).toBe(true)
+  })
+
+  it("rejects sounds that are not a voice", () => {
+    expect(judge({ ...speech, voicedMs: 200 }, null)).toEqual({ ok: false, reason: "too short" }) // a click or cough
+    expect(judge({ ...speech, levels: [0.01, 0.012, 0.011, 0.01] }, null)).toEqual({ ok: false, reason: "too quiet" })
+    expect(judge({ ...speech, band: 0.3 }, null)).toEqual({ ok: false, reason: "not a voice" }) // rumble, hiss, a slammed door
+    expect(judge({ ...speech, levels: [0.08, 0.081, 0.079, 0.08, 0.08, 0.081] }, null)).toEqual({ ok: false, reason: "steady noise" }) // a fan or hum
+  })
+
+  it("ignores voices much quieter than yours, which are further away", () => {
+    const yours = { ...speech, levels: speech.levels.map((l) => l * 4) }
+    const baseline = nextBaseline(null, yours)
+    expect(judge(yours, baseline).ok).toBe(true)
+    expect(judge(speech, baseline)).toEqual({ ok: false, reason: "far away" })
+  })
+
+  it("lets push-to-talk through, apart from a tap that is too short", () => {
+    expect(judge({ voicedMs: 600, levels: [], band: 0 }, null, true).ok).toBe(true)
+    expect(judge({ voicedMs: 100, levels: [], band: 0 }, null, true).ok).toBe(false)
+  })
+
+  it("measures loudness variation, level and how voice-like a spectrum is", () => {
+    expect(variation([1, 1, 1])).toBe(0)
+    expect(variation([0.05, 0.2, 0.05, 0.2])).toBeGreaterThan(0.4)
+    expect(level([0.1, 0.1, 0.1, 0.9])).toBe(0.9) // upper quarter, not the mean
+    const bins = 512, db = new Float32Array(bins).fill(-100)
+    for (let i = 0; i < bins; i++) { const hz = (i * 24000) / bins; if (hz > 400 && hz < 3000) db[i] = -30 }
+    expect(bandRatio(db, 48000)).toBeGreaterThan(0.9)
+    expect(bandRatio(new Float32Array(bins).fill(-40), 48000)).toBeLessThan(0.5) // flat noise
+  })
+
+  it("tells the model to ignore the room, and to wait for its name only on standby", async () => {
+    const prompts: string[] = []
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
+      const u = String(url)
+      if (u.includes("api.github.com/graphql")) return new Response(JSON.stringify(board))
+      prompts.push(JSON.parse(String(init.body)).systemInstruction?.parts?.[0]?.text ?? "")
+      return new Response(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "NOSPEECH" }] } }] })}\n\n`, { headers: { "content-type": "text/event-stream" } })
+    }))
+    const hear = (headers: Record<string, string>) => worker.fetch(new Request("https://x/api/hear", { method: "POST", headers: { authorization: "Bearer correct-horse-battery", ...headers }, body: new Uint8Array([1, 2, 3]) }), env).then((r: Response) => r.text())
+    await hear({ "x-wake": "1", "x-awake": "0" })
+    await hear({ "x-wake": "1", "x-awake": "1" })
+    await hear({ "x-wake": "0" })
+    expect(prompts[0]).toContain("on standby")
+    expect(prompts[1]).not.toContain("on standby")
+    expect(prompts[2]).not.toContain("on standby")
+    for (const p of prompts) expect(p).toContain("other people talking to each other, a TV")
   })
 })

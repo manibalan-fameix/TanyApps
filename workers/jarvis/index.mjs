@@ -132,7 +132,7 @@ export default {
       for (let i = 0; i < audio.length; i += 0x8000) bin += String.fromCharCode(...audio.subarray(i, i + 0x8000))
       try {
         const items = await board(env, ctx)
-        const events = hearEvents(streamHear({ mime: "audio/wav", data: btoa(bin) }, items, new Date(), { key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined, lang: request.headers.get("x-lang") === "ta" ? "ta" : "en", history, persona: personaOf(request.headers.get("x-persona")), callMe: cleanCallMe(decodeURIComponent(request.headers.get("x-callme") ?? "")) }))
+        const events = hearEvents(streamHear({ mime: "audio/wav", data: btoa(bin) }, items, new Date(), { key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined, lang: request.headers.get("x-lang") === "ta" ? "ta" : "en", history, wake: request.headers.get("x-wake") === "1", awake: request.headers.get("x-awake") !== "0", persona: personaOf(request.headers.get("x-persona")), callMe: cleanCallMe(decodeURIComponent(request.headers.get("x-callme") ?? "")) }))
         return sse(showEvents(events))
       } catch (e) {
         console.error(String(e?.message ?? e).slice(0, 200))

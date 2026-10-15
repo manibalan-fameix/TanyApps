@@ -22,6 +22,15 @@ export const cleanCallMe = (v: string) => v.replace(/[^\p{L}\p{N} .'-]/gu, "").t
 export const getCallMe = () => cleanCallMe(store.get("callme") ?? "sir")
 export const setCallMe = (v: string) => store.set("callme", cleanCallMe(v))
 
+export type Listening = "wake" | "always" | "push"
+export const LISTENING: { value: Listening; label: string }[] = [
+  { value: "wake", label: "Say “Jarvis” (recommended)" },
+  { value: "push", label: "Push to talk" },
+  { value: "always", label: "Always listening" },
+]
+export const getListening = (): Listening => (["wake", "always", "push"].includes(store.get("listening") ?? "") ? (store.get("listening") as Listening) : "wake")
+export const setListening = (v: Listening) => store.set("listening", v)
+
 /** The block's language selector uses ISO codes. Only Tamil changes the reply language. */
 export const replyLanguage = (code: string | null) => (code === "ta" ? "ta" : "en")
 
@@ -332,12 +341,12 @@ export interface HearEvents {
 export interface Turn { q: string; a: string; interrupted?: boolean }
 
 /** Sends one recorded question. Gemini hears it and answers in the same request; the reply streams back as events. */
-export async function hearStream(wav: Blob, lang: string, history: Turn[], on: HearEvents, signal?: AbortSignal, who: { persona: Persona; callMe: string } = { persona: getPersona(), callMe: getCallMe() }): Promise<void> {
+export async function hearStream(wav: Blob, lang: string, history: Turn[], on: HearEvents, signal?: AbortSignal, who: { persona: Persona; callMe: string } = { persona: getPersona(), callMe: getCallMe() }, gate: { wake: boolean; awake: boolean } = { wake: false, awake: true }): Promise<void> {
   const pass = passphrase()
   if (!pass) throw new Error("A passphrase is needed.")
   const res = await fetch("/api/hear", {
     method: "POST",
-    headers: { "content-type": "audio/wav", authorization: `Bearer ${pass}`, "x-lang": lang, "x-persona": who.persona, "x-callme": encodeURIComponent(who.callMe), "x-history": encodeURIComponent(JSON.stringify(history.slice(-3))) },
+    headers: { "content-type": "audio/wav", authorization: `Bearer ${pass}`, "x-lang": lang, "x-persona": who.persona, "x-wake": gate.wake ? "1" : "0", "x-awake": gate.awake ? "1" : "0", "x-callme": encodeURIComponent(who.callMe), "x-history": encodeURIComponent(JSON.stringify(history.slice(-3))) },
     body: wav,
     signal,
   })
