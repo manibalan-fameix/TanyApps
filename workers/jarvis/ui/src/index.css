@@ -113,3 +113,9 @@ html.holo .task-card { box-shadow: inset 0 0 24px rgba(34, 211, 238, 0.05); }
   }
   @keyframes holo-drift { to { background-position-y: 40px; } }
 }
+
+/* Scroll with the wheel, touch or keys, but without drawing the scroll bar. */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+html, body { scrollbar-width: none; }
+html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }

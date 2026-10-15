@@ -1302,36 +1302,42 @@ const JarvisAnswer = React.memo(
     top?: React.ReactNode
     spoken: string[]
   }) => {
+    // Cards on screen: split the screen. Cards get about two thirds, the transcript the rest (stacked on a phone). Both panes
+    // scroll with the wheel, touch or keys, with the scroll bars hidden. Without cards the transcript stays centred, as before.
+    const split = Boolean(cards || top)
     return (
-      <div
-        className={cn(
-          "absolute inset-0 flex flex-col items-center gap-6 overflow-auto px-4 py-8 sm:px-12",
-          cards ? "justify-start pb-32" : "justify-center"
+      <div className={cn("absolute inset-0 flex gap-4 px-4 pt-12 pb-24 sm:gap-6 sm:px-8", split ? "flex-col md:flex-row" : "items-center justify-center")}>
+        <div
+          className={cn(
+            "no-scrollbar flex min-h-0 flex-col gap-4 overflow-y-auto",
+            split ? "h-[34%] shrink-0 justify-start md:h-full md:w-[34%]" : "h-full w-full items-center justify-center text-center"
+          )}
+          data-pane="transcript"
+        >
+          <div className={cn("flex flex-col gap-4", split ? "items-start text-left" : "items-center text-center", !split && "my-auto")}>
+            {question && (
+              <p className="text-foreground/50 max-w-2xl text-base leading-relaxed font-light sm:text-lg">{question}</p>
+            )}
+            {phase === "thinking" && !spoken.length && !reply ? (
+              <ShimmeringText text="Thinking..." className="text-2xl font-light tracking-wide whitespace-nowrap" />
+            ) : spoken.length ? (
+              <SpokenText pieces={spoken} live={phase === "speaking"} compact={split} />
+            ) : reply && phase === "listening" ? (
+              <p className={cn("text-foreground/90 max-w-3xl leading-relaxed font-light", split ? "text-base sm:text-lg" : "text-lg sm:text-xl")}>{reply}</p>
+            ) : null}
+            {live && (
+              <p className="text-foreground/60 max-w-2xl text-base leading-relaxed font-light sm:text-lg" aria-live="polite">{live}</p>
+            )}
+            {note && <p className="text-foreground/40 max-w-2xl text-xs">{note}</p>}
+          </div>
+        </div>
+
+        {split && (
+          <div className="no-scrollbar @container flex min-h-0 flex-1 flex-col items-center gap-5 overflow-y-auto" data-pane="cards">
+            {top}
+            {cards}
+          </div>
         )}
-      >
-        {top}
-        {question && (
-          <p className="text-foreground/50 max-w-2xl text-center text-lg leading-relaxed font-light">
-            {question}
-          </p>
-        )}
-        {phase === "thinking" && !spoken.length && !reply ? (
-          <ShimmeringText
-            text="Thinking..."
-            className="text-2xl font-light tracking-wide whitespace-nowrap"
-          />
-        ) : spoken.length ? (
-          <SpokenText pieces={spoken} live={phase === "speaking"} />
-        ) : reply && phase === "listening" ? (
-          <p className="text-foreground/90 max-w-3xl text-center text-lg leading-relaxed font-light sm:text-xl">{reply}</p>
-        ) : null}
-        {live && (
-          <p className="text-foreground/60 max-w-2xl text-center text-lg leading-relaxed font-light" aria-live="polite">
-            {live}
-          </p>
-        )}
-        {cards}
-        {note && <p className="text-foreground/40 max-w-2xl text-center text-xs">{note}</p>}
       </div>
     )
   }

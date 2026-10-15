@@ -24,7 +24,7 @@ export function BriefingPanel({ facts }: { facts: Facts }) {
     <motion.section
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-card/80 holo:bg-slate-900/60 holo:border-cyan-400/25 w-full max-w-6xl rounded-xl border p-4 text-left backdrop-blur sm:p-5"
+      className="bg-card/80 holo:bg-slate-900/60 holo:border-cyan-400/25 w-full rounded-xl border p-4 text-left backdrop-blur sm:p-5"
       aria-label="Project status"
     >
       <header className="flex flex-wrap items-center justify-between gap-3">

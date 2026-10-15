@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils"
  * What Jarvis is saying, shown as it is said: each sentence appears when its voice starts, and the word being spoken is lit
  * up as the audio plays. Sentences not yet spoken are not on screen at all.
  */
-export function SpokenText({ pieces, live }: { pieces: string[]; live: boolean }) {
+export function SpokenText({ pieces, live, compact = false }: { pieces: string[]; live: boolean; compact?: boolean }) {
   const last = pieces.length - 1
   const words = useMemo(() => wordsOf(pieces[last] ?? ""), [pieces, last])
   const [word, setWord] = useState(0)
@@ -33,7 +33,7 @@ export function SpokenText({ pieces, live }: { pieces: string[]; live: boolean }
   useEffect(() => { tail.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }) }, [last])
 
   return (
-    <p className="max-w-3xl text-center text-lg leading-relaxed font-light sm:text-xl" aria-live="off">
+    <p className={cn("max-w-3xl leading-relaxed font-light", compact ? "text-left text-base sm:text-lg" : "text-center text-lg sm:text-xl")} aria-live="off">
       {pieces.map((text, i) => {
         const active = live && i === last
         return (

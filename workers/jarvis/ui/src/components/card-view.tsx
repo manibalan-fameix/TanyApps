@@ -18,9 +18,9 @@ export function CardView({ groups, highlight, wall }: { groups: Group[]; highlig
   if (!groups.length) return null
   let index = 0
   return (
-    <div ref={root} className="w-full max-w-6xl" aria-live="polite">
+    <div ref={root} className="w-full" aria-live="polite">
       <AnimatePresence mode="popLayout">
-        <div className={wall ? "grid gap-5 md:grid-cols-2 xl:grid-cols-3" : "grid gap-5"}>
+        <div className={wall ? "grid gap-5 @xl:grid-cols-2 @4xl:grid-cols-3" : "grid gap-5"}>
           {groups.map((group, g) => (
             <motion.section key={group.label || `g${g}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col gap-3">
               {group.label && (
