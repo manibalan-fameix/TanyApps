@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import worker from "../workers/jarvis/index.mjs"
 import { briefingFacts, cleanCallMe, hearEvents, personaRules, showEvents } from "../scripts/jarvis/lib.mjs"
+import { annotate } from "../workers/jarvis/ui/src/lib/entities"
 import { wordAt, wordsOf } from "../workers/jarvis/ui/src/lib/karaoke"
 import { bandRatio, judge, level, nextBaseline, variation } from "../workers/jarvis/ui/src/lib/vad"
 import { detectAlerts, intentView, mentioned, parseShow, groupsFor, statusLine } from "../workers/jarvis/ui/src/lib/cards"
@@ -449,5 +450,61 @@ describe("following the voice word by word", () => {
   it("copes with empty text", () => {
     expect(wordsOf("   ")).toEqual([])
     expect(wordAt([], 0.5)).toBe(0)
+  })
+})
+
+describe("picking out the important words", () => {
+  const ctx = { team: ["Gokul", "Pavi", "Mala", "Bala", "Vishnu"], titles: ["Create Tany Brand Messaging Guide", "Enable Razorpay Route for Marketplace Payments", "Save changes and set initial baseline tag"] }
+  const tagged = (sentence: string) => {
+    const raw = sentence.split(/\s+/)
+    return Object.fromEntries(annotate(sentence, ctx).map((k, i) => [raw[i], k]).filter(([, k]) => k)) as Record<string, string>
+  }
+
+  it("marks task numbers, teammates and status words", () => {
+    const t = tagged("Task 39 is overdue under Gokul, and task 25 is blocked for Bala.")
+    expect(t).toMatchObject({ Task: "task", "39": "task", overdue: "bad", "Gokul,": "person", task: "task", "25": "task", blocked: "bad", "Bala.": "person" })
+    expect(t.is).toBeUndefined()
+    expect(t.under).toBeUndefined()
+  })
+
+  it("marks every number in a list of tasks", () => {
+    const t = tagged("Tasks 2, 7 and 21 are due soon.")
+    expect(t).toMatchObject({ Tasks: "task", "2,": "task", "7": "task", "21": "task" })
+    expect(t.and).toBeUndefined()
+  })
+
+  it("does not take a count of tasks for a task number", () => {
+    const t = tagged("We have 25 tasks 78 points of work, and task 12 is next.")
+    expect(t["25"]).toBe("figure")
+    expect(t.tasks).toBe("figure")
+    expect(t["78"]).toBe("figure")
+    expect(t["12"]).toBe("task")
+  })
+
+  it("marks dates in their different shapes", () => {
+    expect(tagged("Today is Thursday 15 October, day 4 of 10.")).toMatchObject({ Today: "date", Thursday: "date", "15": "date", "October,": "date" })
+    expect(tagged("It is due on October 20 or tomorrow.")).toMatchObject({ October: "date", "20": "date", "tomorrow.": "date" })
+  })
+
+  it("marks the health verdicts", () => {
+    expect(tagged("The sprint is off track.")).toMatchObject({ off: "bad", "track.": "bad" })
+    expect(tagged("We are on track.")).toMatchObject({ on: "good", "track.": "good" })
+    expect(tagged("It is at risk.")).toMatchObject({ at: "warn", "risk.": "warn" })
+  })
+
+  it("marks figures with their unit, but not a pronoun", () => {
+    expect(tagged("Zero of 25 tasks done against an expected 40 percent, with 78 points.")).toMatchObject({ Zero: "figure", "25": "figure", tasks: "figure", "40": "figure", "percent,": "figure", "78": "figure", "points.": "figure" })
+    expect(tagged("Pick one that you like.").one).toBeUndefined()
+  })
+
+  it("recognises a task's name even when only part of its title is said", () => {
+    const t = tagged("Pavi has task 65 for brand messaging and Bala owns the Razorpay Route task.")
+    expect(t).toMatchObject({ brand: "name", messaging: "name", Razorpay: "name", Route: "name" })
+    expect(t.for).toBeUndefined()
+    expect(tagged("The baseline is fine.").baseline).toBeUndefined() // a single word is not a name
+  })
+
+  it("leaves ordinary sentences alone", () => {
+    expect(Object.keys(tagged("Might I suggest we have a look at that first?"))).toEqual([])
   })
 })

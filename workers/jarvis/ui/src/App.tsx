@@ -272,6 +272,7 @@ export default function Jarvis() {
   const [highlight, setHighlight] = useState<number[]>([])
   const shownRef = useRef(false) // did the model ask for specific cards this turn?
   const groups = useMemo(() => groupsFor(view, board), [view, board])
+  const boardTitles = useMemo(() => board?.items.map((i) => i.title) ?? [], [board])
   const [theme, setThemeState] = useState<"holo" | "clean">(() => { try { return localStorage.getItem("theme") === "clean" ? "clean" : "holo" } catch { return "holo" } })
   const [briefing, setBriefingState] = useState<boolean>(() => { try { return localStorage.getItem("briefing") !== "off" } catch { return true } })
   const [persona, setPersonaState] = useState<Persona>(getPersona())
@@ -974,7 +975,7 @@ export default function Jarvis() {
             )}
           >
             {showAnswer && (
-              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} spoken={spoken} live={connectionState === "connected" ? localTranscript || (userSpeaking ? "…" : "") : ""} top={view.kind === "briefing" && board?.facts ? <BriefingPanel facts={board.facts} /> : null} cards={groups.length ? <CardView groups={groups} highlight={highlight} wall={view.kind === "sprint" || view.kind === "briefing"} /> : null} />
+              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} spoken={spoken} team={board?.team ?? []} titles={boardTitles} live={connectionState === "connected" ? localTranscript || (userSpeaking ? "…" : "") : ""} top={view.kind === "briefing" && board?.facts ? <BriefingPanel facts={board.facts} /> : null} cards={groups.length ? <CardView groups={groups} highlight={highlight} wall={view.kind === "sprint" || view.kind === "briefing"} /> : null} />
             )}
           </div>
 
@@ -1292,6 +1293,8 @@ const JarvisAnswer = React.memo(
     cards,
     top,
     spoken,
+    team,
+    titles,
   }: {
     question: string
     reply: string
@@ -1301,6 +1304,8 @@ const JarvisAnswer = React.memo(
     cards: React.ReactNode
     top?: React.ReactNode
     spoken: string[]
+    team: string[]
+    titles: string[]
   }) => {
     // Cards on screen: split the screen. Cards get about two thirds, the transcript the rest (stacked on a phone). Both panes
     // scroll with the wheel, touch or keys, with the scroll bars hidden. Without cards the transcript stays centred, as before.
@@ -1321,7 +1326,7 @@ const JarvisAnswer = React.memo(
             {phase === "thinking" && !spoken.length && !reply ? (
               <ShimmeringText text="Thinking..." className="text-2xl font-light tracking-wide whitespace-nowrap" />
             ) : spoken.length ? (
-              <SpokenText pieces={spoken} live={phase === "speaking"} compact={split} />
+              <SpokenText pieces={spoken} live={phase === "speaking"} compact={split} team={team} titles={titles} />
             ) : reply && phase === "listening" ? (
               <p className={cn("text-foreground/90 leading-relaxed font-light", split ? "text-base sm:text-lg 2xl:text-xl" : "max-w-3xl text-lg sm:text-xl")}>{reply}</p>
             ) : null}
