@@ -3,7 +3,10 @@
 # Needs CLOUDFLARE_API_TOKEN (Zone > DNS: Edit) and CLOUDFLARE_ZONE_ID in .env.local. Safe to re-run.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-set -a; . ./.env.local; set +a
+# Read only the two keys we need. Sourcing the whole file breaks on any stray non-KEY=value line.
+getenv() { grep -E "^$1=" .env.local | tail -1 | cut -d= -f2- | sed -E "s/^[\"']|[\"']$//g"; }
+CLOUDFLARE_API_TOKEN="$(getenv CLOUDFLARE_API_TOKEN)"
+CLOUDFLARE_ZONE_ID="$(getenv CLOUDFLARE_ZONE_ID)"
 : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN in .env.local}"
 : "${CLOUDFLARE_ZONE_ID:?set CLOUDFLARE_ZONE_ID in .env.local}"
 api="https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records"

@@ -346,7 +346,7 @@ function slackRules(pending, draftTask) {
     "Say in one sentence who it goes to and what it says, then ask 'Shall I send it?'. Ask a question first only if you cannot tell who it is for or what to say. You never send anything yourself and must not say it is sent.",
     pending
       ? `A message is waiting (CURRENT MESSAGE in the request). If the user asks for a change, say what you changed and output the complete updated @@SLACK line. If they clearly agree (yes, send it, go ahead), say you are sending it and end with @@ACTION {"type":"confirm"}. If they say no or cancel, end with @@ACTION {"type":"cancel"}. Never confirm unless they clearly agreed.`
-      : draftTask ? "" : "There is no message yet, so never output @@ACTION.",
+      : `${draftTask ? "" : "There is no message yet, so never output @@ACTION. "}If there is no message waiting and the user says yes or send it, do not say you cannot send Slack messages: say there is nothing waiting to send, and ask who it is for and what to say.`,
   ].join(" ")
 }
 

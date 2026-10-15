@@ -54,11 +54,16 @@ describe("billingState: cancel and payment problems", () => {
 import { effectivePlanKey } from "../lib/billing/state"
 
 describe("effectivePlanKey", () => {
-  it("keeps today's plan until the period paid for ends, then switches", () => {
+  it("applies an upgrade at once, even one saved as pending", () => {
     const d = { plan: "starter", nextPlan: "pro", nextPlanStartsAt: days(10) }
-    expect(effectivePlanKey(d, now)).toBe("starter")
-    expect(effectivePlanKey(d, days(10))).toBe("pro")
+    expect(effectivePlanKey(d, now)).toBe("pro")
     expect(effectivePlanKey({ plan: "starter" }, now)).toBe("starter")
+  })
+
+  it("keeps today's plan after a downgrade until the period paid for ends, then switches", () => {
+    const d = { plan: "pro", nextPlan: "starter", nextPlanStartsAt: days(10) }
+    expect(effectivePlanKey(d, now)).toBe("pro")
+    expect(effectivePlanKey(d, days(10))).toBe("starter")
   })
 })
 
