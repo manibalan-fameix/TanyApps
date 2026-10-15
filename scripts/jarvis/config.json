@@ -5,10 +5,47 @@
   "timezone": "Asia/Kolkata",
   "year": 2026,
   "sprints": {
-    "Sprint 1": { "start": "2026-10-12", "end": "2026-10-23" },
-    "Sprint 2": { "start": "2026-10-26", "end": "2026-11-06" },
-    "Sprint 3": { "start": "2026-11-09", "end": "2026-11-20" }
+    "Sprint 1": {
+      "start": "2026-10-12",
+      "end": "2026-10-23"
+    },
+    "Sprint 2": {
+      "start": "2026-10-26",
+      "end": "2026-11-06"
+    },
+    "Sprint 3": {
+      "start": "2026-11-09",
+      "end": "2026-11-20"
+    }
   },
-  "team": ["Gokul", "Pavi", "Mala", "Bala", "Vishnu"],
-  "staleDays": 3
+  "team": [
+    "Gokul",
+    "Pavi",
+    "Mala",
+    "Bala",
+    "Vishnu"
+  ],
+  "staleDays": 3,
+  "github": {
+    "Gokul": "gokulfameix-design",
+    "Pavi": "pavithrafameix-afk",
+    "Mala": "Malamanibalan",
+    "Bala": "manibalan-fameix",
+    "Vishnu": null
+  },
+  "epics": {
+    "E1": "Onboarding",
+    "E2": "Inventory",
+    "E3": "Public site",
+    "E4": "Leads",
+    "E5": "Payments",
+    "E6": "Billing",
+    "E7": "Branding",
+    "E8": "Dashboard",
+    "E9": "Platform",
+    "E10": "TanyEats",
+    "E11": "Sales",
+    "E12": "Marketing"
+  },
+  "dailyCreateLimit": 15
 }

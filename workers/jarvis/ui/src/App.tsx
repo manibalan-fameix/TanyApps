@@ -11,12 +11,14 @@ import { Button } from "@/components/ui/button"
 import { ShimmeringText } from "@/components/ui/shimmering-text"
 
 import { LanguageSelector } from "@/components/language-selector"
-import { cleanText, createSpeaker, duck, isPaused, pauseAudio, resumeAudio, greetingParts, hearStream, prefetchGreeting, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage, loadCards, askStream, LISTENING, getListening, setListening, type Listening, PERSONAS, getPersona, setPersona, getCallMe, setCallMe, type Persona, type BoardData, type Speaker, type Turn } from "@/lib/jarvis"
+import { cleanText, createSpeaker, duck, isPaused, pauseAudio, resumeAudio, greetingParts, hearStream, prefetchGreeting, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage, loadCards, askStream, LISTENING, getListening, setListening, type Listening, createTaskApi, getCreate, setCreate, type Draft, PERSONAS, getPersona, setPersona, getCallMe, setCallMe, type Persona, type BoardData, type Speaker, type Turn } from "@/lib/jarvis"
 import { createListener, type Listener } from "@/lib/mic"
 import { Pause, Play } from "lucide-react"
 import { CardView } from "@/components/card-view"
 import { BriefingPanel } from "@/components/briefing-panel"
 import { SpokenText } from "@/components/spoken-text"
+import { DraftPanel } from "@/components/draft-panel"
+import { isNo, isYes } from "@/lib/format"
 import { detectAlerts, groupsFor, intentView, mentioned, parseShow, statusLine, type View } from "@/lib/cards"
 
 interface RecordingState {
@@ -286,6 +288,8 @@ export default function Jarvis() {
 
   // Cards: the board, what Jarvis asked to show, and which card it is talking about right now.
   const [board, setBoard] = useState<BoardData | null>(null)
+  const canCreateRef = useRef(false)
+  useEffect(() => { canCreateRef.current = Boolean(board?.canCreate) }, [board])
   const [view, setView] = useState<View>({ kind: "none" })
   const [highlight, setHighlight] = useState<number[]>([])
   const [focusPerson, setFocusPerson] = useState<string | null>(null)
@@ -301,6 +305,18 @@ export default function Jarvis() {
   // Pause: freezes the voice, the highlight and the listening exactly where they are. Resume carries on from there.
   const [paused, setPausedState] = useState(false)
   const pausedRef = useRef(false)
+  // Creating tasks by voice: Jarvis drafts, you confirm (button or "yes"), the server creates.
+  const [createOn, setCreateOn] = useState(getCreate())
+  const createOnRef = useRef(createOn)
+  useEffect(() => { createOnRef.current = createOn }, [createOn])
+  const [draft, setDraftState] = useState<Draft | null>(null)
+  const draftRef = useRef<Draft | null>(null)
+  const setDraft = useCallback((d: Draft | null) => { draftRef.current = d; setDraftState(d) }, [])
+  const [draftStatus, setDraftStatus] = useState<"idle" | "creating" | "error">("idle")
+  const draftStatusRef = useRef<"idle" | "creating" | "error">("idle")
+  useEffect(() => { draftStatusRef.current = draftStatus }, [draftStatus])
+  const [draftError, setDraftError] = useState("")
+  const submitRef = useRef<() => void>(() => {})
   const [persona, setPersonaState] = useState<Persona>(getPersona())
   const [callMe, setCallMeState] = useState(getCallMe())
   const lastAlertRef = useRef(0)
@@ -602,6 +618,7 @@ export default function Jarvis() {
 
     void (async () => {
       try {
+        let acted = false
         await hearStream(wav, lang, historyRef.current, {
           onHeard: (heard) => {
             if (connectionStateRef.current !== "connected" || mine < confirmedRef.current) { controller.abort(); return }
@@ -627,7 +644,20 @@ export default function Jarvis() {
           },
           onNoSpeech: () => { duck(false); setLocalTranscript("") },
           onShow: (raw) => { if (turnLive()) { shownRef.current = true; setView(pick(raw)) } },
-        }, controller.signal, undefined, { wake: listeningRef.current === "wake", awake: Date.now() <= awakeUntilRef.current })
+          onDraft: (d) => { if (draftStatusRef.current !== "creating") { setDraft(d); setDraftStatus("idle"); setDraftError("") } },
+          onDraftError: (message) => { if (turnLive()) setVoiceNote(message) },
+          // A confirmation only counts if the words that were actually said are a clear yes (or no): the model alone cannot create a task.
+          onAction: (action) => {
+            acted = true
+            if (action === "confirm" && draftRef.current && isYes(heardText) && !isNo(heardText)) submitRef.current()
+            else if (action === "cancel" && draftRef.current && isNo(heardText)) { setDraft(null); setDraftStatus("idle"); setDraftError("") }
+          },
+        }, controller.signal, undefined, { wake: listeningRef.current === "wake", awake: Date.now() <= awakeUntilRef.current }, { enabled: createOnRef.current && canCreateRef.current, draft: draftRef.current })
+        // The model sometimes forgets its confirm/cancel line: a short, clear yes or no to a waiting draft is enough on its own.
+        if (!acted && draftRef.current && turnLive() && heardText.trim().split(/\s+/).length <= 6) {
+          if (isYes(heardText) && !isNo(heardText)) submitRef.current()
+          else if (isNo(heardText) && !isYes(heardText)) { setDraft(null); setDraftStatus("idle"); setDraftError("") }
+        }
         if (st.speaker && turnLive()) {
           st.speaker.end()
           if (!shownRef.current) {
@@ -694,6 +724,46 @@ export default function Jarvis() {
     speaker.end()
     void speaker.finished.then(() => { if (turn === turnRef.current) { setHighlight([]); setPhase("listening"); touch() } })
     return true
+  }
+
+  /** Says one line on its own, once Jarvis has finished whatever it was saying. */
+  const sayLine = useCallback(async (text: string) => {
+    for (let waited = 0; phaseRef.current !== "listening" && waited < 9000; waited += 250) await new Promise((r) => setTimeout(r, 250))
+    if (connectionStateRef.current !== "connected") return
+    const turn = ++turnRef.current
+    setQuestion("")
+    questionRef.current = ""
+    setReply(text)
+    replyRef.current = text
+    setSpoken([]); spokenCount.current = 0
+    setPhase("speaking")
+    const speaker = createSpeaker(voice, langRef.current, (n) => { if (turn === turnRef.current) setVoiceNote(n) }, (t, i) => { if (turn === turnRef.current) showPiece(t, i) })
+    speakerRef.current = speaker
+    speaker.feed(text)
+    speaker.end()
+    void speaker.finished.then(() => { if (turn === turnRef.current) { setPhase("listening"); touch() } })
+  }, [showPiece, setPhase, touch, voice])
+
+  /** Creates the drafted task. Called by the Create button and by a spoken "yes". */
+  submitRef.current = () => {
+    const d = draftRef.current
+    if (!d || draftStatusRef.current === "creating") return
+    setDraftStatus("creating")
+    setDraftError("")
+    void createTaskApi(d)
+      .then((made) => {
+        setDraft(null)
+        setDraftStatus("idle")
+        setBoard((prev) => (prev ? { ...prev, items: prev.items.some((i) => i.n === made.number) ? prev.items : [...prev.items, made.card] } : prev))
+        setView({ kind: "focus", ids: [made.number] })
+        void sayLine(made.line)
+        setTimeout(() => { void loadCards().then(setBoard).catch(() => {}) }, 2500) // pick up what GitHub now holds
+      })
+      .catch((e: Error) => {
+        setDraftStatus("error")
+        setDraftError(e.message)
+        void sayLine(`I'm afraid that did not work, ${callMeRef.current}. ${e.message}`)
+      })
   }
 
   /**
@@ -786,6 +856,7 @@ export default function Jarvis() {
       stopAudio()
       pausedRef.current = false
       setPausedState(false)
+      setDraft(null); setDraftStatus("idle"); setDraftError("")
       resumeAudio() // a session ended while paused must not leave the next one silent
       listenerRef.current?.stop()
       listenerRef.current = null
@@ -1028,7 +1099,7 @@ export default function Jarvis() {
             )}
           >
             {showAnswer && (
-              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} spoken={spoken} team={board?.team ?? []} titles={boardTitles} onFocus={onFocus} live={connectionState === "connected" ? localTranscript || (userSpeaking ? "…" : "") : ""} top={view.kind === "briefing" && board?.facts ? <BriefingPanel facts={board.facts} /> : null} cards={groups.length ? <CardView groups={groups} highlight={highlight} focusPerson={focusPerson} wall={view.kind === "sprint" || view.kind === "briefing"} /> : null} />
+              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} spoken={spoken} team={board?.team ?? []} titles={boardTitles} onFocus={onFocus} live={connectionState === "connected" ? localTranscript || (userSpeaking ? "…" : "") : ""} top={draft || (view.kind === "briefing" && board?.facts) ? <>{draft && <DraftPanel draft={draft} status={draftStatus} error={draftError} onCreate={() => submitRef.current()} onCancel={() => { setDraft(null); setDraftStatus("idle"); setDraftError("") }} />}{view.kind === "briefing" && board?.facts && <BriefingPanel facts={board.facts} />}</> : null} cards={groups.length ? <CardView groups={groups} highlight={highlight} focusPerson={focusPerson} wall={view.kind === "sprint" || view.kind === "briefing"} /> : null} />
             )}
           </div>
 
@@ -1167,6 +1238,16 @@ export default function Jarvis() {
                     {LISTENING.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
                   </select>
                 </div>
+
+                <label className="flex w-full cursor-pointer items-center justify-between gap-3 text-sm">
+                  <span className="text-foreground/70 font-medium">Let me create tasks by voice</span>
+                  <input
+                    type="checkbox"
+                    checked={createOn}
+                    onChange={(e) => { setCreateOn(e.target.checked); setCreate(e.target.checked) }}
+                    className="size-4 accent-cyan-500"
+                  />
+                </label>
 
                 <label className="flex w-full cursor-pointer items-center justify-between gap-3 text-sm">
                   <span className="text-foreground/70 font-medium">Briefing when I start</span>

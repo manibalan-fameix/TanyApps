@@ -1,6 +1,8 @@
 // Voice assistant for the Tany project board: serves a small page (microphone + speaker in the browser) and /api/ask.
 // The browser does the listening and speaking; this Worker reads the board from GitHub and asks Gemini for the answer.
-import { PERSONAS, cleanCallMe, askGemini, cfg, currentSprint, loadBoard, overdue, speakable, sprintReport, streamGemini, streamHear, hearEvents, showEvents, pingGemini, briefingFacts } from "../../scripts/jarvis/lib.mjs"
+import { createTask, createdToday } from "./github.mjs"
+import { validateDraft, doneLine } from "../../scripts/jarvis/tasks.mjs"
+import { PERSONAS, cleanCallMe, recoverDraft, writeDetails, withoutActions, cardFromBody, askGemini, cfg, currentSprint, loadBoard, overdue, speakable, sprintReport, streamGemini, streamHear, hearEvents, showEvents, pingGemini, briefingFacts } from "../../scripts/jarvis/lib.mjs"
 import cards from "../../scripts/jarvis/task-cards.json" with { type: "json" }
 import { speakStream } from "./tts.mjs"
 
@@ -44,7 +46,7 @@ async function board(env, ctx) {
 let lastPing = 0
 /** Adds the short title, one-line summary and three steps written for each task (scripts/jarvis/make-cards.mjs). */
 function withCard(item) {
-  const c = cards[item.number]
+  const c = cards[item.number] ?? item.bodyCard // tasks made by Jarvis carry their own card
   return c ? { ...item, short: c.title, summary: c.summary, steps: c.steps } : item
 }
 
@@ -56,6 +58,42 @@ const forPage = (i) => ({
 })
 /** Personality settings sent by the page, checked so they can only be one of the known values. */
 const personaOf = (v) => (PERSONAS.includes(v) ? v : "classic")
+
+/** The draft the page sends back with each request, so the model can change it or confirm it. Anything odd means no draft. */
+function readDraft(header) {
+  if (!header || header.length > 4000) return null
+  try {
+    const v = validateDraft(JSON.parse(decodeURIComponent(header)), new Date())
+    return v.ok ? v.draft : null
+  } catch { return null }
+}
+
+/** Drafts from the model are checked and tidied here, so the page only ever sees a draft the server would accept. */
+async function* checkedDrafts(events, enabled, recover) {
+  let heard = "", said = "", sawDraft = false, sawAction = false
+  for await (const e of events) {
+    if (e.draft !== undefined) {
+      if (!enabled) continue
+      sawDraft = true
+      const v = validateDraft(e.draft, new Date())
+      yield v.ok ? { draft: v.draft } : { draftError: v.error }
+    } else if (e.action !== undefined) {
+      if (enabled && (e.action?.type === "confirm" || e.action?.type === "cancel")) { sawAction = true; yield { action: { type: e.action.type } } }
+    } else {
+      if (e.heard) heard = e.heard
+      if (e.delta) said += e.delta
+      // A model that tucks the draft inside the screen line is not a draft: drop it so recovery below can rebuild a proper one.
+      if (e.show && typeof e.show === "object" && "draft" in e.show) { const { draft: _gone, ...rest } = e.show; yield { show: { view: "none" } }; void rest; continue }
+      yield e
+    }
+  }
+  // The model asked "Shall I create it?" but forgot the draft line: ask once more so the card still appears.
+  if (enabled && recover && !sawDraft && !sawAction && heard && /\b(?:draft|prepared|confirm|finali[sz]e|create|add)\w*\b/i.test(said) && /\btask\b/i.test(said)) {
+    const v = validateDraft(await recover(heard, said), new Date())
+    if (v.ok) yield { draft: v.draft }
+    else console.error("draft recovery failed:", String(v.error).slice(0, 120))
+  }
+}
 
 const hits = new Map()
 function limited(ip) {
@@ -89,7 +127,29 @@ async function* deltas(text, items, lang, env, who) {
 }
 
 function streamAnswer(text, items, lang, env, who) {
-  return sse(showEvents(deltas(text, items, lang, env, who)))
+  return sse(withoutActions(showEvents(deltas(text, items, lang, env, who)))) // a typed or briefing request can never start a task
+}
+
+let createdInThisIsolate = 0
+
+/** Makes the task. Only reached from the page, after the user has confirmed the draft. */
+async function createRoute(body, env, ctx) {
+  if (!env.JARVIS_WRITE_TOKEN) return json({ error: "Task creation is not switched on yet." }, 503)
+  const v = validateDraft(body?.draft, new Date())
+  if (!v.ok) return json({ error: v.error }, 400)
+  try {
+    const today = await createdToday(env.JARVIS_WRITE_TOKEN)
+    if (Math.max(today, createdInThisIsolate) >= cfg.dailyCreateLimit) return json({ error: `That is ${cfg.dailyCreateLimit} tasks in a day, which is the limit. Please make it on GitHub, or try tomorrow.` }, 429)
+    const details = await writeDetails(v.draft, { key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined })
+    const made = await createTask(env.JARVIS_WRITE_TOKEN, v.draft, { details, by: cleanCallMe(body?.by) === "sir" ? "Bala" : cleanCallMe(body?.by) })
+    createdInThisIsolate++
+    await refresh(env).catch(() => {}) // so the next look at the board already has it
+    const card = { n: made.number, title: v.draft.title, full: v.draft.title, summary: v.draft.summary, steps: v.draft.steps, open: true, blocked: false, project: v.draft.project, team: v.draft.assignee ? [v.draft.assignee] : [], sprint: v.draft.sprint, priority: v.draft.priority, points: v.draft.points, epic: v.draft.epic, due: v.draft.due, updated: new Date().toISOString() }
+    return json({ ok: true, number: made.number, url: made.url, assigned: made.assigned, onBoard: made.onBoard, card, line: doneLine(cleanCallMe(body?.by), made.number, v.draft, made.assigned) })
+  } catch (e) {
+    console.error(String(e?.message ?? e).slice(0, 240))
+    return json({ error: "I could not create the task just now. Nothing was changed if this message appears." }, 502)
+  }
 }
 
 export default {
@@ -97,7 +157,7 @@ export default {
     const url = new URL(request.url)
     // The page itself (built from workers/jarvis/ui) is served from the assets binding; only /api/* reaches this code.
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request)
-    if (!["/api/ask", "/api/speak", "/api/warm", "/api/hear", "/api/board"].includes(url.pathname)) return json({ error: "Not found." }, 404)
+    if (!["/api/ask", "/api/speak", "/api/warm", "/api/hear", "/api/board", "/api/task/create"].includes(url.pathname)) return json({ error: "Not found." }, 404)
     if (request.method !== "POST") return json({ error: "Use POST." }, 405)
 
     if (!env.JARVIS_PASSPHRASE) return json({ error: "JARVIS_PASSPHRASE is not set on the server." }, 500)
@@ -117,7 +177,7 @@ export default {
 
     // Every task as a card, for the screen. Cached on the server, so this is quick.
     if (url.pathname === "/api/board") {
-      try { const sp = currentSprint(); const items = await board(env, ctx); return json({ items: items.map(forPage), sprint: { name: sp.name, end: sp.end.toISOString().slice(0, 10), daysLeft: sp.daysLeft }, team: cfg.team, facts: briefingFacts(items) }) } catch (e) { console.error(String(e?.message ?? e).slice(0, 200)); return json({ error: "I could not read the board right now." }, 502) }
+      try { const sp = currentSprint(); const items = await board(env, ctx); return json({ items: items.map(forPage), sprint: { name: sp.name, end: sp.end.toISOString().slice(0, 10), daysLeft: sp.daysLeft }, team: cfg.team, facts: briefingFacts(items), canCreate: Boolean(env.JARVIS_WRITE_TOKEN) }) } catch (e) { console.error(String(e?.message ?? e).slice(0, 200)); return json({ error: "I could not read the board right now." }, 502) }
     }
 
     // The microphone recording (a 16 kHz WAV) goes straight to Gemini, which hears the question and writes the answer.
@@ -132,8 +192,8 @@ export default {
       for (let i = 0; i < audio.length; i += 0x8000) bin += String.fromCharCode(...audio.subarray(i, i + 0x8000))
       try {
         const items = await board(env, ctx)
-        const events = hearEvents(streamHear({ mime: "audio/wav", data: btoa(bin) }, items, new Date(), { key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined, lang: request.headers.get("x-lang") === "ta" ? "ta" : "en", history, wake: request.headers.get("x-wake") === "1", awake: request.headers.get("x-awake") !== "0", persona: personaOf(request.headers.get("x-persona")), callMe: cleanCallMe(decodeURIComponent(request.headers.get("x-callme") ?? "")) }))
-        return sse(showEvents(events))
+        const events = hearEvents(streamHear({ mime: "audio/wav", data: btoa(bin) }, items, new Date(), { key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined, lang: request.headers.get("x-lang") === "ta" ? "ta" : "en", history, canCreate: Boolean(env.JARVIS_WRITE_TOKEN) && request.headers.get("x-create") === "1", createRequested: request.headers.get("x-create") === "1", draft: readDraft(request.headers.get("x-draft")), wake: request.headers.get("x-wake") === "1", awake: request.headers.get("x-awake") !== "0", persona: personaOf(request.headers.get("x-persona")), callMe: cleanCallMe(decodeURIComponent(request.headers.get("x-callme") ?? "")) }))
+        return sse(checkedDrafts(showEvents(events), Boolean(env.JARVIS_WRITE_TOKEN) && request.headers.get("x-create") === "1", (heard, said) => recoverDraft(heard, said, new Date(), { key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined })))
       } catch (e) {
         console.error(String(e?.message ?? e).slice(0, 200))
         return json({ error: "I could not read the board right now." }, 502)
@@ -142,6 +202,8 @@ export default {
 
     let body
     try { body = await request.json() } catch { return json({ error: "Send JSON." }, 400) }
+    if (url.pathname === "/api/task/create") return createRoute(body, env, ctx)
+
     const text = String(body?.text ?? "").trim().slice(0, url.pathname === "/api/speak" ? 900 : 300)
     const lang = body?.lang === "ta" ? "ta" : "en"
     if (!text) return json({ error: "Ask something." }, 400)

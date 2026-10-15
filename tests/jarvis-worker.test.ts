@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import worker from "../workers/jarvis/index.mjs"
-import { briefingFacts, cleanCallMe, hearEvents, personaRules, showEvents } from "../scripts/jarvis/lib.mjs"
+import { briefingFacts, cleanCallMe, hearEvents, parseDue, personaRules, showEvents, withoutActions } from "../scripts/jarvis/lib.mjs"
+import { cardFromBody, doneLine, issueBody, validateDraft } from "../scripts/jarvis/tasks.mjs"
 import { annotate, focusAt } from "../workers/jarvis/ui/src/lib/entities"
 import { greetingParts } from "../workers/jarvis/ui/src/lib/jarvis"
 import { MAX_GAIN, newLevel, normalise, soften, TARGET_RMS } from "../workers/jarvis/ui/src/lib/level"
@@ -325,7 +326,8 @@ describe("telling you apart from the room", () => {
   it("rejects sounds that are not a voice", () => {
     expect(judge({ ...speech, voicedMs: 200 }, null)).toEqual({ ok: false, reason: "too short" }) // a click or cough
     expect(judge({ ...speech, levels: [0.01, 0.012, 0.011, 0.01] }, null)).toEqual({ ok: false, reason: "too quiet" })
-    expect(judge({ ...speech, band: 0.3 }, null)).toEqual({ ok: false, reason: "not a voice" }) // rumble, hiss, a slammed door
+    expect(judge({ ...speech, band: 0.12 }, null)).toEqual({ ok: false, reason: "not a voice" }) // a hum or rumble
+    expect(judge({ ...speech, band: 0.4 }, null).ok).toBe(true) // a long sentence with many "s" sounds still counts
     expect(judge({ ...speech, levels: [0.08, 0.081, 0.079, 0.08, 0.08, 0.081] }, null)).toEqual({ ok: false, reason: "steady noise" }) // a fan or hum
   })
 
@@ -348,7 +350,7 @@ describe("telling you apart from the room", () => {
     const bins = 512, db = new Float32Array(bins).fill(-100)
     for (let i = 0; i < bins; i++) { const hz = (i * 24000) / bins; if (hz > 400 && hz < 3000) db[i] = -30 }
     expect(bandRatio(db, 48000)).toBeGreaterThan(0.9)
-    expect(bandRatio(new Float32Array(bins).fill(-40), 48000)).toBeLessThan(0.5) // flat noise
+    expect(bandRatio(new Float32Array(bins).fill(-40), 48000)).toBeLessThan(0.5) // flat noise (hiss is told apart by being steady, not by this)
   })
 
   it("tells the model to ignore the room, and to wait for its name only on standby", async () => {
@@ -655,5 +657,148 @@ describe("one sentence to a line", () => {
     expect(sentenceRanges(wordsOf("Good morning, sir."))).toEqual([[0, 3]])
     expect(sentenceRanges(wordsOf("No full stop here"))).toEqual([[0, 4]])
     expect(sentenceRanges([])).toEqual([])
+  })
+})
+
+describe("creating a task by voice", () => {
+  const today = new Date("2026-10-16T00:00:00Z")
+  const good = { title: "Add WhatsApp button to showroom", summary: "Put a WhatsApp button on the showroom page so buyers can message the dealer.", steps: ["Design the button", "Build it", "Test on a phone"], assignee: "pavi", priority: "High", points: 3, due: "2026-10-23", sprint: "Sprint 1", project: "TanyCars", epic: "E3" }
+
+  it("accepts a good draft and tidies it", () => {
+    const v = validateDraft(good, today)
+    expect(v.ok).toBe(true)
+    expect(v.draft).toMatchObject({ assignee: "Pavi", priority: "High", points: 3, due: "2026-10-23", sprint: "Sprint 1", project: "TanyCars", epic: "E3" })
+  })
+
+  it("forces every field into a known value, and refuses what it cannot fix", () => {
+    const v = validateDraft({ ...good, priority: "Critical!!", points: 4, project: "Evil", epic: "E99", sprint: "Sprint 9", due: "not a date", assignee: null }, today)
+    expect(v.draft).toMatchObject({ priority: "Normal", points: 3, project: "TanyCars", epic: "E2", sprint: "Backlog", due: null, assignee: null })
+    expect(validateDraft({ ...good, assignee: "Mallory" }, today)).toEqual({ ok: false, error: "Mallory is not on the team." })
+    expect(validateDraft({ ...good, title: "  " }, today).ok).toBe(false)
+    expect(validateDraft({ ...good, steps: [] }, today).ok).toBe(false)
+    expect(validateDraft(null, today).ok).toBe(false)
+    expect(validateDraft({ ...good, due: "2020-01-01" }, today).draft?.due).toBeNull() // a date in the past is dropped, not trusted
+  })
+
+  it("writes the issue in the same shape as the other tasks, with its card inside", () => {
+    const body = issueBody(validateDraft(good, today).draft, { by: "Bala", when: today })
+    expect(body).toContain("**Project:** TanyCars · **Owner:** Bala")
+    expect(body).toContain("**Assignee:** Pavi · **Points:** 3 · **Priority:** High · **Sprint:** Sprint 1 · **Due:** 23 Oct")
+    expect(parseDue(body)?.toISOString().slice(0, 10)).toBe("2026-10-23") // the board reads the due date from this line
+    expect(cardFromBody(body)).toEqual({ title: good.title, summary: good.summary, steps: good.steps })
+    expect(body).toContain("Created by Jarvis")
+    expect(cardFromBody("no card here")).toBeNull()
+  })
+
+  it("says what happened, with or without the assignee", () => {
+    const d = validateDraft(good, today).draft
+    expect(doneLine("sir", 79, d, true)).toBe("Done, sir. Task 79 has been created. It is with Pavi.")
+    expect(doneLine("sir", 79, d, false)).toContain("could not assign them yet")
+    expect(doneLine("sir", 79, { ...d, assignee: null }, false)).toContain("unassigned")
+  })
+
+  it("splits an answer's closing marker lines into show, draft and action, and none of it is spoken", async () => {
+    async function* gen() { yield { delta: "Shall I create it?\n@@TASK {\"title\":\"A task\"}\n@@ACTION {\"type\":\"confirm\"}\n@@SHOW {\"view\":\"none\"}" } }
+    const out: Record<string, unknown>[] = []
+    for await (const e of showEvents(gen())) out.push(e)
+    expect(out.map((e) => Object.keys(e)[0])).toEqual(["delta", "draft", "action", "show"])
+    expect(out[0]).toEqual({ delta: "Shall I create it?" })
+    const kept: Record<string, unknown>[] = []
+    async function* again() { for (const e of out) yield e }
+    for await (const e of withoutActions(again())) kept.push(e)
+    expect(kept.map((e) => Object.keys(e)[0])).toEqual(["delta", "show"]) // typed and briefing requests can never start a task
+  })
+})
+
+describe("the create route", () => {
+  const writeEnv = { ...env, JARVIS_WRITE_TOKEN: "ghp_write" }
+  const draft = { title: "Add WhatsApp button", summary: "Put a WhatsApp button on the showroom page.", steps: ["Design", "Build", "Test"], assignee: "Pavi", priority: "High", points: 3, due: "2099-10-23", sprint: "Sprint 1", project: "TanyCars", epic: "E3" }
+  const post = (body: unknown, e = writeEnv) => worker.fetch(new Request("https://x/api/task/create", { method: "POST", headers: { authorization: "Bearer correct-horse-battery", "content-type": "application/json" }, body: JSON.stringify(body) }), e)
+
+  function github({ assignOk = true, existing = 0 } = {}) {
+    const calls: { method: string; url: string; body?: any }[] = []
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit = {}) => {
+      const u = String(url), method = init.method ?? "GET"
+      const body = init.body && typeof init.body === "string" ? JSON.parse(init.body) : undefined
+      calls.push({ method, url: u, body })
+      if (u.includes("generativelanguage") || u.includes("aiplatform")) return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "## Why this matters\nBuyers message on WhatsApp.\n\n## Goal\nA button." }] } }] }))
+      if (u.includes("/issues?labels=created-by-jarvis")) return new Response(JSON.stringify(Array.from({ length: existing }, (_, i) => ({ number: i }))))
+      if (u.endsWith("/labels")) return new Response("{}", { status: 422 })
+      if (u.endsWith("/issues") && method === "POST") {
+        if (body.assignees && !assignOk) return new Response(JSON.stringify({ message: "Validation Failed" }), { status: 422 })
+        return new Response(JSON.stringify({ number: 79, html_url: "https://github.com/x/y/issues/79", node_id: "I_79" }), { status: 201 })
+      }
+      if (u.includes("api.github.com/graphql")) {
+        const q = String(body.query)
+        if (q.includes("projectV2(number")) return new Response(JSON.stringify({ data: { user: { projectV2: { id: "P1", fields: { nodes: [{ id: "F1", name: "Points" }, { id: "F2", name: "Priority", options: [{ id: "O1", name: "High" }] }, { id: "F3", name: "Epic", options: [{ id: "O2", name: "E3 Public site" }] }, { id: "F4", name: "Sprint", options: [{ id: "O3", name: "Sprint 1" }] }, { id: "F5", name: "Owner", options: [{ id: "O4", name: "Bala" }] }, { id: "F6", name: "Team" }, { id: "F7", name: "Summary" }] } } } } }))
+        if (q.includes("addProjectV2ItemById")) return new Response(JSON.stringify({ data: { addProjectV2ItemById: { item: { id: "ITEM1" } } } }))
+        if (q.includes("updateProjectV2ItemFieldValue")) return new Response(JSON.stringify({ data: {} }))
+        return new Response(JSON.stringify(board)) // the board itself, for the refresh afterwards
+      }
+      return new Response("{}", { status: 404 })
+    }))
+    return calls
+  }
+
+  it("creates the issue, assigns Pavi, puts it on the board with every field, and answers with the card", async () => {
+    vi.resetModules(); const fresh = (await import("../workers/jarvis/index.mjs")).default
+    const calls = github()
+    const res = await fresh.fetch(new Request("https://x/api/task/create", { method: "POST", headers: { authorization: "Bearer correct-horse-battery", "content-type": "application/json" }, body: JSON.stringify({ draft, by: "sir" }) }), writeEnv)
+    const json = await res.json() as any
+    expect(res.status).toBe(200)
+    expect(json).toMatchObject({ ok: true, number: 79, assigned: true, onBoard: true, card: { n: 79, team: ["Pavi"], priority: "High", project: "TanyCars" } })
+    expect(json.line).toBe("Done, sir. Task 79 has been created. It is with Pavi.")
+    expect(calls.find((c) => c.method === "POST" && c.url.endsWith("/issues"))!.body.body).toContain("voice request by Bala")
+    const issue = calls.find((c) => c.method === "POST" && c.url.endsWith("/issues"))!
+    expect(issue.body.assignees).toEqual(["pavithrafameix-afk"])
+    expect(issue.body.labels).toEqual(["TanyCars", "E3", "created-by-jarvis"])
+    expect(issue.body.body).toContain("## Why this matters") // the longer write-up from the model
+    expect(issue.body.body).toContain("jarvis-card")
+    const mutation = calls.find((c) => String(c.body?.query ?? "").includes("updateProjectV2ItemFieldValue"))!
+    const q = String(mutation.body.query)
+    expect(q.match(/updateProjectV2ItemFieldValue/g)).toHaveLength(7) // points, priority, epic, sprint, owner, team, summary
+    expect(Object.values(mutation.body.variables)).toEqual(expect.arrayContaining(["O1", "O2", "O3", "O4", "Pavi", 3]))
+  })
+
+  it("still creates the task when GitHub will not assign the person yet", async () => {
+    vi.resetModules(); const fresh = (await import("../workers/jarvis/index.mjs")).default
+    const calls = github({ assignOk: false })
+    const res = await fresh.fetch(new Request("https://x/api/task/create", { method: "POST", headers: { authorization: "Bearer correct-horse-battery", "content-type": "application/json" }, body: JSON.stringify({ draft }) }), writeEnv)
+    const json = await res.json() as any
+    expect(json).toMatchObject({ ok: true, assigned: false, onBoard: true })
+    expect(json.line).toContain("could not assign them yet")
+    expect(calls.filter((c) => c.method === "POST" && c.url.endsWith("/issues"))).toHaveLength(2) // retried without the assignee
+  })
+
+  it("refuses without the write token, with a bad draft, after the daily limit, and without the passphrase", async () => {
+    vi.resetModules(); const fresh = (await import("../workers/jarvis/index.mjs")).default
+    github()
+    const send = (body: unknown, e: any = writeEnv, pass = "correct-horse-battery") => fresh.fetch(new Request("https://x/api/task/create", { method: "POST", headers: { authorization: `Bearer ${pass}`, "content-type": "application/json" }, body: JSON.stringify(body) }), e)
+    expect((await send({ draft }, env)).status).toBe(503)
+    expect((await send({ draft: { ...draft, assignee: "Mallory" } })).status).toBe(400)
+    expect((await send({ draft }, writeEnv, "wrong")).status).toBe(401)
+    github({ existing: 15 })
+    const limited = await send({ draft })
+    expect(limited.status).toBe(429)
+  })
+
+  it("passes drafts to the page only when creation is on, checked, and ignores confirmations from a request that did not ask for it", async () => {
+    vi.resetModules(); const fresh = (await import("../workers/jarvis/index.mjs")).default
+    const reply = "Understood. Shall I create it?\n@@TASK " + JSON.stringify({ ...draft, assignee: "Pavi" }) + "\n@@ACTION {\"type\":\"confirm\"}"
+    const model = () => vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (String(url).includes("api.github.com/graphql")) return new Response(JSON.stringify(board))
+      const sse = ["Q: create a task for Pavi\n\n", reply].map((t) => `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: t }] } }] })}\n\n`).join("")
+      return new Response(sse, { headers: { "content-type": "text/event-stream" } })
+    }))
+    const hear = async (headers: Record<string, string>, e: any) => (await (await fresh.fetch(new Request("https://x/api/hear", { method: "POST", headers: { authorization: "Bearer correct-horse-battery", ...headers }, body: new Uint8Array([1, 2, 3]) }), e)).text())
+    model()
+    const on = await hear({ "x-create": "1" }, writeEnv)
+    expect(on).toContain('"draft"')
+    expect(on).toContain('"action":{"type":"confirm"}')
+    expect(on).not.toContain("@@")
+    const noToken = await hear({ "x-create": "1" }, env) // switched on in the page but not on the server
+    expect(noToken).not.toContain('"draft"'); expect(noToken).not.toContain('"action"')
+    const notAsked = await hear({}, writeEnv) // the page did not ask for task creation
+    expect(notAsked).not.toContain('"draft"')
   })
 })

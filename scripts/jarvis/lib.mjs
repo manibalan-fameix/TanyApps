@@ -32,6 +32,16 @@ const QUERY = `query($login:String!,$number:Int!,$after:String){
     } } } }
 }`
 
+/** Reads the card (short title, summary, steps) a task carries in its own text. Returns null when there is none. */
+export function cardFromBody(body) {
+  const m = /<!-- jarvis-card (\{[\s\S]*?\}) -->/.exec(String(body ?? ""))
+  if (!m) return null
+  try {
+    const c = JSON.parse(m[1])
+    return c && c.title && Array.isArray(c.steps) ? { title: String(c.title), summary: String(c.summary ?? ""), steps: c.steps.map(String).slice(0, 3) } : null
+  } catch { return null }
+}
+
 const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 }
 
 /** "**Due:** 23 Oct" in the issue body, as a UTC-midnight date (end of that day in IST is what counts). */
@@ -62,6 +72,7 @@ export async function loadBoard(token) {
         closedAt: c.closedAt ? new Date(c.closedAt) : null,
         updatedAt: new Date(c.updatedAt),
         due: parseDue(c.body),
+        bodyCard: cardFromBody(c.body),
         labels,
         blocked: labels.includes("blocked"),
         project: ["TanyCars", "TanyEats", "TanyApps"].find((p) => labels.includes(p)) ?? "",
@@ -231,7 +242,7 @@ export function personaRules(persona = "classic", callMe = "sir") {
   return [
     `Personality: you are Jarvis, a calm, loyal and highly capable assistant in the manner of a British butler. Address the user as "${cleanCallMe(callMe)}".`,
     strength,
-    "You can only report, explain and put task cards on the screen: you may offer to show something ('Shall I put them on screen?') but never say you have changed, assigned, sent or fixed anything.",
+    "You can only report, explain and put task cards on the screen: you may offer to show something ('Shall I put them on screen?') but never say you have changed, assigned, sent or fixed anything. The one exception is the TASK CREATION section, when it is present: then you may draft a new task for the user to confirm.",
     "Humour must never hide or soften a real risk: state bad news plainly and first, calmly, without drama.",
   ].join(" ")
 }
@@ -304,6 +315,29 @@ export function briefingFacts(items, now = new Date(), team = cfg.team) {
   }
 }
 
+/**
+ * Spoken task creation. The model only drafts and asks; it never creates anything: the page does that after the user confirms,
+ * and the server checks every field again. Only added when the user has switched creation on.
+ */
+function calendar(now, days = 16) {
+  const f = new Intl.DateTimeFormat("en-GB", { timeZone: cfg.timezone, weekday: "long", day: "numeric", month: "long", year: "numeric" })
+  const iso = new Intl.DateTimeFormat("en-CA", { timeZone: cfg.timezone })
+  return Array.from({ length: days }, (_, i) => { const d = new Date(now.getTime() + i * 86400000); return `${iso.format(d)} ${f.format(d)}${i === 0 ? " (today)" : ""}` }).join("\n")
+}
+
+function taskRules(draft) {
+  const epics = Object.entries(cfg.epics).map(([k, v]) => `${k} ${v}`).join(", ")
+  const sprints = Object.entries(cfg.sprints).map(([k, v]) => `${k} (${v.start} to ${v.end})`).join(", ")
+  return [
+    `TASK CREATION (this feature is switched on, so you can do it: drafting is allowed, and it overrides any rule above that says you can only report). The user may ask you to create, add or make a task for a teammate. Draft it from what they said and end your answer with a line that starts with @@TASK, written before the @@SHOW line (use {"view":"none"} for @@SHOW), followed by a JSON object with these fields: title (at most 8 plain words), summary (one sentence, at most 20 words, describing work still to do), steps (exactly 3 short steps), assignee (one of ${cfg.team.join(", ")}, or null), priority (Urgent, High, Normal or Low), points (1, 2, 3, 5 or 8), due (YYYY-MM-DD or null, worked out from today's date in BRIEFING FACTS), sprint (${sprints}, or Backlog; use the current sprint unless they say later or backlog), project (TanyCars, TanyEats or TanyApps) and epic (${epics}).`,
+    "The @@TASK line is mandatory every time you draft or change a task: the draft card on the screen is built only from it, and without it the user sees nothing. Example ending: @@TASK {\"title\":\"Review privacy checklist\",\"summary\":\"Review the privacy policy against the checklist.\",\"steps\":[\"Read the policy\",\"Tick each checklist item\",\"Note gaps\"],\"assignee\":\"Bala\",\"priority\":\"High\",\"points\":3,\"project\":\"TanyApps\",\"epic\":\"E2\",\"sprint\":\"Sprint 1\",\"due\":\"2026-10-23\"} then the @@SHOW line.",
+    "Say in one or two sentences what you understood, mention anything you assumed, and ask 'Shall I create it?'. Ask a question first only if you cannot tell what the task is or who it is for. You never create anything yourself and must not say it is created.",
+    draft
+      ? `A draft is waiting (CURRENT DRAFT in the request). If the user asks for a change, say what you changed and output the complete updated @@TASK line. If they clearly agree (yes, go ahead, create it, do it), say you are creating it and end with @@ACTION {"type":"confirm"}. If they say no or cancel, end with @@ACTION {"type":"cancel"}. Never confirm unless they clearly agreed.`
+      : "There is no draft yet, so never output @@ACTION.",
+  ].join(" ")
+}
+
 const BRIEFING_RULES = `PROJECT BRIEFING. Whenever the user says good morning, good afternoon or good evening (with or without a question), asks how the project, the sprint or the team is going, or asks for a status update, give this full briefing, using only BRIEFING FACTS, in this order: 1) answer their greeting, then state the weekday and the date ("Today is Thursday 15 October") and "day X of Y" of the sprint. If the request says the greeting has already been spoken, do not greet again: begin with the weekday and date; 2) the verdict in plain words (health: on_track, at_risk or off_track) with one reason; 3) the numbers: tasks and points done against the total, how that compares with the calendar (expectedPct against actualPct), and the counts of overdue, blocked and urgent tasks; 4) what needs the user's attention: each overdue or blocked task with its owner, and unassigned tasks; 5) the team, in the order given: for every person one or two sentences: how many tasks they have open in this sprint, their two most important next tasks, each as the task number followed by what it is in a few words (from its title) and its due date, how many more there are, any overdue or blocked work, and any recent win. If someone has nothing open, say so; 6) wins from the last three days; 7) what falls due in the next few days; 8) one recommendation beginning "Might I suggest" and an offer to go into any teammate in detail. For this briefing you may use up to 14 sentences; keep each short. Use the view {"view":"briefing"}.`
 
 /** What the screen can show next to a spoken answer. The model ends its answer with one @@SHOW line (see showEvents). */
@@ -350,7 +384,7 @@ export async function askGemini(question, items, now = new Date(), opts = {}) {
  * Yields raw text pieces: first "Q: <what was heard>", a blank line, then the answer. Or just NOSPEECH.
  */
 export async function* streamHear(audio, items, now = new Date(), opts = {}) {
-  const { key, model = "gemini-3.6-flash", lang = "en", history = [], persona = "classic", callMe = "sir", wake = false, awake = true } = opts
+  const { key, model = "gemini-3.6-flash", lang = "en", history = [], persona = "classic", callMe = "sir", wake = false, awake = true, canCreate = false, createRequested = false, draft = null } = opts
   const { url, headers } = geminiTarget(key, model, "streamGenerateContent")
   const system = [
     "You are Jarvis, the project assistant for Tany, a small Indian startup (TanyCars for used-car dealers, TanyEats for restaurants).",
@@ -366,6 +400,7 @@ export async function* streamHear(audio, items, now = new Date(), opts = {}) {
     "Your answer will be read aloud, so keep it short: 1 to 3 plain sentences (except the PROJECT BRIEFING), the answer first, no markdown, no lists, no symbols or links. Begin with one short sentence of under 12 words that answers directly, then add detail only if it helps. Never begin your answer with a label such as A: or Answer:. Say task numbers like 'task 14'. " + SHOW_RULES + "",
     personaRules(persona, callMe),
     BRIEFING_RULES,
+    canCreate ? taskRules(draft) : createRequested ? "If the user asks you to create a task, say that task creation is not switched on on the server yet and that the write token must be added. Do not draft anything." : "",
     lang === "ta" ? "Reply in Tamil (தமிழ்), keeping task numbers and names of people in digits and English." : "",
     history.length
       ? `Recent turns, oldest first (a turn marked interrupted had no full answer; if the new audio continues it, treat both as one question): ${history
@@ -379,7 +414,7 @@ export async function* streamHear(audio, items, now = new Date(), opts = {}) {
     headers,
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
-      contents: [{ role: "user", parts: [{ inlineData: { mimeType: audio.mime, data: audio.data } }, { text: `TASKS\n${compact(items, now)}\n\nBRIEFING FACTS (JSON)\n${JSON.stringify(briefingFacts(items, now))}` }] }],
+      contents: [{ role: "user", parts: [{ inlineData: { mimeType: audio.mime, data: audio.data } }, { text: `TASKS\n${compact(items, now)}\n\nBRIEFING FACTS (JSON)\n${JSON.stringify(briefingFacts(items, now))}${canCreate ? `\n\nCALENDAR (use it for due dates; "next Friday" means the Friday of next week)\n${calendar(now)}` : ""}${canCreate && draft ? `\n\nCURRENT DRAFT (JSON)\n${JSON.stringify(draft)}` : ""}` }] }],
       generationConfig: { maxOutputTokens: 900, thinkingConfig: { thinkingBudget: 0 } },
     }),
     signal: AbortSignal.timeout(30_000),
@@ -432,40 +467,111 @@ export async function* hearEvents(pieces) {
   }
 }
 
+const MARKERS = ["@@SHOW", "@@TASK", "@@ACTION"]
+
 /**
- * Takes the events of an answer and pulls out the final "@@SHOW {json}" line: it is never passed on as speech, only as { show }.
- * The first characters of the marker are held back until it is clear they are not the marker.
+ * Takes the events of an answer and pulls out its closing marker lines: "@@SHOW {json}" (what to put on screen), "@@TASK {json}"
+ * (a draft task) and "@@ACTION {json}" (confirm or cancel). They are never passed on as speech, only as { show }, { draft } and
+ * { action }. The first characters of a marker are held back until it is clear they are not one.
  */
 export async function* showEvents(events) {
-  const MARK = "@@SHOW"
-  let pending = "", marked = false, json = ""
+  let pending = "", tail = null
   for await (const e of events) {
     if (e.delta === undefined) { yield e; continue }
-    if (marked) { json += e.delta; continue }
+    if (tail !== null) { tail += e.delta; continue }
     pending += e.delta
-    const at = pending.indexOf(MARK)
+    const at = pending.search(/@@(?:SHOW|TASK|ACTION)/)
     if (at !== -1) {
       const before = pending.slice(0, at).replace(/\s+$/, "")
       if (before) yield { delta: before }
-      json = pending.slice(at + MARK.length)
-      marked = true
+      tail = pending.slice(at)
       pending = ""
       continue
     }
     let hold = 0
-    for (let n = Math.min(MARK.length - 1, pending.length); n > 0; n--) if (MARK.startsWith(pending.slice(-n))) { hold = n; break }
+    for (let n = Math.min(7, pending.length); n > 0; n--) { const t = pending.slice(-n); if (MARKERS.some((m) => m.startsWith(t))) { hold = n; break } }
     let emit = pending.slice(0, pending.length - hold)
     pending = pending.slice(pending.length - hold)
-    // Trailing whitespace waits too: if the marker follows, that whitespace must not be spoken.
+    // Trailing whitespace waits too: if a marker follows, that whitespace must not be spoken.
     const trimmed = emit.replace(/\s+$/, "")
     pending = emit.slice(trimmed.length) + pending
     emit = trimmed
     if (emit) yield { delta: emit }
   }
-  if (!marked && pending) yield { delta: pending }
-  if (marked) {
-    try { yield { show: JSON.parse(json.replace(/```(?:json)?/g, "").trim()) } } catch { /* a broken line just means no cards */ }
+  if (tail === null && pending) yield { delta: pending }
+  if (tail !== null) {
+    for (const part of tail.split(/(?=@@(?:SHOW|TASK|ACTION)\b)/)) {
+      const m = /^@@(SHOW|TASK|ACTION)\s*([\s\S]*)$/.exec(part)
+      if (!m) continue
+      try {
+        const value = JSON.parse(m[2].replace(/```(?:json)?/g, "").trim())
+        yield m[1] === "SHOW" ? { show: value } : m[1] === "TASK" ? { draft: value } : { action: value }
+      } catch { /* a broken line just means nothing for that marker */ }
+    }
   }
+}
+
+/** Passes on everything except drafts and actions: used where the model must not be able to start a task (typed or briefing requests). */
+export async function* withoutActions(events) {
+  for await (const e of events) if (e.draft === undefined && e.action === undefined) yield e
+}
+
+/**
+ * The longer write-up for a new task (why it matters, goal, steps, acceptance checks), in the same shape as the other tasks.
+ * Returns markdown, or null when the model does not answer in time: the caller then uses a plain template.
+ */
+export async function writeDetails(draft, opts = {}) {
+  const { key, model = "gemini-3.6-flash" } = opts
+  if (!key) return null
+  const { url, headers } = geminiTarget(key, model)
+  const prompt = [
+    "Write the body of a task for a small startup team. Use plain words; some readers are new to the work. Describe work still to do, never say it is finished.",
+    "Use exactly these markdown sections: '## Why this matters', '## Goal', '## Steps' (a numbered list, one concrete action each, at most 8), '## Acceptance criteria' (3 to 5 bullets in the form Given / When / Then), '## Done when'. At most 300 words. Do not repeat the title and do not invent facts such as file names that you were not given.",
+    `TITLE: ${draft.title}`,
+    `SUMMARY: ${draft.summary}`,
+    `STEPS: ${draft.steps.join("; ")}`,
+    `PROJECT: ${draft.project}. PRIORITY: ${draft.priority}. DUE: ${draft.due ?? "no date"}.`,
+  ].join("\n")
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 900, thinkingConfig: { thinkingBudget: 0 } } }),
+      signal: AbortSignal.timeout(12_000),
+    })
+    if (!res.ok) return null
+    const text = ((await res.json()).candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("").trim()
+    return /^## /m.test(text) ? text : null
+  } catch { return null }
+}
+
+/**
+ * Safety net: the model sometimes asks "Shall I create it?" without the @@TASK line, which would leave the user with no draft card.
+ * This asks once more, as plain JSON, using what was heard and what Jarvis said. Returns the draft object or null.
+ */
+export async function recoverDraft(heard, said, now, opts = {}) {
+  const { key, model = "gemini-3.6-flash" } = opts
+  if (!key) return null
+  const { url, headers } = geminiTarget(key, model)
+  const epics = Object.entries(cfg.epics).map(([k, v]) => `${k} ${v}`).join(", ")
+  const prompt = [
+    "Turn this spoken request into one task. Reply with only a JSON object, no markdown.",
+    `Fields: title (at most 8 plain words), summary (one sentence, at most 20 words, work still to do), steps (exactly 3 short steps), assignee (one of ${cfg.team.join(", ")}, or null), priority (Urgent, High, Normal or Low), points (1, 2, 3, 5 or 8), due (YYYY-MM-DD or null), sprint (one of ${Object.keys(cfg.sprints).join(", ")}, or Backlog), project (TanyCars, TanyEats or TanyApps), epic (one of ${epics}).`,
+    `CALENDAR\n${calendar(now)}`,
+    `THE USER SAID: ${heard}`,
+    `JARVIS REPLIED: ${said}`,
+  ].join("\n")
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 500, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 } } }),
+      signal: AbortSignal.timeout(8_000),
+    })
+    if (!res.ok) return null
+    const text = ((await res.json()).candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("").replace(/```(?:json)?/g, "").trim()
+    return JSON.parse(text)
+  } catch { return null }
 }
 
 /** A one-token request that opens the connection to Gemini, so the first real question does not pay for it. */

@@ -23,6 +23,23 @@ export const cleanCallMe = (v: string) => v.replace(/[^\p{L}\p{N} .'-]/gu, "").t
 export const getCallMe = () => cleanCallMe(store.get("callme") ?? "sir")
 export const setCallMe = (v: string) => store.set("callme", cleanCallMe(v))
 
+/** A task Jarvis has drafted from what was said. The server has already checked it. */
+export interface Draft {
+  title: string
+  summary: string
+  steps: string[]
+  assignee: string | null
+  priority: "Urgent" | "High" | "Normal" | "Low"
+  points: number
+  project: string
+  epic: string
+  sprint: string
+  due: string | null
+}
+
+export const getCreate = () => store.get("create") === "on"
+export const setCreate = (on: boolean) => store.set("create", on ? "on" : "off")
+
 export type Listening = "wake" | "always" | "push"
 export const LISTENING: { value: Listening; label: string }[] = [
   { value: "wake", label: "Say “Jarvis” (recommended)" },
@@ -393,17 +410,20 @@ export interface HearEvents {
   onDelta(piece: string): void
   onNoSpeech(): void
   onShow?(show: unknown): void
+  onDraft?(draft: Draft): void
+  onDraftError?(message: string): void
+  onAction?(action: "confirm" | "cancel"): void
 }
 
 export interface Turn { q: string; a: string; interrupted?: boolean }
 
 /** Sends one recorded question. Gemini hears it and answers in the same request; the reply streams back as events. */
-export async function hearStream(wav: Blob, lang: string, history: Turn[], on: HearEvents, signal?: AbortSignal, who: { persona: Persona; callMe: string } = { persona: getPersona(), callMe: getCallMe() }, gate: { wake: boolean; awake: boolean } = { wake: false, awake: true }): Promise<void> {
+export async function hearStream(wav: Blob, lang: string, history: Turn[], on: HearEvents, signal?: AbortSignal, who: { persona: Persona; callMe: string } = { persona: getPersona(), callMe: getCallMe() }, gate: { wake: boolean; awake: boolean } = { wake: false, awake: true }, create: { enabled: boolean; draft: Draft | null } = { enabled: false, draft: null }): Promise<void> {
   const pass = passphrase()
   if (!pass) throw new Error("A passphrase is needed.")
   const res = await fetch("/api/hear", {
     method: "POST",
-    headers: { "content-type": "audio/wav", authorization: `Bearer ${pass}`, "x-lang": lang, "x-persona": who.persona, "x-wake": gate.wake ? "1" : "0", "x-awake": gate.awake ? "1" : "0", "x-callme": encodeURIComponent(who.callMe), "x-history": encodeURIComponent(JSON.stringify(history.slice(-3))) },
+    headers: { "content-type": "audio/wav", authorization: `Bearer ${pass}`, "x-lang": lang, "x-persona": who.persona, "x-create": create.enabled ? "1" : "0", "x-draft": encodeURIComponent(create.draft ? JSON.stringify(create.draft) : ""), "x-wake": gate.wake ? "1" : "0", "x-awake": gate.awake ? "1" : "0", "x-callme": encodeURIComponent(who.callMe), "x-history": encodeURIComponent(JSON.stringify(history.slice(-3))) },
     body: wav,
     signal,
   })
@@ -419,9 +439,12 @@ export async function hearStream(wav: Blob, lang: string, history: Turn[], on: H
     buffer = lines.pop() ?? ""
     for (const line of lines) {
       if (!line.startsWith("data:")) continue
-      const msg = JSON.parse(line.slice(5)) as { heard?: string; delta?: string; nospeech?: boolean; error?: string; show?: unknown }
+      const msg = JSON.parse(line.slice(5)) as { heard?: string; delta?: string; nospeech?: boolean; error?: string; show?: unknown; draft?: Draft; draftError?: string; action?: { type: "confirm" | "cancel" } }
       if (msg.error) throw new Error(msg.error)
-      if (msg.show) on.onShow?.(msg.show)
+      if (msg.draft) on.onDraft?.(msg.draft)
+      else if (msg.draftError) on.onDraftError?.(msg.draftError)
+      else if (msg.action) on.onAction?.(msg.action.type)
+      else if (msg.show) on.onShow?.(msg.show)
       else if (msg.nospeech) on.onNoSpeech()
       else if (msg.heard !== undefined) on.onHeard(msg.heard)
       else if (msg.delta) on.onDelta(msg.delta)
@@ -463,7 +486,7 @@ export interface Facts {
   people: PersonFacts[]
 }
 
-export interface BoardData { items: CardItem[]; sprint: { name: string; end: string; daysLeft: number }; team: string[]; facts?: Facts }
+export interface BoardData { canCreate?: boolean; items: CardItem[]; sprint: { name: string; end: string; daysLeft: number }; team: string[]; facts?: Facts }
 
 /** Every task as a card, with the current sprint and the team list. */
 export async function loadCards(): Promise<BoardData> {
@@ -473,4 +496,17 @@ export async function loadCards(): Promise<BoardData> {
   if (res.status === 401) { store.del("pass"); throw new Error("Wrong passphrase. Try again.") }
   if (!res.ok) throw new Error("Could not load the tasks.")
   return (await res.json()) as BoardData
+}
+
+export interface Created { ok: true; number: number; url: string; assigned: boolean; onBoard: boolean; card: CardItem; line: string }
+
+/** Makes the task. Only called after the user has confirmed the draft (button or voice). */
+export async function createTaskApi(draft: Draft): Promise<Created> {
+  const pass = passphrase()
+  if (!pass) throw new Error("A passphrase is needed.")
+  const res = await fetch("/api/task/create", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${pass}` }, body: JSON.stringify({ draft, by: getCallMe() }) })
+  if (res.status === 401) { store.del("pass"); throw new Error("Wrong passphrase. Try again.") }
+  const data = (await res.json().catch(() => ({}))) as Created & { error?: string }
+  if (!res.ok) throw new Error(data.error || "The task could not be created.")
+  return data
 }

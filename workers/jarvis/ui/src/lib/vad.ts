@@ -12,7 +12,9 @@ export interface UtteranceStats {
 
 export const MIN_VOICED_MS = 450
 export const MIN_LEVEL = 0.02
-export const MIN_BAND = 0.5
+// Speech with plenty of "s" and "sh" sounds puts a lot of energy above 3.4 kHz, so a long sentence can sit near 0.4. A hum or rumble (energy
+// below 300 Hz) sits near zero. Hiss is caught by the steadiness check instead.
+export const MIN_BAND = 0.25
 export const MIN_VARIATION = 0.2
 /** Anything this much quieter than your usual speaking level is treated as someone else, further away. */
 export const QUIET_RATIO = 0.4
