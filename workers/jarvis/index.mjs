@@ -2,6 +2,7 @@
 // The browser does the listening and speaking; this Worker reads the board from GitHub and asks Gemini for the answer.
 import { createTask, createdToday } from "./github.mjs"
 import { validateDraft, doneLine } from "../../scripts/jarvis/tasks.mjs"
+import { post as slackPost } from "../../scripts/jarvis/slack.mjs"
 import { PERSONAS, cleanCallMe, recoverDraft, writeDetails, withoutActions, cardFromBody, askGemini, cfg, currentSprint, loadBoard, overdue, speakable, sprintReport, streamGemini, streamHear, hearEvents, showEvents, pingGemini, briefingFacts } from "../../scripts/jarvis/lib.mjs"
 import cards from "../../scripts/jarvis/task-cards.json" with { type: "json" }
 import { speakStream } from "./tts.mjs"
@@ -145,6 +146,11 @@ async function createRoute(body, env, ctx) {
     createdInThisIsolate++
     await refresh(env).catch(() => {}) // so the next look at the board already has it
     const card = { n: made.number, title: v.draft.title, full: v.draft.title, summary: v.draft.summary, steps: v.draft.steps, open: true, blocked: false, project: v.draft.project, team: v.draft.assignee ? [v.draft.assignee] : [], sprint: v.draft.sprint, priority: v.draft.priority, points: v.draft.points, epic: v.draft.epic, due: v.draft.due, updated: new Date().toISOString() }
+    // A heads-up in Slack (best effort: it never changes the outcome of creating the task).
+    if (env.SLACK_BOT_TOKEN && env.SLACK_CHANNEL) {
+      const who = v.draft.assignee ?? "nobody yet"
+      ctx.waitUntil(slackPost(env.SLACK_BOT_TOKEN, env.SLACK_CHANNEL, `New task by Jarvis: <${made.url}|#${made.number}> ${v.draft.title}\nFor ${who} · ${v.draft.priority} · ${v.draft.points} pts${v.draft.due ? ` · due ${v.draft.due}` : ""}`).catch(() => {}))
+    }
     return json({ ok: true, number: made.number, url: made.url, assigned: made.assigned, onBoard: made.onBoard, card, line: doneLine(cleanCallMe(body?.by), made.number, v.draft, made.assigned) })
   } catch (e) {
     console.error(String(e?.message ?? e).slice(0, 240))

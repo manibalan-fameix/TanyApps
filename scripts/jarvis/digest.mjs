@@ -2,6 +2,7 @@
 // DRY_RUN=1 prints it instead. Env: JARVIS_TOKEN (read the project), GH_TOKEN (comment on issues; the workflow's GITHUB_TOKEN).
 import { execFileSync } from "node:child_process"
 import { cfg, digest, loadBoard } from "./lib.mjs"
+import { sendDaily } from "./slack.mjs"
 
 const repo = `${cfg.owner}/${cfg.repo}`
 const gh = (...args) => execFileSync("gh", args, { encoding: "utf8" }).trim()
@@ -9,6 +10,11 @@ const gh = (...args) => execFileSync("gh", args, { encoding: "utf8" }).trim()
 const items = await loadBoard(process.env.JARVIS_TOKEN)
 const body = digest(items)
 if (process.env.DRY_RUN) { console.log(body); process.exit(0) }
+
+// Slack is optional and never stops the GitHub digest: if it fails, the digest below is still posted.
+if (process.env.SLACK_BOT_TOKEN && process.env.SLACK_CHANNEL) {
+  try { console.log("slack:", (await sendDaily(process.env.SLACK_BOT_TOKEN, process.env.SLACK_CHANNEL, body, items)).join("; ")) } catch (e) { console.error("slack failed:", e.message) }
+}
 
 let number = gh("issue", "list", "--repo", repo, "--label", "jarvis-digest", "--state", "open", "--json", "number", "-q", ".[0].number")
 if (!number) {

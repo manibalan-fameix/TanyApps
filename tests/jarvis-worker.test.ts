@@ -802,3 +802,30 @@ describe("the create route", () => {
     expect(notAsked).not.toContain('"draft"')
   })
 })
+
+describe("slack messages", () => {
+  it("turns GitHub markdown into Slack markup", async () => {
+    const { toSlack } = await import("../scripts/jarvis/slack.mjs")
+    expect(toSlack("## Digest\n**Gokul** [#4](https://x.y/4)\n- one")).toBe("*Digest*\n*Gokul* <https://x.y/4|#4>\n• one")
+  })
+  it("writes a morning message for someone with work, and nothing for someone without", async () => {
+    const { nudge } = await import("../scripts/jarvis/slack.mjs")
+    const lib = await import("../scripts/jarvis/lib.mjs")
+    const now = new Date("2026-10-15T05:00:00Z")
+    const item = { number: 7, title: "Fix login", url: "https://x/7", open: true, due: lib.today(now), team: ["Gokul"], sprint: lib.currentSprint(now).name, priority: "High", blocked: false }
+    const text = nudge([item], "Gokul", now)
+    expect(text).toContain("Good morning Gokul")
+    expect(text).toContain("<https://x/7|#7> Fix login")
+    expect(nudge([item], "Pavi", now)).toBeNull()
+  })
+  it("posts through the Slack API with the bot token", async () => {
+    const { post } = await import("../scripts/jarvis/slack.mjs")
+    const seen: { url: string; auth: string; body: string }[] = []
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => { seen.push({ url, auth: String((init.headers as Record<string, string>).authorization), body: String(init.body) }); return new Response(JSON.stringify({ ok: true })) })
+    await post("xoxb-test", "#tany-daily", "## Hi")
+    vi.unstubAllGlobals()
+    expect(seen[0].url).toBe("https://slack.com/api/chat:write".replace("chat:write", "chat.postMessage"))
+    expect(seen[0].auth).toBe("Bearer xoxb-test")
+    expect(JSON.parse(seen[0].body)).toMatchObject({ channel: "#tany-daily", text: "*Hi*" })
+  })
+})
