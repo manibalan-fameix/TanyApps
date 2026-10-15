@@ -11,8 +11,9 @@ import { Button } from "@/components/ui/button"
 import { ShimmeringText } from "@/components/ui/shimmering-text"
 
 import { LanguageSelector } from "@/components/language-selector"
-import { cleanText, createSpeaker, duck, greetingParts, hearStream, prefetchGreeting, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage, loadCards, askStream, LISTENING, getListening, setListening, type Listening, PERSONAS, getPersona, setPersona, getCallMe, setCallMe, type Persona, type BoardData, type Speaker, type Turn } from "@/lib/jarvis"
+import { cleanText, createSpeaker, duck, isPaused, pauseAudio, resumeAudio, greetingParts, hearStream, prefetchGreeting, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage, loadCards, askStream, LISTENING, getListening, setListening, type Listening, PERSONAS, getPersona, setPersona, getCallMe, setCallMe, type Persona, type BoardData, type Speaker, type Turn } from "@/lib/jarvis"
 import { createListener, type Listener } from "@/lib/mic"
+import { Pause, Play } from "lucide-react"
 import { CardView } from "@/components/card-view"
 import { BriefingPanel } from "@/components/briefing-panel"
 import { SpokenText } from "@/components/spoken-text"
@@ -158,6 +159,8 @@ const BottomControls = React.memo(
     onStop,
     speaking,
     onStopVoice,
+    paused,
+    onTogglePause,
   }: {
     isConnected: boolean
     hasError: boolean
@@ -165,6 +168,8 @@ const BottomControls = React.memo(
     onStop: () => void
     speaking: boolean
     onStopVoice: () => void
+    paused: boolean
+    onTogglePause: () => void
   }) => {
     return (
       <AnimatePresence mode="popLayout">
@@ -184,7 +189,19 @@ const BottomControls = React.memo(
             }}
             className="fixed bottom-8 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2"
           >
-            {speaking && (
+            <button
+              onClick={onTogglePause}
+              aria-pressed={paused}
+              className={cn(
+                "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium whitespace-nowrap shadow-lg transition-opacity hover:opacity-90",
+                paused ? "border-cyan-400/60 bg-cyan-400 text-slate-950" : "bg-background text-foreground border-foreground/15"
+              )}
+            >
+              {paused ? <Play className="size-4" aria-hidden /> : <Pause className="size-4" aria-hidden />}
+              {paused ? "Resume" : "Pause"}
+              <kbd className="border-foreground/20 bg-foreground/10 inline-flex h-5 items-center rounded border px-1.5 font-mono text-xs">P</kbd>
+            </button>
+            {speaking && !paused && (
               <button
                 onClick={onStopVoice}
                 className="bg-background text-foreground border-foreground/15 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium whitespace-nowrap shadow-lg transition-opacity hover:opacity-90"
@@ -211,6 +228,7 @@ const BottomControls = React.memo(
     if (prev.hasError !== next.hasError) return false
     if (prev.isMac !== next.isMac) return false
     if (prev.speaking !== next.speaking) return false
+    if (prev.paused !== next.paused) return false
     return true
   }
 )
@@ -275,6 +293,9 @@ export default function Jarvis() {
   const boardTitles = useMemo(() => board?.items.map((i) => i.title) ?? [], [board])
   const [theme, setThemeState] = useState<"holo" | "clean">(() => { try { return localStorage.getItem("theme") === "clean" ? "clean" : "holo" } catch { return "holo" } })
   const [briefing, setBriefingState] = useState<boolean>(() => { try { return localStorage.getItem("briefing") !== "off" } catch { return true } })
+  // Pause: freezes the voice, the highlight and the listening exactly where they are. Resume carries on from there.
+  const [paused, setPausedState] = useState(false)
+  const pausedRef = useRef(false)
   const [persona, setPersonaState] = useState<Persona>(getPersona())
   const [callMe, setCallMeState] = useState(getCallMe())
   const lastAlertRef = useRef(0)
@@ -437,8 +458,32 @@ export default function Jarvis() {
   /** Resets the "nothing said for a while" timer. A silent session ends by itself after two minutes. */
   const touch = useCallback(() => {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
-    idleTimerRef.current = setTimeout(() => stopRef.current(), 120_000)
+    // A paused session never times out: it waits for you.
+    idleTimerRef.current = setTimeout(() => { if (pausedRef.current) touchRef.current(); else stopRef.current() }, 120_000)
   }, [])
+  const touchRef = useRef<() => void>(() => {})
+  touchRef.current = touch
+
+  const togglePause = useCallback(() => {
+    if (connectionStateRef.current !== "connected") return
+    const next = !pausedRef.current
+    pausedRef.current = next
+    setPausedState(next)
+    if (next) pauseAudio()
+    else { resumeAudio(); touch() }
+  }, [touch])
+
+  // P pauses and resumes (not while typing, and not with a modifier key held).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "p" || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return
+      if (e.target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return
+      e.preventDefault()
+      togglePause()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [togglePause])
 
   /** The user spoke over Jarvis: stop the voice and the answer that was still being written. */
   const bargeIn = useCallback(() => {
@@ -626,7 +671,7 @@ export default function Jarvis() {
 
   /** Jarvis speaks up on its own: only between turns, never while you are talking. Returns whether it did. */
   raiseRef.current = (text, n) => {
-    if (phaseRef.current !== "listening" || userSpeakingRef.current || connectionStateRef.current !== "connected") return false
+    if (phaseRef.current !== "listening" || userSpeakingRef.current || pausedRef.current || connectionStateRef.current !== "connected") return false
     const turn = ++turnRef.current
     const lang = langRef.current
     setQuestion("")
@@ -734,6 +779,9 @@ export default function Jarvis() {
       abortRef.current?.abort()
       speakerRef.current?.cancel()
       stopAudio()
+      pausedRef.current = false
+      setPausedState(false)
+      resumeAudio() // a session ended while paused must not leave the next one silent
       listenerRef.current?.stop()
       listenerRef.current = null
       historyRef.current = []
@@ -1148,7 +1196,12 @@ export default function Jarvis() {
             Hold to talk · Space
           </button>
         )}
-        {connectionState === "connected" && asleep && (
+        {connectionState === "connected" && paused && (
+          <p className="fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-full border border-cyan-400/50 bg-cyan-400/10 px-4 py-1 text-sm text-cyan-700 backdrop-blur dark:text-cyan-200" role="status">
+            Paused · press P or Resume to continue
+          </p>
+        )}
+        {connectionState === "connected" && asleep && !paused && (
           <p className="text-foreground/60 fixed bottom-24 left-1/2 z-40 -translate-x-1/2 text-sm" role="status">
             On standby. Say “Jarvis” to wake me.
           </p>
@@ -1184,6 +1237,8 @@ export default function Jarvis() {
           isMac={isMac}
           onStop={handleToggleRecording}
           speaking={phase === "speaking"}
+          paused={paused}
+          onTogglePause={togglePause}
           onStopVoice={() => {
             speakerRef.current?.cancel()
             stopAudio()

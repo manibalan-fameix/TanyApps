@@ -1,7 +1,7 @@
 // Records the microphone and cuts it into questions by itself (voice activity detection), so there is nothing to tap.
 // Each question comes out as a 16 kHz mono WAV that Jarvis sends to Gemini. The browser's echo cancellation is switched on,
 // which removes most of Jarvis's own voice from the recording.
-import { audioContext } from "@/lib/jarvis"
+import { audioContext, isPaused } from "@/lib/jarvis"
 import { bandRatio, judge, nextBaseline, type UtteranceStats } from "@/lib/vad"
 
 const RATE = 16000
@@ -42,7 +42,7 @@ export async function createListener(h: ListenerHandlers, opts: { manual?: boole
     audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false, channelCount: 1 }, // no auto-gain: it would lift far-away voices to the level of yours
   })
   const ac = audioContext()
-  await ac.resume()
+  if (!isPaused()) await ac.resume()
   const source = ac.createMediaStreamSource(stream)
   const proc = ac.createScriptProcessor(2048, 1, 1)
   const analyser = ac.createAnalyser()

@@ -158,6 +158,25 @@ export function unlockAudio() {
   }
 }
 
+let paused = false
+export const isPaused = () => paused
+
+/**
+ * Freezes everything at the exact point it has reached: the audio clock stops, so the voice, the word highlight and the
+ * listening all hold still (they share one clock). resumeAudio() carries on from the same place.
+ */
+export function pauseAudio() {
+  paused = true
+  try { void ctx?.suspend() } catch { /* nothing playing */ }
+  if ("speechSynthesis" in window) speechSynthesis.pause()
+}
+
+export function resumeAudio() {
+  paused = false
+  try { void ctx?.resume() } catch { /* nothing to resume */ }
+  if ("speechSynthesis" in window) speechSynthesis.resume()
+}
+
 export function stopAudio() {
   duck(false)
   current?.cancel()
@@ -240,7 +259,7 @@ function requestVoice(text: string, voice: string, lang: string, fresh = false):
 /** Plays a PCM response as it downloads. Resolves when the last sample has been played. */
 async function playPcm(res: Response, rate: number): Promise<void> {
   const ac = audioContext()
-  await ac.resume()
+  if (!paused) await ac.resume()
   const reader = res.body!.getReader()
   const state = { sources: [] as AudioBufferSourceNode[], reader }
   playing = state
