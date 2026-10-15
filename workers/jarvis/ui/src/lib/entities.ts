@@ -83,3 +83,20 @@ export function annotate(sentence: string, ctx: { team: string[]; titles: string
   }
   return out
 }
+
+/**
+ * What the voice is talking about at word `upTo` of a sentence: the last task number reached (looking one word ahead from the
+ * word "task", so the card lights up as Jarvis starts to say it) and the last teammate named. Both stay until replaced.
+ */
+export function focusAt(tokens: string[], kinds: (Kind | null)[], upTo: number): { task: number | null; person: string | null } {
+  let task: number | null = null
+  let person: string | null = null
+  for (let k = 0; k <= upTo && k < tokens.length; k++) {
+    const t = norm(tokens[k])
+    if (kinds[k] === "task") {
+      if (/^\d+$/.test(t)) task = Number(t)
+      else if ((t === "task" || t === "tasks") && /^\d+$/.test(norm(tokens[k + 1] ?? "")) && k === upTo) task = Number(norm(tokens[k + 1]))
+    } else if (kinds[k] === "person") person = tokens[k].replace(/'s?$/i, "").replace(/[^\p{L}\p{N}]/gu, "")
+  }
+  return { task, person }
+}

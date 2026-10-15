@@ -34,11 +34,14 @@ export const TaskCard = React.memo(function TaskCard({
   card,
   index,
   highlighted,
+  dimmed = false,
   compact,
 }: {
   card: CardItem
   index: number
   highlighted: boolean
+  /** Another card is being talked about: step back so the one in focus stands out. */
+  dimmed?: boolean
   compact?: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -48,7 +51,7 @@ export const TaskCard = React.memo(function TaskCard({
     <motion.article
       layout
       initial={{ opacity: 0, y: 24, scale: 0.94 }}
-      animate={{ opacity: 1, y: 0, scale: highlighted ? 1.03 : 1 }}
+      animate={{ opacity: dimmed ? 0.42 : 1, y: 0, scale: highlighted ? 1.045 : 1 }}
       exit={{ opacity: 0, scale: 0.94 }}
       transition={{ duration: 0.45, delay: Math.min(index, 8) * 0.07, type: "spring", stiffness: 140, damping: 18 }}
       data-card={card.n}
@@ -56,7 +59,10 @@ export const TaskCard = React.memo(function TaskCard({
       className={cn(
         "task-card bg-card/80 text-card-foreground relative flex cursor-pointer flex-col gap-2 rounded-xl border p-4 text-left backdrop-blur transition-shadow",
         "holo:bg-slate-900/60 holo:border-cyan-400/25",
-        highlighted ? "ring-2 ring-cyan-400/80 shadow-[0_0_32px_rgba(34,211,238,0.45)]" : "shadow-sm holo:shadow-[0_0_18px_rgba(34,211,238,0.10)]",
+        highlighted
+          ? "z-10 border-cyan-300/90 bg-cyan-950/70 ring-2 ring-cyan-300 shadow-[0_0_48px_rgba(34,211,238,0.65)] dark:bg-cyan-950/70"
+          : "shadow-sm holo:shadow-[0_0_18px_rgba(34,211,238,0.10)]",
+        dimmed && "saturate-50",
         card.blocked && "border-red-500/50",
         !card.open && "opacity-70"
       )}
@@ -66,6 +72,16 @@ export const TaskCard = React.memo(function TaskCard({
       aria-expanded={open}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen((v) => !v) } }}
     >
+      {highlighted && (
+        <span className="absolute -top-2.5 left-4 flex items-center gap-1.5 rounded-full bg-cyan-300 px-2.5 py-0.5 text-[10px] font-semibold tracking-widest text-slate-950 uppercase" data-now>
+          <span className="flex h-2.5 items-end gap-0.5" aria-hidden>
+            {[0, 1, 2].map((i) => (
+              <motion.span key={i} className="w-0.5 rounded-full bg-slate-950" animate={{ height: ["30%", "100%", "40%"] }} transition={{ duration: 0.7, repeat: Infinity, delay: i * 0.15 }} />
+            ))}
+          </span>
+          Talking about this
+        </span>
+      )}
       <header className="flex items-center justify-between gap-2 text-xs">
         <span className="flex items-center gap-2">
           <span className={cn("size-2 rounded-full", project?.dot ?? "bg-foreground/40")} aria-hidden />
@@ -75,7 +91,7 @@ export const TaskCard = React.memo(function TaskCard({
         <span className={cn("rounded-full border px-2 py-0.5 font-medium", PRIORITY[card.priority] ?? PRIORITY.Normal)}>{card.priority || "Normal"}</span>
       </header>
 
-      <h3 className={cn("leading-snug font-semibold", compact ? "text-sm" : "text-base")}>{card.title}</h3>
+      <h3 className={cn("leading-snug font-semibold transition-colors", compact ? "text-sm" : "text-base", highlighted && "text-cyan-100")}>{card.title}</h3>
       {!compact && <p className="text-foreground/70 line-clamp-3 text-sm leading-relaxed">{card.summary}</p>}
 
       {open && (

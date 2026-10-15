@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import worker from "../workers/jarvis/index.mjs"
 import { briefingFacts, cleanCallMe, hearEvents, personaRules, showEvents } from "../scripts/jarvis/lib.mjs"
-import { annotate } from "../workers/jarvis/ui/src/lib/entities"
+import { annotate, focusAt } from "../workers/jarvis/ui/src/lib/entities"
 import { greetingParts } from "../workers/jarvis/ui/src/lib/jarvis"
 import { wordAt, wordsOf } from "../workers/jarvis/ui/src/lib/karaoke"
 import { bandRatio, judge, level, nextBaseline, variation } from "../workers/jarvis/ui/src/lib/vad"
@@ -530,5 +530,33 @@ describe("the welcome", () => {
   it("has a first sentence long enough to be spoken on its own, and a Tamil version that names Tany", () => {
     expect(greetingParts("en", "classic", "sir", morning)[0].split(".")[0].length).toBeGreaterThanOrEqual(12)
     expect(greetingParts("ta")[0]).toContain("Tany")
+  })
+})
+
+describe("lighting up the card that is being talked about", () => {
+  const ctx = { team: ["Gokul", "Pavi"], titles: [] as string[] }
+  const sentence = "Pavi has seven open tasks, led by task 65 and task 15, while Gokul owns task 39."
+  const tokens = sentence.split(/\s+/)
+  const kinds = annotate(sentence, ctx)
+  const at = (word: string) => focusAt(tokens, kinds, tokens.findIndex((t) => t.startsWith(word)))
+
+  it("names the teammate as soon as they are mentioned, and keeps them until the next one", () => {
+    expect(at("Pavi")).toEqual({ task: null, person: "Pavi" })
+    expect(at("tasks,")).toEqual({ task: null, person: "Pavi" })
+    expect(at("Gokul")).toEqual({ task: 15, person: "Gokul" }) // the card stays lit until the next task is reached
+  })
+
+  it("moves from task to task, lighting the next card as the word 'task' is reached", () => {
+    expect(at("65")).toMatchObject({ task: 65, person: "Pavi" })
+    expect(focusAt(tokens, kinds, tokens.indexOf("task"))).toMatchObject({ task: 65 }) // "task" of "task 65": looks ahead
+    const second = tokens.findIndex((t, i) => t === "task" && (tokens[i + 1] ?? "").startsWith("15"))
+    expect(focusAt(tokens, kinds, second)).toMatchObject({ task: 15 })
+    expect(at("15")).toMatchObject({ task: 15 })
+    expect(at("39.")).toMatchObject({ task: 39, person: "Gokul" })
+  })
+
+  it("has nothing in focus before the first mention", () => {
+    expect(focusAt(tokens, kinds, 0)).toEqual({ task: null, person: "Pavi" })
+    expect(focusAt("The sprint is off track.".split(" "), annotate("The sprint is off track.", ctx), 4)).toEqual({ task: null, person: null })
   })
 })

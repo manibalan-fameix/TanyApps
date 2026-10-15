@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { motion } from "framer-motion"
 
 import { speechFraction } from "@/lib/jarvis"
-import { annotate, type Kind } from "@/lib/entities"
+import { annotate, focusAt, type Kind } from "@/lib/entities"
 import { wordAt, wordsOf } from "@/lib/karaoke"
 import { cn } from "@/lib/utils"
 
@@ -30,7 +30,7 @@ const KIND: Record<Kind, string> = {
   good: "text-emerald-700/90 dark:text-emerald-300/90",
 }
 
-export function SpokenText({ pieces, live, compact = false, team = [], titles = [] }: { pieces: string[]; live: boolean; compact?: boolean; team?: string[]; titles?: string[] }) {
+export function SpokenText({ pieces, live, compact = false, team = [], titles = [], onFocus }: { pieces: string[]; live: boolean; compact?: boolean; team?: string[]; titles?: string[]; onFocus?: (focus: { task: number | null; person: string | null }) => void }) {
   const last = pieces.length - 1
   const words = useMemo(() => wordsOf(pieces[last] ?? ""), [pieces, last])
   const [word, setWord] = useState(0)
@@ -49,6 +49,15 @@ export function SpokenText({ pieces, live, compact = false, team = [], titles = 
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
   }, [live, words, last])
+
+  // Tell the screen what is being talked about right now, so the matching card (and teammate column) can light up in step.
+  const lastFocus = useRef("")
+  useEffect(() => {
+    if (!onFocus) return
+    const f = live ? focusAt(words.map((w) => w.text), kindsFor(pieces[last] ?? "", team, titles), word) : { task: null, person: null }
+    const key = `${last}|${f.task ?? ""}|${f.person ?? ""}` // the sentence number is part of the key: a new sentence starts clear, so the same task again must light up again
+    if (key !== lastFocus.current) { lastFocus.current = key; onFocus(f) }
+  }, [live, word, words, last, pieces, team, titles, onFocus])
 
   // Keep the sentence being spoken in view.
   useEffect(() => { tail.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }) }, [last])
