@@ -6,9 +6,23 @@ export const VOICES = ["Charon", "Algieba", "Gacrux", "Schedar", "Iapetus", "Ras
 
 /** How the voice should deliver the words, for each personality strength. Never spoken: it travels in a separate field. */
 export const STYLES = {
-  subtle: "calm, warm and professional, with a light British formality",
-  classic: "refined, calm and understated with dry wit, like a loyal British butler giving a status report",
-  full: "impeccably formal and unhurried, with quiet confidence and bone-dry wit, like a devoted British butler reporting to his employer",
+  subtle: "calm, warm and professional, with a light British formality, at a clear, full volume",
+  classic: "refined, calm and understated with dry wit, like a loyal British butler giving a status report, at a clear, full volume",
+  full: "impeccably formal and unhurried, with quiet confidence and bone-dry wit, like a devoted British butler reporting to his employer, at a clear, full volume",
+}
+/** Added to the style for the first welcome, so it sounds like a greeting and not like a question waiting for a reply. */
+export const WELCOME_MOOD = ", with a warm, bright and welcoming energy, speaking up confidently like someone greeting a guest as they arrive"
+
+/**
+ * How words are said. The brand is "Tany", which a voice model reads as "Tiny". It is said "Thani" (the Tamil word for unique),
+ * so the spoken copy of the text uses that spelling. The screen keeps "Tany". `spoken` can be changed with JARVIS_TANY_SPOKEN.
+ */
+export function forSpeech(text, spoken = "Thani", lang = "en") {
+  if (lang === "ta") return text.replace(/\bTany\b/g, "தனி")
+  return text
+    .replace(/\btany\.in\b/gi, `${spoken} dot in`)
+    .replace(/\bTany(?=(?:Cars|Eats|Apps|Marts|Gifts|Meds)\b)/g, `${spoken} `)
+    .replace(/\bTany\b/g, spoken)
 }
 // Measured on 2026-10-15: gemini-3.1-flash-tts-preview answered a short sentence in under 3 s, while gemini-2.5-flash-preview-tts
 // needed 10 to 16 s without streaming. Names the key does not know (404) are skipped.
@@ -90,8 +104,9 @@ function pcmStream(res) {
  * @returns {Promise<ReadableStream<Uint8Array>>} raw PCM. Throws on failure so the page can fall back to the device voice.
  * A 404 means this key does not know that model name, so other names are tried before giving up.
  */
-export async function speakStream(text, { key, model, voice = "Charon", persona = "classic" }) {
-  const style = STYLES[persona] ?? STYLES.classic
+export async function speakStream(text, { key, model, voice = "Charon", persona = "classic", mood = "", spoken, lang = "en" }) {
+  const style = (STYLES[persona] ?? STYLES.classic) + (mood === "welcome" ? WELCOME_MOOD : "")
+  text = forSpeech(text, spoken || "Thani", lang)
   if (!key) throw new Error("no key")
   const tried = new Set()
   const queue = [workingModel, model, ...TTS_MODELS].filter(Boolean)

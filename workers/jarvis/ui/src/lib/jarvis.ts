@@ -1,3 +1,4 @@
+import { newLevel, normalise } from "./level"
 // Talks to the Jarvis Worker: the passphrase gate, /api/ask and the Gemini voice.
 const store = {
   get: (k: string) => { try { return localStorage.getItem(k) } catch { return null } },
@@ -208,13 +209,13 @@ function deviceSpeak(text: string, lang: string, done: () => void) {
 
 // Voice requests started ahead of time (the greeting), used once when the same text is asked for.
 const prefetched = new Map<string, Promise<Response | Error>>()
-const prefetchKey = (text: string, voice: string, lang: string) => `${voice}|${lang}|${getPersona()}|${text}`
+const prefetchKey = (text: string, voice: string, lang: string, mood = "") => `${voice}|${lang}|${getPersona()}|${mood}|${text}`
 
 /** Starts a voice request now so it is ready the moment it is needed. */
-export function prefetchVoice(text: string, voice: string, lang: string) {
+export function prefetchVoice(text: string, voice: string, lang: string, mood = "") {
   if (voice === "device" || !store.get("pass")) return
-  const key = prefetchKey(text, voice, lang)
-  if (!prefetched.has(key)) prefetched.set(key, requestVoice(text, voice, lang, true))
+  const key = prefetchKey(text, voice, lang, mood)
+  if (!prefetched.has(key)) prefetched.set(key, requestVoice(text, voice, lang, true, mood))
 }
 
 /**
@@ -232,20 +233,20 @@ export function greetingParts(lang: string, persona: Persona = getPersona(), cal
 
 /** Starts the greeting's voice early (and again after each use). Needs the passphrase to have been entered once. */
 export function prefetchGreeting(voice: string, lang: string, persona: Persona = getPersona(), callMe: string = getCallMe()) {
-  for (const part of greetingParts(lang, persona, callMe)) prefetchVoice(part, voice, lang)
+  for (const part of greetingParts(lang, persona, callMe)) prefetchVoice(part, voice, lang, "welcome")
 }
 
 /** Starts the voice request right away; the body keeps downloading while an earlier piece is still playing. */
-function requestVoice(text: string, voice: string, lang: string, fresh = false): Promise<Response | Error> {
+function requestVoice(text: string, voice: string, lang: string, fresh = false, mood = ""): Promise<Response | Error> {
   if (!fresh) {
-    const key = prefetchKey(text, voice, lang)
+    const key = prefetchKey(text, voice, lang, mood)
     const early = prefetched.get(key)
     if (early) { prefetched.delete(key); return early }
   }
   return fetch("/api/speak", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${passphrase() ?? ""}` },
-    body: JSON.stringify({ text, lang, voice, persona: getPersona() }),
+    body: JSON.stringify({ text, lang, voice, persona: getPersona(), mood }),
   })
     .then(async (res) => {
       if (res.ok) return res
@@ -264,6 +265,7 @@ async function playPcm(res: Response, rate: number): Promise<void> {
   const state = { sources: [] as AudioBufferSourceNode[], reader }
   playing = state
   let carry = new Uint8Array(0)
+  const level = newLevel()
   let at = 0
   let last: AudioBufferSourceNode | null = null
   if (clock) { clock.chars = null; clock.start = 0; clock.end = 0; clock.final = false }
@@ -279,6 +281,7 @@ async function playPcm(res: Response, rate: number): Promise<void> {
     const pcm = new Int16Array(bytes.buffer.slice(0, usable))
     const samples = new Float32Array(pcm.length)
     for (let i = 0; i < pcm.length; i++) samples[i] = pcm[i] / 32768
+    normalise(samples, level) // every sentence at a similar, clear volume
     const buffer = ac.createBuffer(1, samples.length, rate)
     buffer.copyToChannel(samples, 0)
     const src = ac.createBufferSource()
@@ -312,7 +315,7 @@ export interface Speaker {
  */
 const MAX_PIECES = 8 // voice requests per answer
 
-export function createSpeaker(voice: string, lang: string, note: (n: string) => void = () => {}, onPiece: (text: string, index: number) => void = () => {}, indexOffset = 0): Speaker {
+export function createSpeaker(voice: string, lang: string, note: (n: string) => void = () => {}, onPiece: (text: string, index: number) => void = () => {}, indexOffset = 0, mood = ""): Speaker {
   if (indexOffset === 0) stopAudio() // a follow-on speaker (same turn) must not cut off the one before it
   const texts: string[] = []
   const voices: Promise<Response | Error>[] = []
@@ -320,7 +323,7 @@ export function createSpeaker(voice: string, lang: string, note: (n: string) => 
   // and they would slow down the first one.
   const ensure = (upTo: number) => {
     for (let j = 0; j <= upTo && j < texts.length; j++) {
-      if (!voices[j]) voices[j] = voice === "device" ? Promise.resolve(new Error("device")) : requestVoice(texts[j], voice, lang)
+      if (!voices[j]) voices[j] = voice === "device" ? Promise.resolve(new Error("device")) : requestVoice(texts[j], voice, lang, false, mood)
     }
   }
   let buffer = "", dispatched = 0, dispatchedCount = 0, ended = false, cancelled = false, wake: (() => void) | null = null

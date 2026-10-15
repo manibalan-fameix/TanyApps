@@ -149,7 +149,7 @@ export default {
     if (url.pathname === "/api/speak") {
       if (!env.GEMINI_API_KEY) return json({ error: "No voice key." }, 503)
       try {
-        const pcm = await speakStream(text, { key: env.GEMINI_API_KEY, model: env.JARVIS_TTS_MODEL || undefined, voice: String(body?.voice ?? ""), persona: personaOf(body?.persona) })
+        const pcm = await speakStream(text, { key: env.GEMINI_API_KEY, model: env.JARVIS_TTS_MODEL || undefined, voice: String(body?.voice ?? ""), persona: personaOf(body?.persona), mood: body?.mood === "welcome" ? "welcome" : "", spoken: env.JARVIS_TANY_SPOKEN || undefined, lang })
         return new Response(pcm, { headers: { ...SECURITY, "content-type": "application/octet-stream", "x-pcm-rate": "24000" } })
       } catch (e) {
         console.error(String(e).slice(0, 200))

@@ -666,7 +666,7 @@ export default function Jarvis() {
     replyRef.current = text
     setVoiceNote("")
     setPhase("speaking")
-    const speaker = createSpeaker(voice, lang, (n) => { if (turn === turnRef.current) setVoiceNote(n) }, (t, i) => { if (turn === turnRef.current) showPiece(t, i) })
+    const speaker = createSpeaker(voice, lang, (n) => { if (turn === turnRef.current) setVoiceNote(n) }, (t, i) => { if (turn === turnRef.current) showPiece(t, i) }, 0, "welcome")
     speakerRef.current = speaker
     speaker.feed(text)
     speaker.end()

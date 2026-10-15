@@ -4,6 +4,8 @@ import worker from "../workers/jarvis/index.mjs"
 import { briefingFacts, cleanCallMe, hearEvents, personaRules, showEvents } from "../scripts/jarvis/lib.mjs"
 import { annotate, focusAt } from "../workers/jarvis/ui/src/lib/entities"
 import { greetingParts } from "../workers/jarvis/ui/src/lib/jarvis"
+import { MAX_GAIN, newLevel, normalise, soften, TARGET_RMS } from "../workers/jarvis/ui/src/lib/level"
+import { forSpeech } from "../workers/jarvis/tts.mjs"
 import { wordAt, wordsOf } from "../workers/jarvis/ui/src/lib/karaoke"
 import { bandRatio, judge, level, nextBaseline, variation } from "../workers/jarvis/ui/src/lib/vad"
 import { detectAlerts, intentView, mentioned, parseShow, groupsFor, statusLine } from "../workers/jarvis/ui/src/lib/cards"
@@ -558,5 +560,80 @@ describe("lighting up the card that is being talked about", () => {
   it("has nothing in focus before the first mention", () => {
     expect(focusAt(tokens, kinds, 0)).toEqual({ task: null, person: "Pavi" })
     expect(focusAt("The sprint is off track.".split(" "), annotate("The sprint is off track.", ctx), 4)).toEqual({ task: null, person: null })
+  })
+})
+
+describe("saying Tany as Thani", () => {
+  it("changes only the spoken copy: the brand, the products and the web address", () => {
+    expect(forSpeech("Good morning, sir. Jarvis at your service, for everything Tany.")).toBe("Good morning, sir. Jarvis at your service, for everything Thani.")
+    expect(forSpeech("TanyCars and TanyEats are part of TanyApps.")).toBe("Thani Cars and Thani Eats are part of Thani Apps.")
+    expect(forSpeech("Visit tany.in today")).toBe("Visit Thani dot in today")
+  })
+
+  it("leaves other words alone and honours a different spelling", () => {
+    expect(forSpeech("Tanya and tanyard are other words.")).toBe("Tanya and tanyard are other words.")
+    expect(forSpeech("Tany", "Thuh-nee")).toBe("Thuh-nee")
+  })
+
+  it("uses the Tamil word in Tamil text", () => {
+    expect(forSpeech("உங்கள் Tany உதவியாளர்", "Thani", "ta")).toBe("உங்கள் தனி உதவியாளர்")
+  })
+
+  it("is applied before the text reaches the voice model, with a welcoming mood only for the welcome", async () => {
+    const sent: { text: string; style?: string }[] = []
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      const part = JSON.parse(String(init.body)).contents[0].parts[0]
+      sent.push({ text: part.text, style: part.speechMetadata?.style })
+      return new Response(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { data: btoa("abcd") } }] } }] })}\n\n`, { headers: { "content-type": "text/event-stream" } })
+    }))
+    vi.resetModules()
+    const fresh = (await import("../workers/jarvis/index.mjs")).default
+    const say = (body: object) => fresh.fetch(new Request("https://x/api/speak", { method: "POST", headers: { authorization: "Bearer correct-horse-battery", "content-type": "application/json" }, body: JSON.stringify(body) }), { ...env, JARVIS_TANY_SPOKEN: "Thani" })
+    await say({ text: "Welcome to Tany.", mood: "welcome", persona: "classic" })
+    await say({ text: "Task 14 is open.", persona: "classic" })
+    expect(sent[0].text).toBe("Welcome to Thani.")
+    expect(sent[0].style).toContain("welcoming")
+    expect(sent[1].style).not.toContain("welcoming")
+    expect(sent[1].style).toContain("clear, full volume")
+  })
+})
+
+describe("keeping every sentence at a similar volume", () => {
+  const tone = (amp: number, n = 4800) => Float32Array.from({ length: n }, (_, i) => amp * Math.sin(i / 9))
+  const rms = (s: Float32Array) => Math.sqrt(s.reduce((a, b) => a + b * b, 0) / s.length)
+
+  it("lifts a quiet sentence towards the target, but never by more than the cap", () => {
+    const quiet = tone(0.1) // rms about 0.07
+    const before = rms(quiet)
+    normalise(quiet, newLevel())
+    expect(rms(quiet)).toBeGreaterThan(before * 1.4)
+    const veryQuiet = tone(0.02)
+    const b2 = rms(veryQuiet)
+    normalise(veryQuiet, newLevel())
+    expect(rms(veryQuiet)).toBeCloseTo(b2 * 1, 0) // too quiet to be speech: left as it is
+    const faint = tone(0.04)
+    const b3 = rms(faint); normalise(faint, newLevel())
+    expect(rms(faint) / b3).toBeLessThanOrEqual(MAX_GAIN + 1e-6)
+  })
+
+  it("leaves a loud sentence about as it is, and never clips", () => {
+    const loud = tone(0.9)
+    normalise(loud, newLevel())
+    expect(Math.max(...loud.map(Math.abs))).toBeLessThanOrEqual(1)
+    expect(rms(loud)).toBeLessThan(0.7)
+  })
+
+  it("moves the gain smoothly from one chunk to the next, and keeps silence silent", () => {
+    const state = newLevel()
+    normalise(tone(0.1), state)
+    const g1 = state.gain
+    normalise(tone(0.5), state)
+    expect(Math.abs(state.gain - g1)).toBeLessThan(g1) // a step, not a jump to the new value
+    const silence = new Float32Array(2400)
+    normalise(silence, state)
+    expect(silence.every((v) => v === 0)).toBe(true)
+    expect(soften(0.5)).toBe(0.5)
+    expect(soften(5)).toBeLessThanOrEqual(1)
+    expect(TARGET_RMS).toBeGreaterThan(0.08)
   })
 })
