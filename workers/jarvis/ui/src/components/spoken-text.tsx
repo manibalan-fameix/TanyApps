@@ -33,7 +33,7 @@ export function SpokenText({ pieces, live, compact = false }: { pieces: string[]
   useEffect(() => { tail.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }) }, [last])
 
   return (
-    <p className={cn("max-w-3xl leading-relaxed font-light", compact ? "text-left text-base sm:text-lg" : "text-center text-lg sm:text-xl")} aria-live="off">
+    <p className={cn("leading-relaxed font-light", compact ? "w-full text-left text-base sm:text-lg 2xl:text-xl" : "max-w-3xl text-center text-lg sm:text-xl")} aria-live="off">
       {pieces.map((text, i) => {
         const active = live && i === last
         return (

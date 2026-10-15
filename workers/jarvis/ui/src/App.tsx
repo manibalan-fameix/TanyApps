@@ -908,7 +908,7 @@ export default function Jarvis() {
   const isPartial = Boolean(lastTranscriptRef.current)
 
   return (
-    <div className="relative mx-auto flex h-full w-full max-w-6xl flex-col items-center justify-center">
+    <div className="relative mx-auto flex h-full w-full max-w-[110rem] flex-col items-center justify-center">
       <BackgroundAura
         status={connectionState === "connecting" ? "connecting" : scribe.status}
         isConnected={connectionState === "connected"}
@@ -1306,29 +1306,29 @@ const JarvisAnswer = React.memo(
     // scroll with the wheel, touch or keys, with the scroll bars hidden. Without cards the transcript stays centred, as before.
     const split = Boolean(cards || top)
     return (
-      <div className={cn("absolute inset-0 flex gap-4 px-4 pt-12 pb-24 sm:gap-6 sm:px-8", split ? "flex-col md:flex-row" : "items-center justify-center")}>
+      <div className={cn("absolute inset-0 flex gap-4 px-4 pt-12 pb-24 sm:gap-6 sm:px-8", split ? "flex-col md:flex-row-reverse md:gap-10 lg:gap-14 xl:gap-20" : "items-center justify-center")}>
         <div
           className={cn(
             "no-scrollbar flex min-h-0 flex-col gap-4 overflow-y-auto",
-            split ? "h-[34%] shrink-0 justify-start md:h-full md:w-[34%]" : "h-full w-full items-center justify-center text-center"
+            split ? "h-[34%] shrink-0 justify-start md:h-full md:w-[38%]" : "h-full w-full items-center justify-center text-center"
           )}
           data-pane="transcript"
         >
-          <div className={cn("flex flex-col gap-4", split ? "items-start text-left" : "items-center text-center", !split && "my-auto")}>
+          <div className={cn("flex w-full flex-col gap-4", split ? "items-start text-left" : "items-center text-center", !split && "my-auto")}>
             {question && (
-              <p className="text-foreground/50 max-w-2xl text-base leading-relaxed font-light sm:text-lg">{question}</p>
+              <p className={cn("text-foreground/50 leading-relaxed font-light", split ? "text-base sm:text-lg 2xl:text-xl" : "max-w-2xl text-base sm:text-lg")}>{question}</p>
             )}
             {phase === "thinking" && !spoken.length && !reply ? (
               <ShimmeringText text="Thinking..." className="text-2xl font-light tracking-wide whitespace-nowrap" />
             ) : spoken.length ? (
               <SpokenText pieces={spoken} live={phase === "speaking"} compact={split} />
             ) : reply && phase === "listening" ? (
-              <p className={cn("text-foreground/90 max-w-3xl leading-relaxed font-light", split ? "text-base sm:text-lg" : "text-lg sm:text-xl")}>{reply}</p>
+              <p className={cn("text-foreground/90 leading-relaxed font-light", split ? "text-base sm:text-lg 2xl:text-xl" : "max-w-3xl text-lg sm:text-xl")}>{reply}</p>
             ) : null}
             {live && (
-              <p className="text-foreground/60 max-w-2xl text-base leading-relaxed font-light sm:text-lg" aria-live="polite">{live}</p>
+              <p className="text-foreground/60 text-base leading-relaxed font-light sm:text-lg" aria-live="polite">{live}</p>
             )}
-            {note && <p className="text-foreground/40 max-w-2xl text-xs">{note}</p>}
+            {note && <p className="text-foreground/40 text-xs">{note}</p>}
           </div>
         </div>
 
