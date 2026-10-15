@@ -73,13 +73,18 @@ export const TaskCard = React.memo(function TaskCard({
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen((v) => !v) } }}
     >
       {highlighted && (
-        <span className="absolute -top-2.5 left-4 flex items-center gap-1.5 rounded-full bg-cyan-300 px-2.5 py-0.5 text-[10px] font-semibold tracking-widest text-slate-950 uppercase" data-now>
-          <span className="flex h-2.5 items-end gap-0.5" aria-hidden>
+        <span
+          className="absolute -top-3 left-4 flex size-6 items-center justify-center rounded-full bg-cyan-300 shadow-[0_0_14px_rgba(34,211,238,0.8)]"
+          role="img"
+          aria-label="Jarvis is talking about this task"
+          title="Jarvis is talking about this task"
+          data-now
+        >
+          <span className="flex h-3 items-end gap-0.5" aria-hidden>
             {[0, 1, 2].map((i) => (
               <motion.span key={i} className="w-0.5 rounded-full bg-slate-950" animate={{ height: ["30%", "100%", "40%"] }} transition={{ duration: 0.7, repeat: Infinity, delay: i * 0.15 }} />
             ))}
           </span>
-          Talking about this
         </span>
       )}
       <header className="flex items-center justify-between gap-2 text-xs">

@@ -3,7 +3,7 @@ import { motion } from "framer-motion"
 
 import { speechFraction } from "@/lib/jarvis"
 import { annotate, focusAt, type Kind } from "@/lib/entities"
-import { wordAt, wordsOf } from "@/lib/karaoke"
+import { sentenceRanges, wordAt, wordsOf } from "@/lib/karaoke"
 import { cn } from "@/lib/utils"
 
 const kindCache = new Map<string, (Kind | null)[]>()
@@ -34,7 +34,7 @@ export function SpokenText({ pieces, live, compact = false, team = [], titles = 
   const last = pieces.length - 1
   const words = useMemo(() => wordsOf(pieces[last] ?? ""), [pieces, last])
   const [word, setWord] = useState(0)
-  const tail = useRef<HTMLSpanElement>(null)
+  const tail = useRef<HTMLDivElement>(null)
 
   // Follow the voice: read how far through the sentence it is on every frame, and re-render only when the word changes.
   useEffect(() => {
@@ -63,32 +63,40 @@ export function SpokenText({ pieces, live, compact = false, team = [], titles = 
   useEffect(() => { tail.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }) }, [last])
 
   return (
-    <p className={cn("leading-relaxed font-light", compact ? "w-full text-left text-base sm:text-lg 2xl:text-xl" : "max-w-3xl text-center text-lg sm:text-xl")} aria-live="off">
+    <div className={cn("leading-relaxed font-light", compact ? "w-full text-left text-base sm:text-lg 2xl:text-xl" : "max-w-3xl text-center text-lg sm:text-xl")} aria-live="off">
       {pieces.map((text, i) => {
         const active = live && i === last
         const ws = active ? words : wordsOf(text)
         const kinds = kindsFor(text, team, titles)
         return (
-          <motion.span key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="inline" ref={i === last ? tail : undefined} data-sentence={i} data-active={active || undefined}>
-            {ws.map((w, k) => (
-              <span
-                key={k}
-                data-word={active ? (k <= word ? (k === word ? "now" : "said") : "next") : undefined}
-                data-kind={kinds[k] ?? undefined}
-                className={cn(
-                  "transition-colors duration-150",
-                  kinds[k] ? KIND[kinds[k]!] : active ? (k < word ? "text-foreground/90" : k > word ? "text-foreground/35" : "") : live ? "text-foreground/65" : "text-foreground/90",
-                  active && k > word && kinds[k] && "opacity-40",
-                  active && k === word && "rounded bg-cyan-400/20 px-0.5",
-                  !active && live && kinds[k] && "opacity-80"
-                )}
-              >
-                {w.text}{" "}
-              </span>
+          <motion.div key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} ref={i === last ? tail : undefined} data-sentence={i} data-active={active || undefined}>
+            {/* Every sentence starts on a new line, with a little space between them, so the text is easy to follow. */}
+            {sentenceRanges(ws).map(([from, to]) => (
+              <p key={from} className="mb-3 last:mb-3">
+                {ws.slice(from, to).map((w, j) => {
+                  const k = from + j
+                  return (
+                    <span
+                      key={k}
+                      data-word={active ? (k <= word ? (k === word ? "now" : "said") : "next") : undefined}
+                      data-kind={kinds[k] ?? undefined}
+                      className={cn(
+                        "transition-colors duration-150",
+                        kinds[k] ? KIND[kinds[k]!] : active ? (k < word ? "text-foreground/90" : k > word ? "text-foreground/35" : "") : live ? "text-foreground/65" : "text-foreground/90",
+                        active && k > word && kinds[k] && "opacity-40",
+                        active && k === word && "rounded bg-cyan-400/20 px-0.5",
+                        !active && live && kinds[k] && "opacity-80"
+                      )}
+                    >
+                      {w.text}{" "}
+                    </span>
+                  )
+                })}
+              </p>
             ))}
-          </motion.span>
+          </motion.div>
         )
       })}
-    </p>
+    </div>
   )
 }

@@ -6,7 +6,7 @@ import { annotate, focusAt } from "../workers/jarvis/ui/src/lib/entities"
 import { greetingParts } from "../workers/jarvis/ui/src/lib/jarvis"
 import { MAX_GAIN, newLevel, normalise, soften, TARGET_RMS } from "../workers/jarvis/ui/src/lib/level"
 import { forSpeech } from "../workers/jarvis/tts.mjs"
-import { wordAt, wordsOf } from "../workers/jarvis/ui/src/lib/karaoke"
+import { endsSentence, sentenceRanges, wordAt, wordsOf } from "../workers/jarvis/ui/src/lib/karaoke"
 import { bandRatio, judge, level, nextBaseline, variation } from "../workers/jarvis/ui/src/lib/vad"
 import { detectAlerts, intentView, mentioned, parseShow, groupsFor, statusLine } from "../workers/jarvis/ui/src/lib/cards"
 
@@ -635,5 +635,25 @@ describe("keeping every sentence at a similar volume", () => {
     expect(soften(0.5)).toBe(0.5)
     expect(soften(5)).toBeLessThanOrEqual(1)
     expect(TARGET_RMS).toBeGreaterThan(0.08)
+  })
+})
+
+describe("one sentence to a line", () => {
+  it("knows where a sentence ends", () => {
+    expect(["Sprint 1.", "overdue!", "ready?", 'said "go."', "done.)"].every(endsSentence)).toBe(true)
+    expect(["Sprint", "task,", "3.5", "15", "Gokul's"].some(endsSentence)).toBe(false)
+  })
+
+  it("splits a piece holding several sentences without moving any word", () => {
+    const words = wordsOf("Task 39 is overdue. Task 25 is blocked under Bala. Might I suggest we start there?")
+    const ranges = sentenceRanges(words)
+    expect(ranges).toEqual([[0, 4], [4, 10], [10, 16]])
+    expect(ranges.flatMap(([a, b]) => words.slice(a, b).map((w) => w.text))).toEqual(words.map((w) => w.text)) // nothing lost or reordered
+  })
+
+  it("keeps a single sentence together and copes with empty text", () => {
+    expect(sentenceRanges(wordsOf("Good morning, sir."))).toEqual([[0, 3]])
+    expect(sentenceRanges(wordsOf("No full stop here"))).toEqual([[0, 4]])
+    expect(sentenceRanges([])).toEqual([])
   })
 })

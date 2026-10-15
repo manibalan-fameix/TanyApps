@@ -22,3 +22,20 @@ export function wordAt(words: Word[], fraction: number): number {
   }
   return words.length - 1
 }
+
+/** True for a word that ends a sentence ("Sprint 1.", "overdue!", "ready?"), also when a quote or bracket closes after the mark. */
+export const endsSentence = (word: string) => /[.!?]["')\]]*$/.test(word)
+
+/**
+ * Splits the words of one spoken piece into sentences, so each can start on its own line. Returns the index ranges
+ * [start, end) so the word positions (and the word being spoken) stay the same as in the flat list.
+ */
+export function sentenceRanges(words: Word[]): [number, number][] {
+  const out: [number, number][] = []
+  let start = 0
+  words.forEach((w, i) => {
+    if (endsSentence(w.text) && i < words.length - 1) { out.push([start, i + 1]); start = i + 1 }
+  })
+  if (start < words.length) out.push([start, words.length])
+  return out
+}
