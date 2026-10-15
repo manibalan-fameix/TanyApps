@@ -829,3 +829,36 @@ describe("slack messages", () => {
     expect(JSON.parse(seen[0].body)).toMatchObject({ channel: "#tany-daily", text: "*Hi*" })
   })
 })
+
+describe("slack messages by voice", () => {
+  it("accepts a plain message for a teammate or the channel and refuses mass mentions", async () => {
+    const { validateMessage } = await import("../scripts/jarvis/slack.mjs")
+    expect(validateMessage({ to: "gokul", text: "Task #39 is overdue. Please update today." })).toEqual({ ok: true, message: { to: "Gokul", text: "Task #39 is overdue. Please update today." } })
+    expect(validateMessage({ to: "channel", text: "Standup at 10" }).ok).toBe(true)
+    expect(validateMessage({ to: "Nobody", text: "hi" }).ok).toBe(false)
+    expect(validateMessage({ to: "Pavi", text: "@channel wake up" }).ok).toBe(false)
+    expect(validateMessage({ to: "Pavi", text: "<!here> hi" }).ok).toBe(false)
+    expect(validateMessage({ to: "Pavi", text: "x".repeat(401) }).ok).toBe(false)
+  })
+  it("sends a DM to the right member with a Jarvis footer", async () => {
+    const { sendMessage } = await import("../scripts/jarvis/slack.mjs")
+    const posts: Record<string, unknown>[] = []
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (String(url).includes("users.list")) return new Response(JSON.stringify({ ok: true, members: [{ id: "U1", name: "gokul.k", profile: { real_name: "Gokul K" } }, { id: "U2", name: "pavi", profile: { real_name: "Pavi" } }] }))
+      posts.push(JSON.parse(String(init?.body))); return new Response(JSON.stringify({ ok: true }))
+    })
+    const sent = await sendMessage("xoxb-t", "#c", { to: "Gokul", text: "Please update #39" }, "Bala")
+    await expect(sendMessage("xoxb-t", "#c", { to: "Vishnu", text: "hi" })).rejects.toThrow("not on Slack")
+    vi.unstubAllGlobals()
+    expect(sent.to).toBe("Gokul")
+    expect(posts[0]).toMatchObject({ channel: "U1" })
+    expect(String(posts[0].text)).toContain("Sent by Jarvis for Bala")
+  })
+  it("pulls a @@SLACK line out of the answer as a message", async () => {
+    const { showEvents } = await import("../scripts/jarvis/lib.mjs")
+    const out: unknown[] = []
+    async function* src() { yield { delta: "I will tell Gokul. Shall I send it?\n@@SLACK {\"to\":\"Gokul\",\"text\":\"Hi\"}\n@@SHOW {\"view\":\"none\"}" } }
+    for await (const e of showEvents(src())) out.push(e)
+    expect(out).toEqual([{ delta: "I will tell Gokul. Shall I send it?" }, { message: { to: "Gokul", text: "Hi" } }, { show: { view: "none" } }])
+  })
+})

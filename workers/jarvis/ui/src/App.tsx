@@ -11,13 +11,14 @@ import { Button } from "@/components/ui/button"
 import { ShimmeringText } from "@/components/ui/shimmering-text"
 
 import { LanguageSelector } from "@/components/language-selector"
-import { cleanText, createSpeaker, duck, isPaused, pauseAudio, resumeAudio, greetingParts, hearStream, prefetchGreeting, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage, loadCards, askStream, LISTENING, getListening, setListening, type Listening, createTaskApi, getCreate, setCreate, type Draft, PERSONAS, getPersona, setPersona, getCallMe, setCallMe, type Persona, type BoardData, type Speaker, type Turn } from "@/lib/jarvis"
+import { cleanText, createSpeaker, duck, isPaused, pauseAudio, resumeAudio, greetingParts, hearStream, prefetchGreeting, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage, loadCards, askStream, LISTENING, getListening, setListening, type Listening, createTaskApi, sendSlackApi, type SlackMsg, getCreate, setCreate, type Draft, PERSONAS, getPersona, setPersona, getCallMe, setCallMe, type Persona, type BoardData, type Speaker, type Turn } from "@/lib/jarvis"
 import { createListener, type Listener } from "@/lib/mic"
 import { Pause, Play } from "lucide-react"
 import { CardView } from "@/components/card-view"
 import { BriefingPanel } from "@/components/briefing-panel"
 import { SpokenText } from "@/components/spoken-text"
 import { DraftPanel } from "@/components/draft-panel"
+import { MessagePanel } from "@/components/message-panel"
 import { isNo, isYes } from "@/lib/format"
 import { detectAlerts, groupsFor, intentView, mentioned, parseShow, statusLine, type View } from "@/lib/cards"
 
@@ -289,7 +290,7 @@ export default function Jarvis() {
   // Cards: the board, what Jarvis asked to show, and which card it is talking about right now.
   const [board, setBoard] = useState<BoardData | null>(null)
   const canCreateRef = useRef(false)
-  useEffect(() => { canCreateRef.current = Boolean(board?.canCreate) }, [board])
+  useEffect(() => { canCreateRef.current = Boolean(board?.canCreate || board?.canSlack) }, [board])
   const [view, setView] = useState<View>({ kind: "none" })
   const [highlight, setHighlight] = useState<number[]>([])
   const [focusPerson, setFocusPerson] = useState<string | null>(null)
@@ -317,6 +318,16 @@ export default function Jarvis() {
   useEffect(() => { draftStatusRef.current = draftStatus }, [draftStatus])
   const [draftError, setDraftError] = useState("")
   const submitRef = useRef<() => void>(() => {})
+  // A Slack message works the same way: Jarvis drafts, you confirm, the server sends.
+  const [msg, setMsgState] = useState<SlackMsg | null>(null)
+  const msgRef = useRef<SlackMsg | null>(null)
+  const setMsg = useCallback((m: SlackMsg | null) => { msgRef.current = m; setMsgState(m) }, [])
+  const [msgStatus, setMsgStatus] = useState<"idle" | "sending" | "error">("idle")
+  const msgStatusRef = useRef<"idle" | "sending" | "error">("idle")
+  useEffect(() => { msgStatusRef.current = msgStatus }, [msgStatus])
+  const [msgError, setMsgError] = useState("")
+  const sendRef = useRef<() => void>(() => {})
+  const clearMsg = useCallback(() => { setMsg(null); setMsgStatus("idle"); setMsgError("") }, [setMsg])
   const [persona, setPersonaState] = useState<Persona>(getPersona())
   const [callMe, setCallMeState] = useState(getCallMe())
   const lastAlertRef = useRef(0)
@@ -645,18 +656,19 @@ export default function Jarvis() {
           onNoSpeech: () => { duck(false); setLocalTranscript("") },
           onShow: (raw) => { if (turnLive()) { shownRef.current = true; setView(pick(raw)) } },
           onDraft: (d) => { if (draftStatusRef.current !== "creating") { setDraft(d); setDraftStatus("idle"); setDraftError("") } },
+          onMessage: (m) => { if (msgStatusRef.current !== "sending") { setMsg(m); setMsgStatus("idle"); setMsgError("") } },
           onDraftError: (message) => { if (turnLive()) setVoiceNote(message) },
           // A confirmation only counts if the words that were actually said are a clear yes (or no): the model alone cannot create a task.
           onAction: (action) => {
             acted = true
-            if (action === "confirm" && draftRef.current && isYes(heardText) && !isNo(heardText)) submitRef.current()
-            else if (action === "cancel" && draftRef.current && isNo(heardText)) { setDraft(null); setDraftStatus("idle"); setDraftError("") }
+            if (action === "confirm" && isYes(heardText) && !isNo(heardText)) { if (msgRef.current) sendRef.current(); else if (draftRef.current) submitRef.current() }
+            else if (action === "cancel" && isNo(heardText)) { if (msgRef.current) clearMsg(); else if (draftRef.current) { setDraft(null); setDraftStatus("idle"); setDraftError("") } }
           },
-        }, controller.signal, undefined, { wake: listeningRef.current === "wake", awake: Date.now() <= awakeUntilRef.current }, { enabled: createOnRef.current && canCreateRef.current, draft: draftRef.current })
+        }, controller.signal, undefined, { wake: listeningRef.current === "wake", awake: Date.now() <= awakeUntilRef.current }, { enabled: createOnRef.current && canCreateRef.current, draft: draftRef.current, message: msgRef.current })
         // The model sometimes forgets its confirm/cancel line: a short, clear yes or no to a waiting draft is enough on its own.
-        if (!acted && draftRef.current && turnLive() && heardText.trim().split(/\s+/).length <= 6) {
-          if (isYes(heardText) && !isNo(heardText)) submitRef.current()
-          else if (isNo(heardText) && !isYes(heardText)) { setDraft(null); setDraftStatus("idle"); setDraftError("") }
+        if (!acted && (draftRef.current || msgRef.current) && turnLive() && heardText.trim().split(/\s+/).length <= 6) {
+          if (isYes(heardText) && !isNo(heardText)) { if (msgRef.current) sendRef.current(); else submitRef.current() }
+          else if (isNo(heardText) && !isYes(heardText)) { if (msgRef.current) clearMsg(); else { setDraft(null); setDraftStatus("idle"); setDraftError("") } }
         }
         if (st.speaker && turnLive()) {
           st.speaker.end()
@@ -743,6 +755,17 @@ export default function Jarvis() {
     speaker.end()
     void speaker.finished.then(() => { if (turn === turnRef.current) { setPhase("listening"); touch() } })
   }, [showPiece, setPhase, touch, voice])
+
+  /** Sends the drafted Slack message. Called by the Send button and by a spoken "yes". */
+  sendRef.current = () => {
+    const m = msgRef.current
+    if (!m || msgStatusRef.current === "sending") return
+    setMsgStatus("sending")
+    setMsgError("")
+    void sendSlackApi(m)
+      .then((sent) => { clearMsg(); void sayLine(sent.line) })
+      .catch((e: Error) => { setMsgStatus("error"); setMsgError(e.message); void sayLine(`I'm afraid that did not work, ${callMeRef.current}. ${e.message}`) })
+  }
 
   /** Creates the drafted task. Called by the Create button and by a spoken "yes". */
   submitRef.current = () => {
@@ -856,7 +879,7 @@ export default function Jarvis() {
       stopAudio()
       pausedRef.current = false
       setPausedState(false)
-      setDraft(null); setDraftStatus("idle"); setDraftError("")
+      setDraft(null); setDraftStatus("idle"); setDraftError(""); clearMsg()
       resumeAudio() // a session ended while paused must not leave the next one silent
       listenerRef.current?.stop()
       listenerRef.current = null
@@ -1099,7 +1122,7 @@ export default function Jarvis() {
             )}
           >
             {showAnswer && (
-              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} spoken={spoken} team={board?.team ?? []} titles={boardTitles} onFocus={onFocus} live={connectionState === "connected" ? localTranscript || (userSpeaking ? "…" : "") : ""} top={draft || (view.kind === "briefing" && board?.facts) ? <>{draft && <DraftPanel draft={draft} status={draftStatus} error={draftError} onCreate={() => submitRef.current()} onCancel={() => { setDraft(null); setDraftStatus("idle"); setDraftError("") }} />}{view.kind === "briefing" && board?.facts && <BriefingPanel facts={board.facts} />}</> : null} cards={groups.length ? <CardView groups={groups} highlight={highlight} focusPerson={focusPerson} wall={view.kind === "sprint" || view.kind === "briefing"} /> : null} />
+              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} spoken={spoken} team={board?.team ?? []} titles={boardTitles} onFocus={onFocus} live={connectionState === "connected" ? localTranscript || (userSpeaking ? "…" : "") : ""} top={draft || msg || (view.kind === "briefing" && board?.facts) ? <>{msg && <MessagePanel message={msg} status={msgStatus} error={msgError} onSend={() => sendRef.current()} onCancel={clearMsg} />}{draft && <DraftPanel draft={draft} status={draftStatus} error={draftError} onCreate={() => submitRef.current()} onCancel={() => { setDraft(null); setDraftStatus("idle"); setDraftError("") }} />}{view.kind === "briefing" && board?.facts && <BriefingPanel facts={board.facts} />}</> : null} cards={groups.length ? <CardView groups={groups} highlight={highlight} focusPerson={focusPerson} wall={view.kind === "sprint" || view.kind === "briefing"} /> : null} />
             )}
           </div>
 
@@ -1240,7 +1263,7 @@ export default function Jarvis() {
                 </div>
 
                 <label className="flex w-full cursor-pointer items-center justify-between gap-3 text-sm">
-                  <span className="text-foreground/70 font-medium">Let me create tasks by voice</span>
+                  <span className="text-foreground/70 font-medium">Let me create tasks and send Slack messages by voice</span>
                   <input
                     type="checkbox"
                     checked={createOn}

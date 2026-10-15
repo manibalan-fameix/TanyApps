@@ -75,3 +75,24 @@ export async function sendDaily(token, channel, digestText, items, now = new Dat
 }
 
 export { overdue, dueSoon }
+
+/** A message Jarvis drafted: who it goes to and plain text. Mentions that would ping everyone are refused. */
+export function validateMessage(input, team = cfg.team) {
+  const to = input?.to === "channel" ? "channel" : team.find((p) => p.toLowerCase() === String(input?.to ?? "").trim().toLowerCase())
+  if (!to) return { ok: false, error: "I did not catch who the message is for." }
+  const text = String(input?.text ?? "").replace(/[\u0000-\u0009\u000b-\u001f]/g, " ").replace(/[ \t]+/g, " ").trim()
+  if (!text) return { ok: false, error: "The message was empty." }
+  if (text.length > 400) return { ok: false, error: "That message is too long for Slack. Please make it shorter." }
+  if (/<[!@#]|@(?:channel|here|everyone)\b/i.test(text)) return { ok: false, error: "I do not send messages that notify everyone." }
+  return { ok: true, message: { to, text } }
+}
+
+/** Sends a confirmed message: to the team channel, or as a DM. Always says it came from Jarvis. */
+export async function sendMessage(token, channel, message, by = "Bala") {
+  const text = `${message.text}\n_Sent by Jarvis for ${by}_`
+  if (message.to === "channel") { await post(token, channel, text); return { to: "the team channel" } }
+  const ids = await memberIds(token)
+  if (!ids[message.to]) throw new Error(`${message.to} is not on Slack yet`)
+  await call(token, "chat.postMessage", { channel: ids[message.to], text: toSlack(text), unfurl_links: false })
+  return { to: message.to }
+}

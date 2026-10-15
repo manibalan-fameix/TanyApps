@@ -242,7 +242,7 @@ export function personaRules(persona = "classic", callMe = "sir") {
   return [
     `Personality: you are Jarvis, a calm, loyal and highly capable assistant in the manner of a British butler. Address the user as "${cleanCallMe(callMe)}".`,
     strength,
-    "You can only report, explain and put task cards on the screen: you may offer to show something ('Shall I put them on screen?') but never say you have changed, assigned, sent or fixed anything. The one exception is the TASK CREATION section, when it is present: then you may draft a new task for the user to confirm.",
+    "You can only report, explain and put task cards on the screen: you may offer to show something ('Shall I put them on screen?') but never say you have changed, assigned, sent or fixed anything. The exceptions are the TASK CREATION and SLACK MESSAGES sections, when present: then you may draft a new task or a message for the user to confirm.",
     "Humour must never hide or soften a real risk: state bad news plainly and first, calmly, without drama.",
   ].join(" ")
 }
@@ -334,7 +334,19 @@ function taskRules(draft) {
     "Say in one or two sentences what you understood, mention anything you assumed, and ask 'Shall I create it?'. Ask a question first only if you cannot tell what the task is or who it is for. You never create anything yourself and must not say it is created.",
     draft
       ? `A draft is waiting (CURRENT DRAFT in the request). If the user asks for a change, say what you changed and output the complete updated @@TASK line. If they clearly agree (yes, go ahead, create it, do it), say you are creating it and end with @@ACTION {"type":"confirm"}. If they say no or cancel, end with @@ACTION {"type":"cancel"}. Never confirm unless they clearly agreed.`
-      : "There is no draft yet, so never output @@ACTION.",
+      : "There is no task draft yet, so output @@ACTION only when a Slack message is waiting.",
+  ].join(" ")
+}
+
+/** Spoken Slack messages: the model drafts, the page confirms, the server sends. Only added when sending is switched on. */
+function slackRules(pending, draftTask) {
+  const people = cfg.team.join(", ")
+  return [
+    `SLACK MESSAGES (this feature is switched on, so you can do it: drafting a message is allowed, and it overrides any rule above that says you can only report). The user may ask you to tell, message, ping or nudge a teammate on Slack, or to post to the team channel. Draft the message and end your answer with a line that starts with @@SLACK followed by JSON: {"to": one of ${people}, or "channel", "text": the message}. The text is written for the reader (second person, friendly, at most 2 short sentences, plain words, no @mentions, no links), and may mention task numbers as "#39". Example: @@SLACK {"to":"Gokul","text":"Hi Gokul, task #39 is overdue. Could you update it today?"}. The @@SLACK line is mandatory every time you draft or change a message, and goes before the @@SHOW line.`,
+    "Say in one sentence who it goes to and what it says, then ask 'Shall I send it?'. Ask a question first only if you cannot tell who it is for or what to say. You never send anything yourself and must not say it is sent.",
+    pending
+      ? `A message is waiting (CURRENT MESSAGE in the request). If the user asks for a change, say what you changed and output the complete updated @@SLACK line. If they clearly agree (yes, send it, go ahead), say you are sending it and end with @@ACTION {"type":"confirm"}. If they say no or cancel, end with @@ACTION {"type":"cancel"}. Never confirm unless they clearly agreed.`
+      : draftTask ? "" : "There is no message yet, so never output @@ACTION.",
   ].join(" ")
 }
 
@@ -384,7 +396,7 @@ export async function askGemini(question, items, now = new Date(), opts = {}) {
  * Yields raw text pieces: first "Q: <what was heard>", a blank line, then the answer. Or just NOSPEECH.
  */
 export async function* streamHear(audio, items, now = new Date(), opts = {}) {
-  const { key, model = "gemini-3.6-flash", lang = "en", history = [], persona = "classic", callMe = "sir", wake = false, awake = true, canCreate = false, createRequested = false, draft = null } = opts
+  const { key, model = "gemini-3.6-flash", lang = "en", history = [], persona = "classic", callMe = "sir", wake = false, awake = true, canCreate = false, createRequested = false, draft = null, canSlack = false, message = null } = opts
   const { url, headers } = geminiTarget(key, model, "streamGenerateContent")
   const system = [
     "You are Jarvis, the project assistant for Tany, a small Indian startup (TanyCars for used-car dealers, TanyEats for restaurants).",
@@ -400,6 +412,7 @@ export async function* streamHear(audio, items, now = new Date(), opts = {}) {
     "Your answer will be read aloud, so keep it short: 1 to 3 plain sentences (except the PROJECT BRIEFING), the answer first, no markdown, no lists, no symbols or links. Begin with one short sentence of under 12 words that answers directly, then add detail only if it helps. Never begin your answer with a label such as A: or Answer:. Say task numbers like 'task 14'. " + SHOW_RULES + "",
     personaRules(persona, callMe),
     BRIEFING_RULES,
+    canSlack ? slackRules(message, draft) : "",
     canCreate ? taskRules(draft) : createRequested ? "If the user asks you to create a task, say that task creation is not switched on on the server yet and that the write token must be added. Do not draft anything." : "",
     lang === "ta" ? "Reply in Tamil (தமிழ்), keeping task numbers and names of people in digits and English." : "",
     history.length
@@ -414,7 +427,7 @@ export async function* streamHear(audio, items, now = new Date(), opts = {}) {
     headers,
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
-      contents: [{ role: "user", parts: [{ inlineData: { mimeType: audio.mime, data: audio.data } }, { text: `TASKS\n${compact(items, now)}\n\nBRIEFING FACTS (JSON)\n${JSON.stringify(briefingFacts(items, now))}${canCreate ? `\n\nCALENDAR (use it for due dates; "next Friday" means the Friday of next week)\n${calendar(now)}` : ""}${canCreate && draft ? `\n\nCURRENT DRAFT (JSON)\n${JSON.stringify(draft)}` : ""}` }] }],
+      contents: [{ role: "user", parts: [{ inlineData: { mimeType: audio.mime, data: audio.data } }, { text: `TASKS\n${compact(items, now)}\n\nBRIEFING FACTS (JSON)\n${JSON.stringify(briefingFacts(items, now))}${canCreate ? `\n\nCALENDAR (use it for due dates; "next Friday" means the Friday of next week)\n${calendar(now)}` : ""}${canCreate && draft ? `\n\nCURRENT DRAFT (JSON)\n${JSON.stringify(draft)}` : ""}${canSlack && message ? `\n\nCURRENT MESSAGE (JSON)\n${JSON.stringify(message)}` : ""}` }] }],
       generationConfig: { maxOutputTokens: 900, thinkingConfig: { thinkingBudget: 0 } },
     }),
     signal: AbortSignal.timeout(30_000),
@@ -467,7 +480,7 @@ export async function* hearEvents(pieces) {
   }
 }
 
-const MARKERS = ["@@SHOW", "@@TASK", "@@ACTION"]
+const MARKERS = ["@@SHOW", "@@TASK", "@@ACTION", "@@SLACK"]
 
 /**
  * Takes the events of an answer and pulls out its closing marker lines: "@@SHOW {json}" (what to put on screen), "@@TASK {json}"
@@ -480,7 +493,7 @@ export async function* showEvents(events) {
     if (e.delta === undefined) { yield e; continue }
     if (tail !== null) { tail += e.delta; continue }
     pending += e.delta
-    const at = pending.search(/@@(?:SHOW|TASK|ACTION)/)
+    const at = pending.search(/@@(?:SHOW|TASK|ACTION|SLACK)/)
     if (at !== -1) {
       const before = pending.slice(0, at).replace(/\s+$/, "")
       if (before) yield { delta: before }
@@ -500,12 +513,12 @@ export async function* showEvents(events) {
   }
   if (tail === null && pending) yield { delta: pending }
   if (tail !== null) {
-    for (const part of tail.split(/(?=@@(?:SHOW|TASK|ACTION)\b)/)) {
-      const m = /^@@(SHOW|TASK|ACTION)\s*([\s\S]*)$/.exec(part)
+    for (const part of tail.split(/(?=@@(?:SHOW|TASK|ACTION|SLACK)\b)/)) {
+      const m = /^@@(SHOW|TASK|ACTION|SLACK)\s*([\s\S]*)$/.exec(part)
       if (!m) continue
       try {
         const value = JSON.parse(m[2].replace(/```(?:json)?/g, "").trim())
-        yield m[1] === "SHOW" ? { show: value } : m[1] === "TASK" ? { draft: value } : { action: value }
+        yield m[1] === "SHOW" ? { show: value } : m[1] === "TASK" ? { draft: value } : m[1] === "SLACK" ? { message: value } : { action: value }
       } catch { /* a broken line just means nothing for that marker */ }
     }
   }
@@ -513,7 +526,7 @@ export async function* showEvents(events) {
 
 /** Passes on everything except drafts and actions: used where the model must not be able to start a task (typed or briefing requests). */
 export async function* withoutActions(events) {
-  for await (const e of events) if (e.draft === undefined && e.action === undefined) yield e
+  for await (const e of events) if (e.draft === undefined && e.action === undefined && e.message === undefined) yield e
 }
 
 /**

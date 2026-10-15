@@ -37,6 +37,9 @@ export interface Draft {
   due: string | null
 }
 
+/** A Slack message Jarvis has drafted, waiting for a yes. `to` is a teammate or "channel". */
+export interface SlackMsg { to: string; text: string }
+
 export const getCreate = () => store.get("create") === "on"
 export const setCreate = (on: boolean) => store.set("create", on ? "on" : "off")
 
@@ -411,6 +414,7 @@ export interface HearEvents {
   onNoSpeech(): void
   onShow?(show: unknown): void
   onDraft?(draft: Draft): void
+  onMessage?(message: SlackMsg): void
   onDraftError?(message: string): void
   onAction?(action: "confirm" | "cancel"): void
 }
@@ -418,12 +422,12 @@ export interface HearEvents {
 export interface Turn { q: string; a: string; interrupted?: boolean }
 
 /** Sends one recorded question. Gemini hears it and answers in the same request; the reply streams back as events. */
-export async function hearStream(wav: Blob, lang: string, history: Turn[], on: HearEvents, signal?: AbortSignal, who: { persona: Persona; callMe: string } = { persona: getPersona(), callMe: getCallMe() }, gate: { wake: boolean; awake: boolean } = { wake: false, awake: true }, create: { enabled: boolean; draft: Draft | null } = { enabled: false, draft: null }): Promise<void> {
+export async function hearStream(wav: Blob, lang: string, history: Turn[], on: HearEvents, signal?: AbortSignal, who: { persona: Persona; callMe: string } = { persona: getPersona(), callMe: getCallMe() }, gate: { wake: boolean; awake: boolean } = { wake: false, awake: true }, create: { enabled: boolean; draft: Draft | null; message?: SlackMsg | null } = { enabled: false, draft: null }): Promise<void> {
   const pass = passphrase()
   if (!pass) throw new Error("A passphrase is needed.")
   const res = await fetch("/api/hear", {
     method: "POST",
-    headers: { "content-type": "audio/wav", authorization: `Bearer ${pass}`, "x-lang": lang, "x-persona": who.persona, "x-create": create.enabled ? "1" : "0", "x-draft": encodeURIComponent(create.draft ? JSON.stringify(create.draft) : ""), "x-wake": gate.wake ? "1" : "0", "x-awake": gate.awake ? "1" : "0", "x-callme": encodeURIComponent(who.callMe), "x-history": encodeURIComponent(JSON.stringify(history.slice(-3))) },
+    headers: { "content-type": "audio/wav", authorization: `Bearer ${pass}`, "x-lang": lang, "x-persona": who.persona, "x-create": create.enabled ? "1" : "0", "x-draft": encodeURIComponent(create.draft ? JSON.stringify(create.draft) : ""), "x-message": encodeURIComponent(create.message ? JSON.stringify(create.message) : ""), "x-wake": gate.wake ? "1" : "0", "x-awake": gate.awake ? "1" : "0", "x-callme": encodeURIComponent(who.callMe), "x-history": encodeURIComponent(JSON.stringify(history.slice(-3))) },
     body: wav,
     signal,
   })
@@ -439,9 +443,10 @@ export async function hearStream(wav: Blob, lang: string, history: Turn[], on: H
     buffer = lines.pop() ?? ""
     for (const line of lines) {
       if (!line.startsWith("data:")) continue
-      const msg = JSON.parse(line.slice(5)) as { heard?: string; delta?: string; nospeech?: boolean; error?: string; show?: unknown; draft?: Draft; draftError?: string; action?: { type: "confirm" | "cancel" } }
+      const msg = JSON.parse(line.slice(5)) as { heard?: string; delta?: string; nospeech?: boolean; error?: string; show?: unknown; draft?: Draft; message?: SlackMsg; draftError?: string; action?: { type: "confirm" | "cancel" } }
       if (msg.error) throw new Error(msg.error)
       if (msg.draft) on.onDraft?.(msg.draft)
+      else if (msg.message) on.onMessage?.(msg.message)
       else if (msg.draftError) on.onDraftError?.(msg.draftError)
       else if (msg.action) on.onAction?.(msg.action.type)
       else if (msg.show) on.onShow?.(msg.show)
@@ -486,7 +491,7 @@ export interface Facts {
   people: PersonFacts[]
 }
 
-export interface BoardData { canCreate?: boolean; items: CardItem[]; sprint: { name: string; end: string; daysLeft: number }; team: string[]; facts?: Facts }
+export interface BoardData { canCreate?: boolean; canSlack?: boolean; items: CardItem[]; sprint: { name: string; end: string; daysLeft: number }; team: string[]; facts?: Facts }
 
 /** Every task as a card, with the current sprint and the team list. */
 export async function loadCards(): Promise<BoardData> {
@@ -508,5 +513,16 @@ export async function createTaskApi(draft: Draft): Promise<Created> {
   if (res.status === 401) { store.del("pass"); throw new Error("Wrong passphrase. Try again.") }
   const data = (await res.json().catch(() => ({}))) as Created & { error?: string }
   if (!res.ok) throw new Error(data.error || "The task could not be created.")
+  return data
+}
+
+/** Sends the Slack message. Only called after the user has confirmed it (button or voice). */
+export async function sendSlackApi(message: SlackMsg): Promise<{ ok: true; to: string; line: string }> {
+  const pass = passphrase()
+  if (!pass) throw new Error("A passphrase is needed.")
+  const res = await fetch("/api/slack/send", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${pass}` }, body: JSON.stringify({ message, by: getCallMe() }) })
+  if (res.status === 401) { store.del("pass"); throw new Error("Wrong passphrase. Try again.") }
+  const data = (await res.json().catch(() => ({}))) as { ok: true; to: string; line: string; error?: string }
+  if (!res.ok) throw new Error(data.error || "The message could not be sent.")
   return data
 }
