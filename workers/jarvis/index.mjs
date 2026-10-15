@@ -155,7 +155,7 @@ async function slackRoute(body, env) {
   if (v.message.to === "channel" && !env.SLACK_CHANNEL) return json({ error: "No team channel is set up yet." }, 503)
   try {
     const by = cleanCallMe(body?.by) === "sir" ? "Bala" : cleanCallMe(body?.by)
-    const sent = await sendMessage(env.SLACK_BOT_TOKEN, env.SLACK_CHANNEL, v.message, by)
+    const sent = await sendMessage(env.SLACK_BOT_TOKEN, env.SLACK_CHANNEL, v.message, by, env.SLACK_USER_TOKEN || "")
     slackSentInThisIsolate++
     return json({ ok: true, to: sent.to, line: `Sent to ${sent.to} on Slack, ${by === "Bala" ? "sir" : by}.` })
   } catch (e) {

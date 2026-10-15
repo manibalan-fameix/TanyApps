@@ -88,11 +88,13 @@ export function validateMessage(input, team = cfg.team) {
 }
 
 /** Sends a confirmed message: to the team channel, or as a DM. Always says it came from Jarvis. */
-export async function sendMessage(token, channel, message, by = "Bala") {
-  const text = `${message.text}\n_Sent by Jarvis for ${by}_`
-  if (message.to === "channel") { await post(token, channel, text); return { to: "the team channel" } }
+export async function sendMessage(token, channel, message, by = "Bala", userToken = "") {
+  // With a user token (xoxp-) the message is sent as the person themselves, so it arrives as a normal DM; the bot token sends it as Jarvis.
+  const sender = userToken || token
+  const text = userToken ? message.text : `${message.text}\n_Sent by Jarvis for ${by}_`
+  if (message.to === "channel") { await call(sender, "chat.postMessage", { channel, text: toSlack(text), unfurl_links: false }); return { to: "the team channel" } }
   const ids = await memberIds(token)
   if (!ids[message.to]) throw new Error(`${message.to} is not on Slack yet`)
-  await call(token, "chat.postMessage", { channel: ids[message.to], text: toSlack(text), unfurl_links: false })
+  await call(sender, "chat.postMessage", { channel: ids[message.to], text: toSlack(text), unfurl_links: false })
   return { to: message.to }
 }
