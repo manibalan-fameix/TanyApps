@@ -1,6 +1,6 @@
 // Voice assistant for the Tany project board: serves a small page (microphone + speaker in the browser) and /api/ask.
 // The browser does the listening and speaking; this Worker reads the board from GitHub and asks Gemini for the answer.
-import { askGemini, cfg, currentSprint, loadBoard, overdue, speakable, sprintReport, streamGemini, streamHear, hearEvents, showEvents, pingGemini } from "../../scripts/jarvis/lib.mjs"
+import { PERSONAS, cleanCallMe, askGemini, cfg, currentSprint, loadBoard, overdue, speakable, sprintReport, streamGemini, streamHear, hearEvents, showEvents, pingGemini } from "../../scripts/jarvis/lib.mjs"
 import cards from "../../scripts/jarvis/task-cards.json" with { type: "json" }
 import { speakStream } from "./tts.mjs"
 
@@ -54,6 +54,9 @@ const forPage = (i) => ({
   project: i.project, team: i.team, sprint: i.sprint, priority: i.priority, points: i.points, epic: i.epic,
   due: i.due ? i.due.toISOString().slice(0, 10) : null, updated: i.updatedAt.toISOString(),
 })
+/** Personality settings sent by the page, checked so they can only be one of the known values. */
+const personaOf = (v) => (PERSONAS.includes(v) ? v : "classic")
+
 const hits = new Map()
 function limited(ip) {
   const now = Date.now(), recent = (hits.get(ip) ?? []).filter((t) => now - t < 60_000)
@@ -81,12 +84,12 @@ function sse(events) {
   return new Response(stream, { headers: { ...SECURITY, "content-type": "text/event-stream; charset=utf-8", "x-accel-buffering": "no" } })
 }
 
-async function* deltas(text, items, lang, env) {
-  for await (const delta of streamGemini(text, items, new Date(), { key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined, voice: true, lang })) yield { delta }
+async function* deltas(text, items, lang, env, who) {
+  for await (const delta of streamGemini(text, items, new Date(), { key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined, voice: true, lang, ...who })) yield { delta }
 }
 
-function streamAnswer(text, items, lang, env) {
-  return sse(showEvents(deltas(text, items, lang, env)))
+function streamAnswer(text, items, lang, env, who) {
+  return sse(showEvents(deltas(text, items, lang, env, who)))
 }
 
 export default {
@@ -129,7 +132,7 @@ export default {
       for (let i = 0; i < audio.length; i += 0x8000) bin += String.fromCharCode(...audio.subarray(i, i + 0x8000))
       try {
         const items = await board(env, ctx)
-        const events = hearEvents(streamHear({ mime: "audio/wav", data: btoa(bin) }, items, new Date(), { key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined, lang: request.headers.get("x-lang") === "ta" ? "ta" : "en", history }))
+        const events = hearEvents(streamHear({ mime: "audio/wav", data: btoa(bin) }, items, new Date(), { key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined, lang: request.headers.get("x-lang") === "ta" ? "ta" : "en", history, persona: personaOf(request.headers.get("x-persona")), callMe: cleanCallMe(decodeURIComponent(request.headers.get("x-callme") ?? "")) }))
         return sse(showEvents(events))
       } catch (e) {
         console.error(String(e?.message ?? e).slice(0, 200))
@@ -146,7 +149,7 @@ export default {
     if (url.pathname === "/api/speak") {
       if (!env.GEMINI_API_KEY) return json({ error: "No voice key." }, 503)
       try {
-        const pcm = await speakStream(text, { key: env.GEMINI_API_KEY, model: env.JARVIS_TTS_MODEL || undefined, voice: String(body?.voice ?? "") })
+        const pcm = await speakStream(text, { key: env.GEMINI_API_KEY, model: env.JARVIS_TTS_MODEL || undefined, voice: String(body?.voice ?? ""), persona: personaOf(body?.persona) })
         return new Response(pcm, { headers: { ...SECURITY, "content-type": "application/octet-stream", "x-pcm-rate": "24000" } })
       } catch (e) {
         console.error(String(e).slice(0, 200))
@@ -156,7 +159,7 @@ export default {
 
     try {
       const items = await board(env, ctx)
-      if (body?.stream && env.GEMINI_API_KEY) return streamAnswer(text, items, lang, env)
+      if (body?.stream && env.GEMINI_API_KEY) return streamAnswer(text, items, lang, env, { persona: personaOf(body?.persona), callMe: cleanCallMe(body?.callMe) })
       let answer
       if (env.GEMINI_API_KEY) {
         answer = await askGemini(text, items, new Date(), { key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined, voice: true, lang })

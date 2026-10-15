@@ -98,3 +98,35 @@ export function groupsFor(view: View, board: BoardData | null): Group[] {
     }
   }
 }
+
+export interface Alert { n: number; kind: "overdue" | "blocked" | "done"; text: string }
+
+/**
+ * Things worth interrupting for, found by comparing the board now with the board a minute ago: a task that has just slipped
+ * past its due date, just been blocked, or just been finished. The wording is fixed (no AI), so it is instant and free.
+ */
+export function detectAlerts(before: CardItem[], after: CardItem[], callMe = "sir", now = new Date()): Alert[] {
+  const was = new Map(before.map((i) => [i.n, i]))
+  const who = (i: CardItem) => (i.team[0] ? ` Well done, ${i.team[0]}.` : "")
+  const out: Alert[] = []
+  for (const i of after) {
+    const prev = was.get(i.n)
+    if (!prev) continue
+    if (prev.open && !i.open) out.push({ n: i.n, kind: "done", text: `${callMe}, task ${i.n} has just been completed.${who(i)}` })
+    else if (i.open && i.blocked && !prev.blocked) out.push({ n: i.n, kind: "blocked", text: `Pardon the interruption, ${callMe}. Task ${i.n} has just been marked as blocked.` })
+    else if (i.open && (daysUntil(i.due, now) ?? 1) < 0 && !((daysUntil(prev.due, now) ?? 1) < 0 && prev.open)) {
+      out.push({ n: i.n, kind: "overdue", text: `Pardon the interruption, ${callMe}. Task ${i.n} has slipped past its due date.` })
+    }
+  }
+  const rank = { blocked: 0, overdue: 1, done: 2 }
+  return out.sort((a, b) => rank[a.kind] - rank[b.kind])
+}
+
+/** One line for the corner of the screen. */
+export function statusLine(board: BoardData | null): string {
+  if (!board) return ""
+  const open = board.items.filter((i) => i.open)
+  const blocked = open.filter((i) => i.blocked).length
+  const late = open.filter((i) => (daysUntil(i.due) ?? 1) < 0).length
+  return [`${board.sprint.name} · ${board.sprint.daysLeft} day${board.sprint.daysLeft === 1 ? "" : "s"} left`, `${open.length} open`, blocked ? `${blocked} blocked` : "", late ? `${late} overdue` : ""].filter(Boolean).join("  ·  ").toUpperCase()
+}

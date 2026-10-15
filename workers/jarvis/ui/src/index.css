@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+/* Space Grotesk, served from this site (no request to Google Fonts). Licence: SIL OFL 1.1. */
+@import "@fontsource-variable/space-grotesk";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -49,6 +51,8 @@
 }
 
 @theme inline {
+  --font-sans: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -76,7 +80,8 @@
 
 @layer base {
   * { @apply border-border outline-ring/50; }
-  body { @apply bg-background text-foreground antialiased; }
+  body { @apply bg-background text-foreground font-sans antialiased; }
+  kbd, .font-mono { font-variant-numeric: tabular-nums; }
 }
 
 /* ---- Hologram theme: the dark tokens plus a faint grid and cyan glow. `holo:` styles apply under html.holo ---- */

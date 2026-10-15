@@ -5,9 +5,22 @@ const store = {
   del: (k: string) => { try { localStorage.removeItem(k) } catch { /* private mode */ } },
 }
 
-export const VOICES = ["Zephyr", "Puck", "Kore", "Charon", "Aoede", "Leda", "Fenrir", "Orus", "device"]
-export const getVoice = () => (VOICES.includes(store.get("voice") ?? "") ? (store.get("voice") as string) : "Zephyr")
+export const VOICES = ["Charon", "Algieba", "Gacrux", "Schedar", "Iapetus", "Rasalgethi", "Sulafat", "Achird", "Zephyr", "Puck", "Kore", "Aoede", "Leda", "Fenrir", "Orus", "device"]
+export const getVoice = () => (VOICES.includes(store.get("voice") ?? "") ? (store.get("voice") as string) : "Charon")
 export const setVoice = (v: string) => store.set("voice", v)
+
+export type Persona = "subtle" | "classic" | "full"
+export const PERSONAS: { value: Persona; label: string }[] = [
+  { value: "subtle", label: "Subtle" },
+  { value: "classic", label: "Classic butler" },
+  { value: "full", label: "Full Jarvis" },
+]
+export const getPersona = (): Persona => (["subtle", "classic", "full"].includes(store.get("persona") ?? "") ? (store.get("persona") as Persona) : "classic")
+export const setPersona = (p: Persona) => store.set("persona", p)
+/** How Jarvis addresses you. Letters, numbers and a few marks only (the server checks again). */
+export const cleanCallMe = (v: string) => v.replace(/[^\p{L}\p{N} .'-]/gu, "").trim().slice(0, 24) || "sir"
+export const getCallMe = () => cleanCallMe(store.get("callme") ?? "sir")
+export const setCallMe = (v: string) => store.set("callme", cleanCallMe(v))
 
 /** The block's language selector uses ISO codes. Only Tamil changes the reply language. */
 export const replyLanguage = (code: string | null) => (code === "ta" ? "ta" : "en")
@@ -52,13 +65,13 @@ export const cleanText = (t: string) => t.replace(/\[#?(\d+)\]\([^)]*\)/g, "task
  * Asks Jarvis and receives the answer piece by piece (server-sent events), so speech can start before the answer is complete.
  * Falls back to one normal reply when the server does not stream (for example when no Gemini key is set).
  */
-export async function askStream(text: string, lang: string, onDelta: (piece: string) => void, signal?: AbortSignal, onShow?: (show: unknown) => void): Promise<string> {
+export async function askStream(text: string, lang: string, onDelta: (piece: string) => void, signal?: AbortSignal, onShow?: (show: unknown) => void, who: { persona: Persona; callMe: string } = { persona: getPersona(), callMe: getCallMe() }): Promise<string> {
   const pass = passphrase()
   if (!pass) throw new Error("A passphrase is needed.")
   const res = await fetch("/api/ask", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${pass}` },
-    body: JSON.stringify({ text, lang, stream: true }),
+    body: JSON.stringify({ text, lang, stream: true, persona: who.persona, callMe: who.callMe }),
     signal,
   })
   if (res.status === 401) { store.del("pass"); throw new Error("Wrong passphrase. Try again.") }
@@ -149,7 +162,7 @@ function deviceSpeak(text: string, lang: string, done: () => void) {
 
 // Voice requests started ahead of time (the greeting), used once when the same text is asked for.
 const prefetched = new Map<string, Promise<Response | Error>>()
-const prefetchKey = (text: string, voice: string, lang: string) => `${voice}|${lang}|${text}`
+const prefetchKey = (text: string, voice: string, lang: string) => `${voice}|${lang}|${getPersona()}|${text}`
 
 /** Starts a voice request now so it is ready the moment it is needed. */
 export function prefetchVoice(text: string, voice: string, lang: string) {
@@ -159,16 +172,18 @@ export function prefetchVoice(text: string, voice: string, lang: string) {
 }
 
 /** Greeting in two short pieces, so the first one starts quickly. */
-export function greetingParts(lang: string, now = new Date()): [string, string] {
+export function greetingParts(lang: string, persona: Persona = getPersona(), callMe: string = getCallMe(), now = new Date()): [string, string] {
   if (lang === "ta") return ["வணக்கம், நான் ஜார்விஸ்.", "எப்படி உதவலாம்?"]
   const h = now.getHours()
   const part = h < 12 ? "morning" : h < 17 ? "afternoon" : "evening"
-  return [`Good ${part}, I'm Jarvis.`, "How can I help?"]
+  if (persona === "subtle") return [`Good ${part}. I'm Jarvis.`, "How can I help?"]
+  if (persona === "full") return [`Good ${part}, ${callMe}. All systems are standing by.`, "How may I be of service?"]
+  return [`Good ${part}, ${callMe}. Jarvis at your service.`, "How may I help?"]
 }
 
 /** Starts the greeting's voice early (and again after each use). Needs the passphrase to have been entered once. */
-export function prefetchGreeting(voice: string, lang: string) {
-  for (const part of greetingParts(lang)) prefetchVoice(part, voice, lang)
+export function prefetchGreeting(voice: string, lang: string, persona: Persona = getPersona(), callMe: string = getCallMe()) {
+  for (const part of greetingParts(lang, persona, callMe)) prefetchVoice(part, voice, lang)
 }
 
 /** Starts the voice request right away; the body keeps downloading while an earlier piece is still playing. */
@@ -181,7 +196,7 @@ function requestVoice(text: string, voice: string, lang: string, fresh = false):
   return fetch("/api/speak", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${passphrase() ?? ""}` },
-    body: JSON.stringify({ text, lang, voice }),
+    body: JSON.stringify({ text, lang, voice, persona: getPersona() }),
   })
     .then(async (res) => {
       if (res.ok) return res
@@ -317,12 +332,12 @@ export interface HearEvents {
 export interface Turn { q: string; a: string; interrupted?: boolean }
 
 /** Sends one recorded question. Gemini hears it and answers in the same request; the reply streams back as events. */
-export async function hearStream(wav: Blob, lang: string, history: Turn[], on: HearEvents, signal?: AbortSignal): Promise<void> {
+export async function hearStream(wav: Blob, lang: string, history: Turn[], on: HearEvents, signal?: AbortSignal, who: { persona: Persona; callMe: string } = { persona: getPersona(), callMe: getCallMe() }): Promise<void> {
   const pass = passphrase()
   if (!pass) throw new Error("A passphrase is needed.")
   const res = await fetch("/api/hear", {
     method: "POST",
-    headers: { "content-type": "audio/wav", authorization: `Bearer ${pass}`, "x-lang": lang, "x-history": encodeURIComponent(JSON.stringify(history.slice(-3))) },
+    headers: { "content-type": "audio/wav", authorization: `Bearer ${pass}`, "x-lang": lang, "x-persona": who.persona, "x-callme": encodeURIComponent(who.callMe), "x-history": encodeURIComponent(JSON.stringify(history.slice(-3))) },
     body: wav,
     signal,
   })

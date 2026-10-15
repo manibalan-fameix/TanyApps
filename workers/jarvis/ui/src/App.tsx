@@ -11,10 +11,10 @@ import { Button } from "@/components/ui/button"
 import { ShimmeringText } from "@/components/ui/shimmering-text"
 
 import { LanguageSelector } from "@/components/language-selector"
-import { cleanText, createSpeaker, duck, greetingParts, hearStream, prefetchGreeting, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage, loadCards, askStream, type BoardData, type Speaker, type Turn } from "@/lib/jarvis"
+import { cleanText, createSpeaker, duck, greetingParts, hearStream, prefetchGreeting, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage, loadCards, askStream, PERSONAS, getPersona, setPersona, getCallMe, setCallMe, type Persona, type BoardData, type Speaker, type Turn } from "@/lib/jarvis"
 import { createListener, type Listener } from "@/lib/mic"
 import { CardView } from "@/components/card-view"
-import { groupsFor, intentView, mentioned, parseShow, type View } from "@/lib/cards"
+import { detectAlerts, groupsFor, intentView, mentioned, parseShow, statusLine, type View } from "@/lib/cards"
 
 interface RecordingState {
   error: string
@@ -246,6 +246,8 @@ export default function Jarvis() {
   const historyRef = useRef<Turn[]>([])
   const langRef = useRef("en")
   const [userSpeaking, setUserSpeaking] = useState(false)
+  const userSpeakingRef = useRef(false)
+  useEffect(() => { userSpeakingRef.current = userSpeaking }, [userSpeaking])
 
   // Cards: the board, what Jarvis asked to show, and which card it is talking about right now.
   const [board, setBoard] = useState<BoardData | null>(null)
@@ -255,6 +257,14 @@ export default function Jarvis() {
   const groups = useMemo(() => groupsFor(view, board), [view, board])
   const [theme, setThemeState] = useState<"holo" | "clean">(() => { try { return localStorage.getItem("theme") === "clean" ? "clean" : "holo" } catch { return "holo" } })
   const [briefing, setBriefingState] = useState<boolean>(() => { try { return localStorage.getItem("briefing") !== "off" } catch { return true } })
+  const [persona, setPersonaState] = useState<Persona>(getPersona())
+  const [callMe, setCallMeState] = useState(getCallMe())
+  const lastAlertRef = useRef(0)
+  const alertsSentRef = useRef(0)
+  const prevBoardRef = useRef<BoardData | null>(null)
+  const callMeRef = useRef(callMe)
+  useEffect(() => { callMeRef.current = callMe }, [callMe])
+  const raiseRef = useRef<(text: string, n: number) => boolean>(() => false)
   const briefingRef = useRef(briefing)
   useEffect(() => { briefingRef.current = briefing }, [briefing])
   useEffect(() => {
@@ -286,11 +296,36 @@ export default function Jarvis() {
   useEffect(() => {
     if (connectionState !== "connected") return
     let stop = false
-    const load = () => loadCards().then((b) => { if (!stop) setBoard(b) }).catch(() => {})
+    prevBoardRef.current = null
+    const load = () => loadCards().then((b) => {
+      if (stop) return
+      setBoard(b)
+      const before = prevBoardRef.current
+      prevBoardRef.current = b
+      // Something changed on the board since the last look: tell the user, but not too often and never over a conversation.
+      if (before && langRef.current === "en" && alertsSentRef.current < 5 && Date.now() - lastAlertRef.current > 180_000) {
+        const found = detectAlerts(before.items, b.items, callMeRef.current)
+        if (found.length && raiseRef.current(found[0].text, found[0].n)) { lastAlertRef.current = Date.now(); alertsSentRef.current++ }
+      }
+    }).catch(() => {})
+    alertsSentRef.current = 0
     void load()
     const t = setInterval(load, 60_000)
     return () => { stop = true; clearInterval(t) }
   }, [connectionState])
+
+  // A soft chime when cards appear on screen.
+  const hadCards = useRef(false)
+  useEffect(() => {
+    const has = groups.length > 0
+    if (has && !hadCards.current && startSoundRef.current) {
+      const a = startSoundRef.current
+      a.volume = 0.3
+      a.currentTime = 0
+      a.play().catch(() => {})
+    }
+    hadCards.current = has
+  }, [groups.length])
 
   // While Jarvis talks, only clearly louder speech counts as you (a leftover echo must not interrupt it).
   useEffect(() => {
@@ -299,8 +334,8 @@ export default function Jarvis() {
 
   // Have the greeting's voice ready before the tap, so Jarvis answers the tap at once.
   useEffect(() => {
-    if (connectionState === "idle") prefetchGreeting(voice, replyLanguage(selectedLanguage))
-  }, [voice, selectedLanguage, connectionState])
+    if (connectionState === "idle") prefetchGreeting(voice, replyLanguage(selectedLanguage), persona, callMe)
+  }, [voice, selectedLanguage, connectionState, persona, callMe])
 
   const segmentStartMsRef = useRef<number | null>(null)
   const lastTranscriptRef = useRef<string>("")
@@ -532,7 +567,7 @@ export default function Jarvis() {
     const turn = ++turnRef.current
     const lang = replyLanguage(selectedLanguage)
     langRef.current = lang
-    const [first, rest] = greetingParts(lang)
+    const [first, rest] = greetingParts(lang, persona, callMe)
     const text = `${first} ${rest}`
     setQuestion("")
     setReply(text)
@@ -548,7 +583,28 @@ export default function Jarvis() {
       if (briefingRef.current) briefRef.current()
       else { setPhase("listening"); touch() }
     })
-  }, [selectedLanguage, setPhase, touch, voice])
+  }, [callMe, persona, selectedLanguage, setPhase, touch, voice])
+
+  /** Jarvis speaks up on its own: only between turns, never while you are talking. Returns whether it did. */
+  raiseRef.current = (text, n) => {
+    if (phaseRef.current !== "listening" || userSpeakingRef.current || connectionStateRef.current !== "connected") return false
+    const turn = ++turnRef.current
+    const lang = langRef.current
+    setQuestion("")
+    questionRef.current = ""
+    setReply(text)
+    replyRef.current = text
+    setVoiceNote("")
+    setView({ kind: "focus", ids: [n] })
+    setHighlight([n])
+    setPhase("speaking")
+    const speaker = createSpeaker(voice, lang, (note) => { if (turn === turnRef.current) setVoiceNote(note) })
+    speakerRef.current = speaker
+    speaker.feed(text)
+    speaker.end()
+    void speaker.finished.then(() => { if (turn === turnRef.current) { setHighlight([]); setPhase("listening"); touch() } })
+    return true
+  }
 
   /** After the greeting, Jarvis says what needs attention today, with the cards on screen. */
   const briefRef = useRef<() => void>(() => {})
@@ -913,7 +969,7 @@ export default function Jarvis() {
                 : "pointer-events-none opacity-0"
             )}
           >
-            <div className="flex w-full max-w-sm flex-col gap-4 px-8">
+            <div className="flex max-h-full w-full max-w-sm flex-col gap-4 overflow-y-auto px-8 py-2">
               <div className="flex flex-col items-center gap-6">
                 <div className="flex flex-col items-center gap-2 text-center">
                   <h1 className="text-2xl font-semibold tracking-tight">
@@ -968,6 +1024,31 @@ export default function Jarvis() {
                   </select>
                 </div>
 
+                <div className="grid w-full grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <label className="text-foreground/70 text-sm font-medium" htmlFor="persona">Personality</label>
+                    <select
+                      id="persona"
+                      value={persona}
+                      onChange={(e) => { setPersona(e.target.value as Persona); setPersonaState(e.target.value as Persona) }}
+                      className="border-input bg-background text-foreground focus-visible:ring-ring/50 h-9 w-full rounded-md border px-3 text-sm shadow-xs outline-none focus-visible:ring-[3px]"
+                    >
+                      {PERSONAS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-foreground/70 text-sm font-medium" htmlFor="callme">Call me</label>
+                    <input
+                      id="callme"
+                      type="text"
+                      defaultValue={callMe}
+                      maxLength={24}
+                      onBlur={(e) => { setCallMe(e.target.value); const v = getCallMe(); setCallMeState(v); e.target.value = v }}
+                      className="border-input bg-background text-foreground focus-visible:ring-ring/50 h-9 w-full rounded-md border px-3 text-sm shadow-xs outline-none focus-visible:ring-[3px]"
+                    />
+                  </div>
+                </div>
+
                 <label className="flex w-full cursor-pointer items-center justify-between gap-3 text-sm">
                   <span className="text-foreground/70 font-medium">Briefing when I start</span>
                   <input
@@ -988,6 +1069,12 @@ export default function Jarvis() {
             </div>
           </div>
         </div>
+
+        {inSession && board && (
+          <div className="text-foreground/50 fixed top-4 left-4 z-40 max-w-[60vw] font-mono text-[10px] leading-tight tracking-widest holo:text-cyan-300/70" aria-label="Sprint status">
+            {statusLine(board)}
+          </div>
+        )}
 
         <button
           type="button"

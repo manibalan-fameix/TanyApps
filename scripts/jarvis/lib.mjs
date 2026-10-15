@@ -210,10 +210,36 @@ export function speakable(md) {
     .trim()
 }
 
+export const PERSONAS = ["subtle", "classic", "full"]
+
+/** How the user wants to be addressed: letters, numbers, spaces and a few marks only, so it cannot carry instructions. */
+export function cleanCallMe(value) {
+  const s = String(value ?? "").replace(/[^\p{L}\p{N} .'-]/gu, "").trim().slice(0, 24)
+  return s || "sir"
+}
+
+/**
+ * Jarvis's way of speaking, as instructions for the model: a calm, loyal, British-butler manner with dry wit. It only changes
+ * wording. Facts, risks and the @@SHOW line are never softened or dropped for the sake of style.
+ */
+export function personaRules(persona = "classic", callMe = "sir") {
+  const strength = {
+    subtle: "Keep a warm, professional tone with light formality; use the form of address only now and then.",
+    classic: "Speak formally and concisely, like a status report. Allow dry, understated wit at most once per answer. Natural phrases: 'Certainly', 'I'm afraid', 'Right away', 'Might I suggest'.",
+    full: "Be impeccably formal and unhurried. Understated, bone-dry wit is welcome. Open with the form of address or 'Certainly', and when it helps close with a short offer of what you could show next.",
+  }[PERSONAS.includes(persona) ? persona : "classic"]
+  return [
+    `Personality: you are Jarvis, a calm, loyal and highly capable assistant in the manner of a British butler. Address the user as "${cleanCallMe(callMe)}".`,
+    strength,
+    "You can only report, explain and put task cards on the screen: you may offer to show something ('Shall I put them on screen?') but never say you have changed, assigned, sent or fixed anything.",
+    "Humour must never hide or soften a real risk: state bad news plainly and first, calmly, without drama.",
+  ].join(" ")
+}
+
 /** What the screen can show next to a spoken answer. The model ends its answer with one @@SHOW line (see showEvents). */
 const SHOW_RULES = `After the spoken answer, add one final line that starts with @@SHOW followed by a JSON object telling the screen what to display, and never read it aloud. Choices: {"view":"focus","ids":[14,21]} for the specific tasks you talk about (at most 6, in the order you mention them); {"view":"person","person":"Gokul"} for one teammate's open tasks; {"view":"sprint"} for the sprint overview by person; {"view":"attention"} for overdue, blocked and at-risk tasks; {"view":"none"} for greetings, or when no task is relevant. Examples: "What is Gokul working on?" or "show me Pavi's tasks" must use the person view; "how is the sprint going?" the sprint view; "what is overdue or blocked?" the attention view; "explain task 14" a focus view with that task. When asked to explain a task, use its "about" and "steps" and you may use up to 5 short sentences.`
 
-function geminiBody(question, items, now, { voice = false, lang = "en" }) {
+function geminiBody(question, items, now, { voice = false, lang = "en", persona = "classic", callMe = "sir" }) {
   const system = [
     "You are Jarvis, the project assistant for Tany, a small Indian startup (TanyCars for used-car dealers, TanyEats for restaurants).",
     "Answer only from the task list given. If the data does not answer the question, say so. Never invent tasks, dates or people.",
@@ -222,6 +248,7 @@ function geminiBody(question, items, now, { voice = false, lang = "en" }) {
     voice
       ? "Your answer will be read aloud, so keep it short: 1 to 3 plain sentences, the answer first, no markdown, no lists, no symbols or links. Begin with one short sentence of under 12 words that answers directly, then add detail only if it helps. Never begin your answer with a label such as A: or Answer:. Say task numbers like 'task 14'. " + SHOW_RULES + ""
       : "Be brief: at most 8 short lines. Refer to tasks as #number. Use plain words.",
+    voice ? personaRules(persona, callMe) : "",
     lang === "ta" ? "Reply in Tamil (தமிழ்), keeping task numbers and names of people in digits and English." : "",
   ].filter(Boolean).join(" ")
   return JSON.stringify({
@@ -252,7 +279,7 @@ export async function askGemini(question, items, now = new Date(), opts = {}) {
  * Yields raw text pieces: first "Q: <what was heard>", a blank line, then the answer. Or just NOSPEECH.
  */
 export async function* streamHear(audio, items, now = new Date(), opts = {}) {
-  const { key, model = "gemini-3.6-flash", lang = "en", history = [] } = opts
+  const { key, model = "gemini-3.6-flash", lang = "en", history = [], persona = "classic", callMe = "sir" } = opts
   const { url, headers } = geminiTarget(key, model, "streamGenerateContent")
   const system = [
     "You are Jarvis, the project assistant for Tany, a small Indian startup (TanyCars for used-car dealers, TanyEats for restaurants).",
@@ -262,6 +289,7 @@ export async function* streamHear(audio, items, now = new Date(), opts = {}) {
     "The user's question is in the attached audio, not in text.",
     "Output format: first ONE line that starts with 'Q: ' followed by the user's words exactly as heard (Tamil stays in Tamil script). If the audio has no clear human speech (silence, noise, a cough, music, or only a faint voice coming from a speaker), output only the single word NOSPEECH and nothing else. Otherwise leave one blank line, then the answer.",
     "Your answer will be read aloud, so keep it short: 1 to 3 plain sentences, the answer first, no markdown, no lists, no symbols or links. Begin with one short sentence of under 12 words that answers directly, then add detail only if it helps. Never begin your answer with a label such as A: or Answer:. Say task numbers like 'task 14'. " + SHOW_RULES + "",
+    personaRules(persona, callMe),
     lang === "ta" ? "Reply in Tamil (தமிழ்), keeping task numbers and names of people in digits and English." : "",
     history.length
       ? `Recent turns, oldest first (a turn marked interrupted had no full answer; if the new audio continues it, treat both as one question): ${history
