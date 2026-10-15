@@ -1400,7 +1400,7 @@ const JarvisAnswer = React.memo(
         </div>
 
         {split && (
-          <div className="no-scrollbar @container flex min-h-0 flex-1 flex-col items-center gap-5 overflow-y-auto" data-pane="cards">
+          <div className="no-scrollbar @container flex min-h-0 flex-1 flex-col items-center gap-5 overflow-y-auto px-5" data-pane="cards">
             {top}
             {cards}
           </div>
