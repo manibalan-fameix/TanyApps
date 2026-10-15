@@ -1,0 +1,686 @@
+{
+  "1": {
+    "title": "Test sign-in and onboarding flows completely",
+    "summary": "Verify all login methods and onboarding steps to ensure new dealers can set up their account smoothly.",
+    "steps": [
+      "Test Google, phone, and email login for new users",
+      "Complete the three step onboarding wizard and check for errors",
+      "Confirm returning dealers reach the dashboard and attach evidence"
+    ]
+  },
+  "2": {
+    "title": "Enable Live Subdomains for New Dealers",
+    "summary": "Connect dealer web addresses to Cloudflare on account creation so every new showroom goes live automatically.",
+    "steps": [
+      "Choose Cloudflare setup method and configure secure access tokens.",
+      "Handle setup failures gracefully with user messages and automatic retries.",
+      "Add automated tests and verify live domain creation in production."
+    ]
+  },
+  "3": {
+    "title": "Test Teammate Management and Access Controls",
+    "summary": "Verify adding, removing, and resetting passwords for teammates to prevent unauthorized access and data leaks between businesses.",
+    "steps": [
+      "Test adding teammates with valid and invalid details.",
+      "Test password resets and account removal access.",
+      "Check staff permission limits and document test results."
+    ]
+  },
+  "4": {
+    "title": "Restrict Staff Permissions and Enforce Owner Controls",
+    "summary": "Audit actions and hide owner-only features from staff to protect sensitive billing and account settings.",
+    "steps": [
+      "Audit all server actions and agree permissions with Bala.",
+      "Centralize permission checks and hide restricted UI elements.",
+      "Write tests ensuring staff users cannot trigger owner actions."
+    ]
+  },
+  "5": {
+    "title": "Test adding a car on real phones",
+    "summary": "Mala will manually test the car listing process on real phones to ensure dealers can publish cars easily.",
+    "steps": [
+      "Test creating a car listing on desktop and mobile browsers.",
+      "Try broken photo uploads, invalid inputs, and plan limit errors.",
+      "Record test video and report any bugs found to Gokul."
+    ]
+  },
+  "6": {
+    "title": "Test Car Management and State Changes",
+    "summary": "Verify car editing, status changes, and deletion to ensure accurate public listings and strong security.",
+    "steps": [
+      "Test editing details and putting cars on hold.",
+      "Verify marking cars as sold, archiving, and deleting.",
+      "Check user permissions and prevent duplicate action errors."
+    ]
+  },
+  "7": {
+    "title": "Connect Car Registration API and Check Data",
+    "summary": "Switch to real registration lookups to autofill accurate car details and display trust badges for buyers.",
+    "steps": [
+      "Fetch raw data from the live service using test key",
+      "Fix data mapping for vehicle details and handle errors",
+      "Update tests with real data format and launch safely"
+    ]
+  },
+  "8": {
+    "title": "Set Up Video Processing Worker Host",
+    "summary": "Deploy a dedicated server to convert uploaded car videos into playable streams and poster images.",
+    "steps": [
+      "Select a host and create a worker Dockerfile.",
+      "Test video processing locally using real ffmpeg tools.",
+      "Deploy the worker and verify live video playback."
+    ]
+  },
+  "9": {
+    "title": "Review Used Car List for Chennai",
+    "summary": "Check car model data against local market knowledge to fix errors and ensure smooth dealer listing.",
+    "steps": [
+      "Identify missing top car models from the spreadsheet.",
+      "Verify name, fuel, gear, seating, and years for rows.",
+      "Submit fixes and test selected models in the wizard."
+    ]
+  },
+  "10": {
+    "title": "Build Sold Cars Page for Admin Dealers",
+    "summary": "Create a page showing a dealer's sold cars to help them track past business.",
+    "steps": [
+      "Create the sold cars page route and database query.",
+      "Build the user interface with search, sort, and summary.",
+      "Test privacy, empty states, mobile layout, and dark mode."
+    ]
+  },
+  "11": {
+    "title": "Test Voice Entry Feature in Multiple Languages",
+    "summary": "Verify voice input works for English and Tamil to help dealers quickly add car details.",
+    "steps": [
+      "Check lower plan lock and microphone permission fallbacks.",
+      "Record test scripts in English, Tamil, and Tanglish.",
+      "Log accuracy results and record a Tamil test run."
+    ]
+  },
+  "12": {
+    "title": "Warn Dealers About Duplicate Car Plates",
+    "summary": "Search hidden plate codes to warn dealers before they accidentally create duplicate car listings.",
+    "steps": [
+      "Create a hidden code generator for normalized car plates.",
+      "Add a database column and backfill existing plate codes.",
+      "Show a warning link when duplicate active listings match."
+    ]
+  },
+  "13": {
+    "title": "Test Video Listing and Walkaround Uploads",
+    "summary": "Test creating car listings from videos on phones to ensure accurate details and reliable uploads.",
+    "steps": [
+      "Record good and bad car walkaround videos on phone",
+      "Upload videos in wizard to test listing accuracy and errors",
+      "Test walkaround uploads, edge cases, and record performance data"
+    ]
+  },
+  "14": {
+    "title": "Add lead capture to car pages",
+    "summary": "Build test drive and inquiry forms so buyers can contact dealers without calling or making payments.",
+    "steps": [
+      "Agree on form fields and record decisions in DECISIONS.md",
+      "Create secure server actions with validation and encrypted phone storage",
+      "Add mobile-friendly form UI with rate limiting and automated tests"
+    ]
+  },
+  "15": {
+    "title": "Add WhatsApp Buttons to Car Pages",
+    "summary": "We will add WhatsApp buttons to car pages so buyers can easily message dealers directly.",
+    "steps": [
+      "Create message templates and helper functions for WhatsApp links.",
+      "Add WhatsApp buttons to car pages and showroom headers.",
+      "Test link building, mobile layouts, and click analytics."
+    ]
+  },
+  "16": {
+    "title": "Test Buyer Car Page and Chat Feature",
+    "summary": "Verify the car listing page, gallery, payment calculator, and chat widget to ensure a smooth buyer experience.",
+    "steps": [
+      "Test car details, media gallery, and payment calculator functionality.",
+      "Verify chat bot responses, contact buttons, and security controls.",
+      "Check page layout on multiple mobile and desktop browsers."
+    ]
+  },
+  "17": {
+    "title": "Test Showroom Pages Links and Vehicle Filters",
+    "summary": "Mala will test showroom car filters, sorting, and short links to ensure buyers see correct vehicle listings.",
+    "steps": [
+      "Set up a dealer profile with 14 test vehicles.",
+      "Test search, filter, sort, pagination, and short link URLs.",
+      "Check site performance, layout design, and dealer domain links."
+    ]
+  },
+  "18": {
+    "title": "Create new landing page for tany.in",
+    "summary": "Design and build a mobile landing page to help dealers understand Tany and sign up easily.",
+    "steps": [
+      "Finalize the page copy, structure, and visual design",
+      "Build the responsive layout using existing dynamic data",
+      "Optimize SEO, performance, accessibility, and track button clicks"
+    ]
+  },
+  "19": {
+    "title": "Review Privacy Policy and Terms of Use",
+    "summary": "Lawyers will check legal pages to ensure they match real app features and meet Indian laws.",
+    "steps": [
+      "Confirm business details and list all real data practices.",
+      "Send current text and data checklist to a qualified lawyer.",
+      "Update web pages with approved text and add required links."
+    ]
+  },
+  "20": {
+    "title": "Decide Buyer Account Page Strategy for Motors",
+    "summary": "Review, define, or remove the motors account page to prevent buyer confusion on unused interfaces.",
+    "steps": [
+      "Review current account pages for motors and restaurants",
+      "Document buyer needs and decide to keep or remove",
+      "Record the decision and update the site accordingly"
+    ]
+  },
+  "21": {
+    "title": "Build a lead management inbox for dealers",
+    "summary": "Create a page where dealers can view, filter, and update customer inquiries to prevent lost sales.",
+    "steps": [
+      "Seed test data and build secure dealer-scoped database queries.",
+      "Create the inbox interface with filters, search, and actions.",
+      "Add inline status updates and pass security tests."
+    ]
+  },
+  "22": {
+    "title": "Build a Lead Pipeline Board",
+    "summary": "Create a visual board to track sales leads through stages and help salespeople spot stuck deals.",
+    "steps": [
+      "Build a five column board using existing lead data.",
+      "Add drag and drop and keyboard column movement.",
+      "Update lead statuses with instant feedback and test errors."
+    ]
+  },
+  "23": {
+    "title": "Alert Dealers Fast About New Leads",
+    "summary": "Build quick email and push alerts for new leads so dealers can contact buyers immediately.",
+    "steps": [
+      "Confirm notification channels and setup email keys with Bala.",
+      "Build a background queue to send alerts without slowing leads.",
+      "Test delivery speed, retry logic, and user opt-out settings."
+    ]
+  },
+  "24": {
+    "title": "Connect dashboard lead cards to real data",
+    "summary": "Display real lead information on dashboard cards to ensure dealers see accurate numbers and recent activity.",
+    "steps": [
+      "Test empty states with no leads present",
+      "Create test leads and verify matching dashboard stats",
+      "Validate status updates, tenant isolation, and link targets"
+    ]
+  },
+  "25": {
+    "title": "Enable Razorpay Route for Marketplace Payments",
+    "summary": "Complete account checks and request Razorpay Route activation so dealers can receive direct customer payments.",
+    "steps": [
+      "Verify company profile details and business documents in Razorpay.",
+      "Submit the Razorpay Route marketplace request and answer questions.",
+      "Inform Gokul once enabled to test real account transfers."
+    ]
+  },
+  "26": {
+    "title": "Test Dealer Payments and Refunds",
+    "summary": "Verify payment processing and refunds to ensure money transfers correctly before using real funds.",
+    "steps": [
+      "Connect a test dealer account for receiving payments.",
+      "Complete test car bookings using various payment scenarios.",
+      "Process refunds and confirm the money transfers correctly."
+    ]
+  },
+  "27": {
+    "title": "Add Missing Razorpay Webhook Tests",
+    "summary": "Write automated tests for payment webhooks to ensure payments update user bookings correctly without duplicate errors.",
+    "steps": [
+      "Review current webhook code and existing unit tests.",
+      "Create a helper function to mock Razorpay signatures.",
+      "Add missing tests for failed, duplicate, and subscription events."
+    ]
+  },
+  "28": {
+    "title": "Test subscription payment flows in test mode",
+    "summary": "Verify checkout, trials, and cancellations in test mode to protect revenue and ensure smooth customer payments.",
+    "steps": [
+      "Set up fresh dealer accounts using Razorpay test credentials.",
+      "Execute all eleven test scenarios for payments and plan changes.",
+      "Record test results, record videos, and log any bugs."
+    ]
+  },
+  "29": {
+    "title": "Test Dealer Storefront Access During Payment Changes",
+    "summary": "Verify when dealer storefronts stay online or close during plan changes to protect revenue and trust.",
+    "steps": [
+      "Test trial endings, grace periods, and failed payments.",
+      "Verify store pages for buyers, dealers, and old accounts.",
+      "Record all results in a table and report issues."
+    ]
+  },
+  "30": {
+    "title": "Complete Billing Go-Live Checklist",
+    "summary": "Verify subscription prices, configure live payment keys, and test webhooks to enable secure automated customer billing.",
+    "steps": [
+      "Confirm prices, trial limits, and policies in writing.",
+      "Add live payment keys and webhooks as secure secrets.",
+      "Perform a real transaction test and verify the refund."
+    ]
+  },
+  "31": {
+    "title": "Email GST Subscription Invoices to Dealers",
+    "summary": "Build GST-compliant automated PDF invoicing and emailing to let Indian business dealers claim tax credits.",
+    "steps": [
+      "Database schema and dealer billing settings UI must be created.",
+      "Generate PDF invoices and calculate tax upon payment charge.",
+      "Email PDF invoices to dealers and build settings view page."
+    ]
+  },
+  "32": {
+    "title": "Test theme, hours, and branding settings",
+    "summary": "Verify branding, business hours, and badge visibility to ensure custom dealer settings display correctly.",
+    "steps": [
+      "Test theme colour changes, contrast rules, and logo uploads.",
+      "Verify business hours logic and invalid entry error messages.",
+      "Check badge visibility across plans and test access permissions."
+    ]
+  },
+  "33": {
+    "title": "Set up custom domains for dealers",
+    "summary": "We will allow Pro dealers to use their own domains safely with automated web certificates.",
+    "steps": [
+      "Configure Cloudflare custom hostnames and update the database schema.",
+      "Build the Cloudflare API client and webhook for verification.",
+      "Update tenant lookup logic to safely route custom domains."
+    ]
+  },
+  "34": {
+    "title": "Build Custom Domain Page for Pro Dealers",
+    "summary": "Create a settings page so Pro dealers can easily connect and manage their own web domain names.",
+    "steps": [
+      "Design plain language domain status screens with the owner",
+      "Build the domain settings navigation, form, and DNS instructions",
+      "Add automated status checks, domain removal, and test cases"
+    ]
+  },
+  "35": {
+    "title": "Check Admin Dashboard and Performance Metrics",
+    "summary": "Mala will test dashboard numbers and report pages to ensure dealers see accurate business data.",
+    "steps": [
+      "Prepare sample car and view data with known totals.",
+      "Compare dashboard stats and reports against the sample data.",
+      "Document results and file bugs for any incorrect counts."
+    ]
+  },
+  "36": {
+    "title": "Build Account, Notifications, and Help Pages",
+    "summary": "Create missing account settings and help pages so users can manage their profiles and read support guides.",
+    "steps": [
+      "Build the account settings page for user profile management.",
+      "Create the notification preferences page with channel toggles.",
+      "Build the help page with searchable FAQs and contact details."
+    ]
+  },
+  "37": {
+    "title": "Build RC transfer tracker for car dealers",
+    "summary": "Create a car ownership transfer tracker to reduce customer calls and update buyers on progress.",
+    "steps": [
+      "Build a transfer tracking list and detailed management page",
+      "Add stage update actions with shareable buyer status links",
+      "Test multi-tenant security rules and database updates thoroughly"
+    ]
+  },
+  "38": {
+    "title": "Build Public Car Transfer Tracking Page",
+    "summary": "Create a secure web page for buyers to track vehicle transfer status using a private link.",
+    "steps": [
+      "Create a public web route using the unique token",
+      "Fetch basic car status while hiding personal buyer data",
+      "Build a mobile friendly timeline showing the transfer progress"
+    ]
+  },
+  "39": {
+    "title": "Save changes and set initial baseline tag",
+    "summary": "You will review, clean, and save all pending code changes to prevent data loss and establish a baseline.",
+    "steps": [
+      "Check for hidden secrets and add them to gitignore.",
+      "Run automated tests and fix any failing checks.",
+      "Commit all changes, push main, and tag the baseline."
+    ]
+  },
+  "40": {
+    "title": "Build a Shared Cloudflare Rate Limiter",
+    "summary": "Create a shared rate limiter to prevent abuse and reduce API costs across Cloudflare Workers.",
+    "steps": [
+      "Choose a Cloudflare storage option for rate limits.",
+      "Define rate limit rules and hash personal user keys.",
+      "Implement the new limiter API and test isolate sharing."
+    ]
+  },
+  "41": {
+    "title": "Set Up Sentry Error Monitoring",
+    "summary": "Add automated error tracking to spot and fix system bugs before customers report them.",
+    "steps": [
+      "Create Sentry projects and store secure keys",
+      "Install tracking code in web app and video worker",
+      "Test error alerts and update team runbook"
+    ]
+  },
+  "42": {
+    "title": "Automate Code Checks and Data Leak Tests",
+    "summary": "Set up automated tests to catch code errors and data leaks before merging new work.",
+    "steps": [
+      "Create automated checks for code formatting, types, and tests.",
+      "Add database integration tests to prevent customer data leaks.",
+      "Require all tests to pass before merging into main."
+    ]
+  },
+  "43": {
+    "title": "Create end-to-end tests for key user journeys",
+    "summary": "Build automated tests for user signup, customer leads, and payments to ensure vital site features work correctly.",
+    "steps": [
+      "Design test plans and set up stable test logins.",
+      "Build helper functions and a resettable database seed script.",
+      "Write Playwright tests and integrate them into continuous integration."
+    ]
+  },
+  "44": {
+    "title": "Review application security and back up keys",
+    "summary": "Check the system for secret leaks, lock down testing backdoors, and safely back up data encryption keys.",
+    "steps": [
+      "Scan code history to find and clean up leaked secrets",
+      "Back up the master encryption key and test data recovery",
+      "Block developer testing tools from running in live production"
+    ]
+  },
+  "45": {
+    "title": "Create a Production Deployment Runbook",
+    "summary": "Write a step-by-step emergency guide so any team member can safely manage and fix site deployments.",
+    "steps": [
+      "Write and test step-by-step instructions for all production systems.",
+      "Perform and time a test database restore drill.",
+      "Have a teammate test the guide and link it in the README."
+    ]
+  },
+  "46": {
+    "title": "Create New Tany Logo and Brand Assets",
+    "summary": "Design and replace old brand logos with new Tany assets to make the product look finished.",
+    "steps": [
+      "Write brand brief and create three initial logo concepts.",
+      "Select a design and produce all required logo files.",
+      "Replace old files in code and update external services."
+    ]
+  },
+  "47": {
+    "title": "Test Food Store Ordering and Payment",
+    "summary": "Manually test the online food store on phones to ensure customers can order and pay without issues.",
+    "steps": [
+      "Browse dishes, add items, and test the shopping cart.",
+      "Complete checkout using test online payments and cash options.",
+      "Track the order status, test cancellations, and record results."
+    ]
+  },
+  "48": {
+    "title": "Test Admin Dashboards and Delivery Tracking",
+    "summary": "Test restaurant admin features and live delivery tracking to ensure smooth daily operations before launching.",
+    "steps": [
+      "Test menu management, order alerts, and status updates.",
+      "Verify delivery partner assignments, live maps, and customer zones.",
+      "Check coupons, payments, staff permissions, and report any bugs."
+    ]
+  },
+  "49": {
+    "title": "Learn the Product and Used-Car Dealer Market",
+    "summary": "You will study the product and dealer workflows to pitch effectively to future customers.",
+    "steps": [
+      "Test the app features and document any confusing steps.",
+      "Observe used-car dealers and evaluate competing listing platforms.",
+      "Draft a short pitch and send a demo video to Bala."
+    ]
+  },
+  "50": {
+    "title": "Define ideal customers and list 100 dealers",
+    "summary": "Create a target customer profile and find 100 matching Chennai car dealers to guide sales outreach.",
+    "steps": [
+      "Write a five-line target customer description for approval.",
+      "Build a spreadsheet listing 100 local car dealers.",
+      "Score each dealer and highlight the top 30 candidates."
+    ]
+  },
+  "51": {
+    "title": "Set Up Sales Tracker Google Sheet",
+    "summary": "Create a daily sales spreadsheet to log dealer contacts, track progress, and improve future outreach.",
+    "steps": [
+      "Build pipeline, activity log, and weekly summary tabs.",
+      "Add pipeline stages, dropdowns, and automated weekly formulas.",
+      "Import initial dealers, set up daily updates, and share."
+    ]
+  },
+  "52": {
+    "title": "Create Sales Playbook and Practice Demos",
+    "summary": "Write sales scripts and answers to customer doubts to help the team close deals confidently.",
+    "steps": [
+      "Write sales scripts, questions, and objection answers",
+      "Share the Google Doc with Bala for review",
+      "Role-play the sales call five times for practice"
+    ]
+  },
+  "53": {
+    "title": "Prepare Sales Demo Account and Materials",
+    "summary": "Set up a demo account, translated PDFs, and backup video to ensure smooth sales presentations to dealers.",
+    "steps": [
+      "Create a realistic demo account featuring eight cars.",
+      "Write English and Tamil summary PDFs with QR codes.",
+      "Record a backup demo video and prepare the checklist."
+    ]
+  },
+  "54": {
+    "title": "Contact Thirty Car Dealers for Sales Demos",
+    "summary": "Reach out to local car dealers daily through calls, messages, and visits to book product demos.",
+    "steps": [
+      "Check daily tracker for existing dealer follow-ups each morning",
+      "Contact twenty dealers daily via visits, calls, or WhatsApp",
+      "Update tracker daily and review progress with the team lead"
+    ]
+  },
+  "55": {
+    "title": "Run 10 Car Dealer Sales Demos",
+    "summary": "Conduct ten dealer sales presentations to learn from feedback and secure five trial accounts.",
+    "steps": [
+      "Prepare account links and dealer notes before each presentation.",
+      "Follow the fifteen minute demo script using live dealer cars.",
+      "Log feedback after every meeting and update objection notes."
+    ]
+  },
+  "56": {
+    "title": "Recruit 5 to 10 Pilot Dealers",
+    "summary": "Sign up 5 to 10 car dealers for free trial testing to get early feedback and testimonials.",
+    "steps": [
+      "Select eligible dealers from recent product demos.",
+      "Draft one-page trial terms and get approval from Bala.",
+      "Get written agreement from dealers and record start dates."
+    ]
+  },
+  "57": {
+    "title": "Onboard Pilot Car Dealers in Person",
+    "summary": "Visit initial car dealers to set up their accounts and help them get their first customer inquiry.",
+    "steps": [
+      "Visit the dealership to set up account and add cars.",
+      "Leave a simple guide and follow up over seven days.",
+      "Log progress metrics and report any technical issues immediately."
+    ]
+  },
+  "58": {
+    "title": "Weekly Dealer Feedback Calls and Friday Summaries",
+    "summary": "Conduct weekly calls with pilot dealers to log feedback and send Bala a Friday summary.",
+    "steps": [
+      "Call each pilot dealer to gather honest feedback.",
+      "Log answers in a sheet and create GitHub issues.",
+      "Send Bala a top 5 summary every Friday."
+    ]
+  },
+  "59": {
+    "title": "Convert Pilot Dealers to Paying Customers",
+    "summary": "Turn trial dealers into paid subscribers to generate revenue for the business.",
+    "steps": [
+      "Review usage data with dealers during trial week three",
+      "Send Bala-approved pricing plan options on day twenty-five",
+      "Help willing dealers complete payment in the app"
+    ]
+  },
+  "60": {
+    "title": "Gather Dealer Testimonials Referrals and Case Study",
+    "summary": "Collect dealer quotes, referrals, and one case study to build trust with future customers.",
+    "steps": [
+      "Ask happy dealers for written quotes, photos, and permissions.",
+      "Request dealer introductions to friends and track referral sources.",
+      "Draft a one-page case study and send to design."
+    ]
+  },
+  "61": {
+    "title": "Partner with Car Business Groups",
+    "summary": "Connect with industry partners to quickly reach many car dealers at once.",
+    "steps": [
+      "List and rank twenty potential partners in a spreadsheet.",
+      "Create a short pitch explaining benefits for each partner.",
+      "Meet top five partners to pitch a small trial."
+    ]
+  },
+  "62": {
+    "title": "Send Weekly Sales Report to Bala",
+    "summary": "Vishnu will email sales data to Bala every Friday to track startup growth and spot problems early.",
+    "steps": [
+      "Pull weekly sales numbers from the SL3 spreadsheet tab.",
+      "Verify odd figures against the activity log for accuracy.",
+      "Send the completed one-page report to Bala by Friday 5pm."
+    ]
+  },
+  "63": {
+    "title": "Set up customer support and check-in routine",
+    "summary": "We will create support routines and check-ins to help dealers and stop them from leaving.",
+    "steps": [
+      "Set up a WhatsApp support channel and triage incoming questions",
+      "Create a shared FAQ document and schedule regular dealer check-ins",
+      "Identify inactive dealers weekly and offer them direct assistance"
+    ]
+  },
+  "64": {
+    "title": "Find Restaurant Leads and Interview Owners",
+    "summary": "Create a target restaurant list and interview five owners to understand their current ordering pains.",
+    "steps": [
+      "Define target restaurant criteria with Bala",
+      "Gather contact details for 50 local restaurants",
+      "Interview 5 owners and summarize your findings"
+    ]
+  },
+  "65": {
+    "title": "Create Tany Brand Messaging Guide",
+    "summary": "Pavi will write a guide defining Tany's promise and tone so all future marketing stays consistent.",
+    "steps": [
+      "Gather facts from product and sales documents.",
+      "Draft core messages, taglines, tone examples, and Tamil translations.",
+      "Review and finalize the guide with Bala and Vishnu."
+    ]
+  },
+  "66": {
+    "title": "Set Up Startup Social Media Profiles",
+    "summary": "Create consistent official social media accounts to build trust with car dealers before sales meetings.",
+    "steps": [
+      "Reserve matching username handles across all selected social platforms.",
+      "Secure accounts with company emails, shared passwords, and verification.",
+      "Add official logo, bio details, and initial introductory posts."
+    ]
+  },
+  "67": {
+    "title": "Create Content Calendar and Posting Routine",
+    "summary": "Build a four-week content plan to regularly reach auto dealers and convert them into customers.",
+    "steps": [
+      "Draft a four-week spreadsheet calendar with twelve planned posts.",
+      "Write eight complete posts in English and Tamil.",
+      "Establish a weekly review routine to track performance."
+    ]
+  },
+  "68": {
+    "title": "Create Product Videos in Tamil and English",
+    "summary": "Produce short explainer videos to help dealers quickly understand the app on WhatsApp and social media.",
+    "steps": [
+      "Write scripts and record screen actions on a clean phone.",
+      "Record clear voiceovers and edit with Tamil and English subtitles.",
+      "Cut short clips, collect feedback from dealers, and export."
+    ]
+  },
+  "69": {
+    "title": "Set Up WhatsApp Marketing with Dealer Consent",
+    "summary": "Build a consent-based WhatsApp marketing system to safely reach Indian dealers and generate product demos.",
+    "steps": [
+      "Configure WhatsApp Business app settings and quick replies.",
+      "Build an opt-in list and track contact consent.",
+      "Create click-to-WhatsApp links and message templates for campaigns."
+    ]
+  },
+  "70": {
+    "title": "Set Up Basic Search Engine Optimisation",
+    "summary": "You will set up basic search tracking and publish four guides to help dealers find us on Google.",
+    "steps": [
+      "Verify the website domain in Google Search Console.",
+      "Research twenty relevant English and Tamil search phrases.",
+      "Publish four helpful articles with on-page search basics."
+    ]
+  },
+  "71": {
+    "title": "Apply for Indian Startup Programs and Credits",
+    "summary": "Research and apply for startup benefits to get cloud credits, support, and network access for the company.",
+    "steps": [
+      "Research Indian startup programs, incubators, and tool credits.",
+      "Build a standard application kit with real company data.",
+      "Submit applications for the top three highest-value programs."
+    ]
+  },
+  "72": {
+    "title": "Create Product Launch Plan and Timeline",
+    "summary": "Prepare a soft and public launch plan to attract initial users without breaking the product.",
+    "steps": [
+      "Choose soft and public launch dates with Bala.",
+      "Prepare the readiness checklist, marketing assets, and launch channels.",
+      "Execute the launch day timeline and track initial results."
+    ]
+  },
+  "73": {
+    "title": "Run a Small Paid Advertising Test",
+    "summary": "Run a low-budget ad test to find new clients without wasting money.",
+    "steps": [
+      "Agree on a strict budget and single ad platform.",
+      "Create three ad variations and set up tracking links.",
+      "Track daily results and stop ads if performance drops."
+    ]
+  },
+  "74": {
+    "title": "Join and Support Local Car Dealer Groups",
+    "summary": "Join car dealer groups and share helpful advice to build trust and find potential customers.",
+    "steps": [
+      "Join ten car dealer groups and check their rules.",
+      "Help group members with advice for two weeks.",
+      "Log your activities and report the top three groups."
+    ]
+  },
+  "75": {
+    "title": "Set Up Marketing Link and Source Tracking",
+    "summary": "Build tracking links and record sign-up sources to measure which marketing channels bring paying customers.",
+    "steps": [
+      "Define funnel steps and create a link tagging sheet.",
+      "Save link source data and referral codes at sign-up.",
+      "Build a weekly spreadsheet to track channel costs and results."
+    ]
+  },
+  "76": {
+    "title": "Create Dealer Case Studies in All Formats",
+    "summary": "Turn raw dealer stories into polished promotional materials to build trust with new potential customers.",
+    "steps": [
+      "Gather drafts and reconfirm written permission from dealers.",
+      "Write stories and produce PDF, video, and social formats.",
+      "Verify all numbers and get dealer approval before publishing."
+    ]
+  }
+}

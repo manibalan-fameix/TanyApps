@@ -11,8 +11,10 @@ import { Button } from "@/components/ui/button"
 import { ShimmeringText } from "@/components/ui/shimmering-text"
 
 import { LanguageSelector } from "@/components/language-selector"
-import { cleanText, createSpeaker, duck, greetingParts, hearStream, prefetchGreeting, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage, type Speaker, type Turn } from "@/lib/jarvis"
+import { cleanText, createSpeaker, duck, greetingParts, hearStream, prefetchGreeting, stopAudio, unlockAudio, warmUp, VOICES, getVoice, setVoice, replyLanguage, loadCards, askStream, type BoardData, type Speaker, type Turn } from "@/lib/jarvis"
 import { createListener, type Listener } from "@/lib/mic"
+import { CardView } from "@/components/card-view"
+import { groupsFor, intentView, mentioned, parseShow, type View } from "@/lib/cards"
 
 interface RecordingState {
   error: string
@@ -183,7 +185,7 @@ const BottomControls = React.memo(
             {speaking && (
               <button
                 onClick={onStopVoice}
-                className="bg-background text-foreground border-foreground/15 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-lg transition-opacity hover:opacity-90"
+                className="bg-background text-foreground border-foreground/15 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium whitespace-nowrap shadow-lg transition-opacity hover:opacity-90"
               >
                 Stop voice
               </button>
@@ -244,6 +246,23 @@ export default function Jarvis() {
   const historyRef = useRef<Turn[]>([])
   const langRef = useRef("en")
   const [userSpeaking, setUserSpeaking] = useState(false)
+
+  // Cards: the board, what Jarvis asked to show, and which card it is talking about right now.
+  const [board, setBoard] = useState<BoardData | null>(null)
+  const [view, setView] = useState<View>({ kind: "none" })
+  const [highlight, setHighlight] = useState<number[]>([])
+  const shownRef = useRef(false) // did the model ask for specific cards this turn?
+  const groups = useMemo(() => groupsFor(view, board), [view, board])
+  const [theme, setThemeState] = useState<"holo" | "clean">(() => { try { return localStorage.getItem("theme") === "clean" ? "clean" : "holo" } catch { return "holo" } })
+  const [briefing, setBriefingState] = useState<boolean>(() => { try { return localStorage.getItem("briefing") !== "off" } catch { return true } })
+  const briefingRef = useRef(briefing)
+  useEffect(() => { briefingRef.current = briefing }, [briefing])
+  useEffect(() => {
+    const root = document.documentElement
+    root.classList.toggle("holo", theme === "holo")
+    root.classList.toggle("dark", theme === "holo")
+    try { localStorage.setItem("theme", theme) } catch { /* private mode */ }
+  }, [theme])
   const speakerRef = useRef<Speaker | null>(null)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const stopRef = useRef<() => void>(() => {})
@@ -262,6 +281,16 @@ export default function Jarvis() {
       setRecording((prev) => ({ ...prev, error: "This browser cannot use the microphone. Use Chrome, Edge or Safari." }))
     }
   }, [])
+
+  // The cards need the board: load it when a session starts and keep it fresh while it runs.
+  useEffect(() => {
+    if (connectionState !== "connected") return
+    let stop = false
+    const load = () => loadCards().then((b) => { if (!stop) setBoard(b) }).catch(() => {})
+    void load()
+    const t = setInterval(load, 60_000)
+    return () => { stop = true; clearInterval(t) }
+  }, [connectionState])
 
   // While Jarvis talks, only clearly louder speech counts as you (a leftover echo must not interrupt it).
   useEffect(() => {
@@ -312,14 +341,25 @@ export default function Jarvis() {
   // === Conversation ===
   const words = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean)
 
-  /** True when what the microphone heard is just Jarvis's own voice coming back through the speaker. */
+  /**
+   * True when what the microphone heard is just Jarvis's own voice coming back through the speaker: a long enough run of
+   * consecutive words that Jarvis is saying right now. Single shared words ("task", "to") do not count, so a short question
+   * that reuses a few of them is still treated as you.
+   */
   const isEcho = useCallback((heard: string) => {
     if (phaseRef.current === "listening") return false
     const hw = words(heard)
     if (!hw.length) return true
-    const said = new Set(words(replyRef.current))
-    const inside = hw.filter((w) => said.has(w)).length
-    return hw.length >= 3 ? inside / hw.length >= 0.6 : inside === hw.length
+    const said = words(replyRef.current)
+    let best = 0
+    for (let i = 0; i < hw.length; i++) {
+      for (let j = 0; j < said.length; j++) {
+        let k = 0
+        while (i + k < hw.length && j + k < said.length && hw[i + k] === said[j + k]) k++
+        if (k > best) best = k
+      }
+    }
+    return hw.length <= 2 ? best === hw.length && hw.length === 2 : best >= Math.max(3, Math.ceil(hw.length * 0.7))
   }, [])
 
   /** Resets the "nothing said for a while" timer. A silent session ends by itself after two minutes. */
@@ -407,6 +447,9 @@ export default function Jarvis() {
     setVoiceNote("")
     setLocalTranscript("")
     lastTranscriptRef.current = ""
+    setView({ kind: "none" })
+    setHighlight([])
+    shownRef.current = false
     setPhase("thinking")
     endSoundRef.current?.play().catch(() => {})
     return turn
@@ -424,6 +467,13 @@ export default function Jarvis() {
     const controller = new AbortController()
     const lang = langRef.current
     let turn = 0
+    let heardText = ""
+    const team = () => board?.team ?? ["Gokul", "Pavi", "Mala", "Bala", "Vishnu"]
+    const pick = (raw: unknown): View => {
+      const parsed = parseShow(raw)
+      const intent = intentView(heardText, team())
+      return intent && (parsed.kind === "none" || (parsed.kind === "focus" && parsed.ids.length <= 1)) ? intent : parsed
+    }
     const st: { speaker: Speaker | null; full: string } = { speaker: null, full: "" }
     const turnLive = () => turn === turnRef.current && connectionStateRef.current === "connected"
 
@@ -438,9 +488,10 @@ export default function Jarvis() {
             if (talking) bargeIn() // you really did speak over Jarvis
             abortRef.current?.abort()
             abortRef.current = controller
+            heardText = heard
             turn = beginTurn(heard.trim() || "…")
             touch()
-            st.speaker = createSpeaker(voice, lang, (n) => { if (turnLive()) setVoiceNote(n) })
+            st.speaker = createSpeaker(voice, lang, (n) => { if (turnLive()) setVoiceNote(n) }, (t) => { if (turnLive()) setHighlight(mentioned(t)) })
             speakerRef.current = st.speaker
           },
           onDelta: (piece) => {
@@ -452,9 +503,16 @@ export default function Jarvis() {
             st.speaker.feed(piece)
           },
           onNoSpeech: () => { duck(false); setLocalTranscript("") },
+          onShow: (raw) => { if (turnLive()) { shownRef.current = true; setView(pick(raw)) } },
         }, controller.signal)
         if (st.speaker && turnLive()) {
           st.speaker.end()
+          if (!shownRef.current) {
+            const intent = intentView(heardText, team())
+            const ids = mentioned(replyRef.current)
+            if (intent) setView(intent)
+            else if (ids.length) setView({ kind: "focus", ids: ids.slice(0, 6) })
+          }
           await st.speaker.finished
           if (turnLive()) historyRef.current = [...historyRef.current, { q: questionRef.current, a: replyRef.current.slice(0, 200) }].slice(-6)
         }
@@ -467,7 +525,7 @@ export default function Jarvis() {
         if (st.speaker && turnLive()) { setPhase("listening"); touch() }
       }
     })()
-  }, [bargeIn, beginTurn, halfDuplex, isEcho, setPhase, touch, voice])
+  }, [bargeIn, beginTurn, board, halfDuplex, isEcho, setPhase, touch, voice])
 
   /** Jarvis opens the conversation, so you know it is on and listening. */
   const greet = useCallback(() => {
@@ -485,8 +543,51 @@ export default function Jarvis() {
     speakerRef.current = speaker
     speaker.feed(text)
     speaker.end()
-    void speaker.finished.then(() => { if (turn === turnRef.current) { setPhase("listening"); touch() } })
+    void speaker.finished.then(() => {
+      if (turn !== turnRef.current) return
+      if (briefingRef.current) briefRef.current()
+      else { setPhase("listening"); touch() }
+    })
   }, [selectedLanguage, setPhase, touch, voice])
+
+  /** After the greeting, Jarvis says what needs attention today, with the cards on screen. */
+  const briefRef = useRef<() => void>(() => {})
+  briefRef.current = () => {
+    const controller = new AbortController()
+    abortRef.current?.abort()
+    abortRef.current = controller
+    const lang = langRef.current
+    const turn = beginTurn("")
+    const live = () => turn === turnRef.current && connectionStateRef.current === "connected"
+    const speaker = createSpeaker(voice, lang, (n) => { if (live()) setVoiceNote(n) }, (t) => { if (live()) setHighlight(mentioned(t)) })
+    speakerRef.current = speaker
+    let full = ""
+    void (async () => {
+      try {
+        await askStream(
+          "Give me a short briefing: what needs my attention today? Mention at most three tasks, the most important first.",
+          lang,
+          (piece) => {
+            if (!live()) return
+            full += piece
+            replyRef.current = cleanText(full)
+            setReply(cleanText(full))
+            setPhase("speaking")
+            speaker.feed(piece)
+          },
+          controller.signal,
+          (raw) => { if (live()) { shownRef.current = true; setView(parseShow(raw)) } }
+        )
+        speaker.end()
+        if (live() && !shownRef.current) { const ids = mentioned(replyRef.current); if (ids.length) setView({ kind: "focus", ids: ids.slice(0, 6) }) }
+        await speaker.finished
+      } catch {
+        speaker.cancel()
+      } finally {
+        if (live()) { setPhase("listening"); touch() }
+      }
+    })()
+  }
 
   // Simulate audio chunk timing for latency measurement
   useEffect(() => {
@@ -698,7 +799,7 @@ export default function Jarvis() {
   const isPartial = Boolean(lastTranscriptRef.current)
 
   return (
-    <div className="relative mx-auto flex h-full w-full max-w-4xl flex-col items-center justify-center">
+    <div className="relative mx-auto flex h-full w-full max-w-6xl flex-col items-center justify-center">
       <BackgroundAura
         status={connectionState === "connecting" ? "connecting" : scribe.status}
         isConnected={connectionState === "connected"}
@@ -736,7 +837,7 @@ export default function Jarvis() {
         }
       `}</style>
 
-      <div className="relative flex h-full w-full flex-col items-center justify-center gap-8 overflow-hidden px-8 py-12">
+      <div className="relative flex h-full w-full flex-col items-center justify-center gap-4 overflow-hidden px-4 py-6 sm:gap-8 sm:px-8 sm:py-10">
         {/* Main transcript area */}
         <div className="relative flex min-h-[350px] w-full flex-1 items-center justify-center overflow-hidden">
           {/* Transcript - shown when there's content */}
@@ -764,7 +865,7 @@ export default function Jarvis() {
             )}
           >
             {showAnswer && (
-              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} live={connectionState === "connected" ? localTranscript || (userSpeaking ? "…" : "") : ""} />
+              <JarvisAnswer question={question} reply={reply} phase={phase} note={voiceNote} live={connectionState === "connected" ? localTranscript || (userSpeaking ? "…" : "") : ""} cards={groups.length ? <CardView groups={groups} highlight={highlight} wall={view.kind === "sprint"} /> : null} />
             )}
           </div>
 
@@ -867,6 +968,19 @@ export default function Jarvis() {
                   </select>
                 </div>
 
+                <label className="flex w-full cursor-pointer items-center justify-between gap-3 text-sm">
+                  <span className="text-foreground/70 font-medium">Briefing when I start</span>
+                  <input
+                    type="checkbox"
+                    checked={briefing}
+                    onChange={(e) => {
+                      setBriefingState(e.target.checked)
+                      try { localStorage.setItem("briefing", e.target.checked ? "on" : "off") } catch { /* private mode */ }
+                    }}
+                    className="size-4 accent-cyan-500"
+                  />
+                </label>
+
                 <Badge variant="outline" className="text-foreground/60">
                   Answers and voice by Google Gemini
                 </Badge>
@@ -874,6 +988,15 @@ export default function Jarvis() {
             </div>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setThemeState((t) => (t === "holo" ? "clean" : "holo"))}
+          className="border-foreground/15 text-foreground/70 hover:text-foreground fixed top-4 right-4 z-50 rounded-full border px-3 py-1 text-xs backdrop-blur"
+          aria-label="Switch look"
+        >
+          {theme === "holo" ? "Hologram" : "Clean"}
+        </button>
 
         {recording.error && connectionState === "idle" && (
           <p
@@ -996,17 +1119,24 @@ const JarvisAnswer = React.memo(
     phase,
     note,
     live,
+    cards,
   }: {
     question: string
     reply: string
     phase: "listening" | "thinking" | "speaking"
     note: string
     live: string
+    cards: React.ReactNode
   }) => {
     const characters = useMemo(() => reply.split(""), [reply])
     const previousNumChars = useDebounce(usePrevious(characters.length) || 0, 100)
     return (
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 overflow-auto px-12 py-8">
+      <div
+        className={cn(
+          "absolute inset-0 flex flex-col items-center gap-6 overflow-auto px-4 py-8 sm:px-12",
+          cards ? "justify-start pb-32" : "justify-center"
+        )}
+      >
         {question && (
           <p className="text-foreground/50 max-w-2xl text-center text-lg leading-relaxed font-light">
             {question}
@@ -1031,6 +1161,7 @@ const JarvisAnswer = React.memo(
             {live}
           </p>
         )}
+        {cards}
         {note && <p className="text-foreground/40 max-w-2xl text-center text-xs">{note}</p>}
       </div>
     )

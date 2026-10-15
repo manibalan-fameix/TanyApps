@@ -52,7 +52,7 @@ export const cleanText = (t: string) => t.replace(/\[#?(\d+)\]\([^)]*\)/g, "task
  * Asks Jarvis and receives the answer piece by piece (server-sent events), so speech can start before the answer is complete.
  * Falls back to one normal reply when the server does not stream (for example when no Gemini key is set).
  */
-export async function askStream(text: string, lang: string, onDelta: (piece: string) => void, signal?: AbortSignal): Promise<string> {
+export async function askStream(text: string, lang: string, onDelta: (piece: string) => void, signal?: AbortSignal, onShow?: (show: unknown) => void): Promise<string> {
   const pass = passphrase()
   if (!pass) throw new Error("A passphrase is needed.")
   const res = await fetch("/api/ask", {
@@ -78,8 +78,9 @@ export async function askStream(text: string, lang: string, onDelta: (piece: str
     buffer = lines.pop() ?? ""
     for (const line of lines) {
       if (!line.startsWith("data:")) continue
-      const msg = JSON.parse(line.slice(5)) as { delta?: string; error?: string }
+      const msg = JSON.parse(line.slice(5)) as { delta?: string; error?: string; show?: unknown }
       if (msg.error) throw new Error(msg.error)
+      if (msg.show) onShow?.(msg.show)
       if (msg.delta) { full += msg.delta; onDelta(msg.delta) }
     }
   }
@@ -241,11 +242,13 @@ export interface Speaker {
  * Speaks an answer while it is still being written. The first sentence is voiced as soon as it is complete, and the rest
  * as one more piece, so there are at most two voice requests per answer. A piece that fails falls back to the device voice.
  */
-export function createSpeaker(voice: string, lang: string, note: (n: string) => void = () => {}): Speaker {
+const MAX_PIECES = 8 // voice requests per answer
+
+export function createSpeaker(voice: string, lang: string, note: (n: string) => void = () => {}, onPiece: (text: string) => void = () => {}): Speaker {
   stopAudio()
   const texts: string[] = []
   const voices: Promise<Response | Error>[] = []
-  let buffer = "", dispatched = 0, ended = false, cancelled = false, wake: (() => void) | null = null
+  let buffer = "", dispatched = 0, dispatchedCount = 0, ended = false, cancelled = false, wake: (() => void) | null = null
   let usedGemini = false, failure = ""
 
   const dispatch = (t: string) => {
@@ -261,6 +264,7 @@ export function createSpeaker(voice: string, lang: string, note: (n: string) => 
       if (cancelled || i >= texts.length) break
       const got = await voices[i]
       if (cancelled) break
+      onPiece(texts[i]) // the screen can light up whatever this sentence talks about
       if (got instanceof Response) {
         try {
           await playPcm(got, Number(got.headers.get("x-pcm-rate")) || 24000)
@@ -271,18 +275,23 @@ export function createSpeaker(voice: string, lang: string, note: (n: string) => 
       if (cancelled) break
       await new Promise<void>((r) => deviceSpeak(texts[i], lang, r))
     }
+    onPiece("")
     note(voice === "device" ? "Voice: device" : usedGemini && !failure ? `Voice: ${voice} (Gemini)` : `Gemini voice failed (${failure || "unknown"}), used the device voice`)
   })()
 
   const speaker: Speaker = {
     feed(piece) {
       buffer += piece
-      if (dispatched === 0) {
-        // The first sentence, or a long first sentence cut at a comma, so the voice can start early.
-        const sentence = /^\s*([\s\S]{8,}?[.!?])(?:\s|$)/.exec(buffer)
-        const clause = buffer.length > 70 ? /^\s*([\s\S]{30,}?,)\s/.exec(buffer) : null
+      // Every finished sentence is voiced as soon as it is complete (the first one early, even if it is long).
+      for (let guard = 0; guard < 12 && dispatched < buffer.length; guard++) {
+        const rest = buffer.slice(dispatched)
+        const sentence = /^\s*([\s\S]{12,}?[.!?])(?:\s|$)/.exec(rest) ?? (dispatchedCount === 0 ? /^\s*([\s\S]{8,}?[.!?])(?:\s|$)/.exec(rest) : null)
+        const clause = dispatchedCount === 0 && rest.length > 70 ? /^\s*([\s\S]{30,}?,)\s/.exec(rest) : null
         const m = sentence ?? clause
-        if (m) { dispatch(m[1].trim()); dispatched = m[0].length }
+        if (!m || dispatchedCount >= MAX_PIECES - 1) break
+        dispatch(m[1].trim())
+        dispatched += m[0].length
+        dispatchedCount++
       }
     },
     end() {
@@ -302,6 +311,7 @@ export interface HearEvents {
   onHeard(text: string): void
   onDelta(piece: string): void
   onNoSpeech(): void
+  onShow?(show: unknown): void
 }
 
 export interface Turn { q: string; a: string; interrupted?: boolean }
@@ -328,11 +338,42 @@ export async function hearStream(wav: Blob, lang: string, history: Turn[], on: H
     buffer = lines.pop() ?? ""
     for (const line of lines) {
       if (!line.startsWith("data:")) continue
-      const msg = JSON.parse(line.slice(5)) as { heard?: string; delta?: string; nospeech?: boolean; error?: string }
+      const msg = JSON.parse(line.slice(5)) as { heard?: string; delta?: string; nospeech?: boolean; error?: string; show?: unknown }
       if (msg.error) throw new Error(msg.error)
-      if (msg.nospeech) on.onNoSpeech()
+      if (msg.show) on.onShow?.(msg.show)
+      else if (msg.nospeech) on.onNoSpeech()
       else if (msg.heard !== undefined) on.onHeard(msg.heard)
       else if (msg.delta) on.onDelta(msg.delta)
     }
   }
+}
+
+export interface CardItem {
+  n: number
+  title: string
+  full: string
+  summary: string
+  steps: string[]
+  open: boolean
+  blocked: boolean
+  project: string
+  team: string[]
+  sprint: string
+  priority: string
+  points: number
+  epic: string
+  due: string | null
+  updated: string
+}
+
+export interface BoardData { items: CardItem[]; sprint: { name: string; end: string; daysLeft: number }; team: string[] }
+
+/** Every task as a card, with the current sprint and the team list. */
+export async function loadCards(): Promise<BoardData> {
+  const pass = passphrase()
+  if (!pass) throw new Error("A passphrase is needed.")
+  const res = await fetch("/api/board", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${pass}` }, body: "{}" })
+  if (res.status === 401) { store.del("pass"); throw new Error("Wrong passphrase. Try again.") }
+  if (!res.ok) throw new Error("Could not load the tasks.")
+  return (await res.json()) as BoardData
 }

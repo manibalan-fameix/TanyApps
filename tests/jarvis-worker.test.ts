@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import worker from "../workers/jarvis/index.mjs"
-import { hearEvents } from "../scripts/jarvis/lib.mjs"
+import { hearEvents, showEvents } from "../scripts/jarvis/lib.mjs"
+import { intentView, mentioned, parseShow, groupsFor } from "../workers/jarvis/ui/src/lib/cards"
 
 const env = { JARVIS_PASSPHRASE: "correct-horse-battery", JARVIS_TOKEN: "ghp_fake", GEMINI_API_KEY: "AIzaFake", ASSETS: { fetch: async () => new Response("<html>page</html>") } }
 
@@ -165,5 +166,81 @@ describe("hearing a recorded question", () => {
     expect(empty.status).toBe(400)
     const wrong = await worker.fetch(new Request("https://x/api/hear", { method: "POST", headers: { authorization: "Bearer nope" }, body: new Uint8Array([1]) }), env)
     expect(wrong.status).toBe(401)
+  })
+})
+
+async function shown(deltas: string[]) {
+  async function* gen() { for (const delta of deltas) yield { delta } }
+  const out: { delta?: string; show?: unknown }[] = []
+  for await (const e of showEvents(gen())) out.push(e)
+  return { speech: out.filter((e) => e.delta).map((e) => e.delta).join(""), show: out.find((e) => e.show)?.show }
+}
+
+describe("cards on screen", () => {
+  it("takes the @@SHOW line out of the speech, wherever the chunks break", async () => {
+    const a = await shown(["Task 14 is open.\n@@SHOW {\"view\":\"focus\",\"ids\":[14]}"])
+    expect(a).toEqual({ speech: "Task 14 is open.", show: { view: "focus", ids: [14] } })
+    const b = await shown(["Task 14 is open.", "\n@@SH", "OW {\"view\":", "\"sprint\"}"])
+    expect(b).toEqual({ speech: "Task 14 is open.", show: { view: "sprint" } })
+    const c = await shown(["Done.\n@@SHOW ```json\n{\"view\":\"attention\"}\n```"])
+    expect(c.show).toEqual({ view: "attention" })
+  })
+
+  it("does not swallow text that only looks like the start of the marker", async () => {
+    expect((await shown(["Email @", "me @@ish thing"])).speech).toBe("Email @me @@ish thing")
+  })
+
+  it("ignores a broken or missing SHOW line", async () => {
+    expect(await shown(["Hi.\n@@SHOW {not json"])).toEqual({ speech: "Hi.", show: undefined })
+    expect(await shown(["Just talking."])).toEqual({ speech: "Just talking.", show: undefined })
+  })
+
+  it("reads what the model asks for defensively", () => {
+    expect(parseShow({ view: "focus", ids: [14, "21", -3, "x", 99] })).toEqual({ kind: "focus", ids: [14, 21, 99] })
+    expect(parseShow({ view: "focus", ids: [] })).toEqual({ kind: "none" })
+    expect(parseShow({ view: "person", person: " Gokul " })).toEqual({ kind: "person", person: "Gokul" })
+    expect(parseShow({ view: "rm -rf" })).toEqual({ kind: "none" })
+    expect(parseShow(null)).toEqual({ kind: "none" })
+  })
+
+  it("finds the task numbers a sentence talks about", () => {
+    expect(mentioned("Task 14 is urgent, and tasks 2, 7 and 21 are close behind.")).toEqual([14, 2, 7, 21])
+    expect(mentioned("Nothing to see.")).toEqual([])
+  })
+
+  it("corrects a weak choice from the words of the question", () => {
+    const team = ["Gokul", "Pavi", "Mala", "Bala", "Vishnu"]
+    expect(intentView("How is the sprint going?", team)).toEqual({ kind: "sprint" })
+    expect(intentView("what is Gokul working on", team)).toEqual({ kind: "person", person: "Gokul" })
+    expect(intentView("Show me Pavi's tasks", team)).toEqual({ kind: "person", person: "Pavi" })
+    expect(intentView("what is overdue or blocked?", team)).toEqual({ kind: "attention" })
+    expect(intentView("explain task 14", team)).toBeNull()
+    expect(intentView("hello there", team)).toBeNull()
+  })
+
+  it("picks the cards for each view", () => {
+    const card = (n: number, o: Record<string, unknown> = {}) => ({ n, title: `t${n}`, full: "", summary: "", steps: [], open: true, blocked: false, project: "TanyCars", team: ["Gokul"], sprint: "Sprint 1", priority: "Normal", points: 1, epic: "", due: null, updated: "", ...o })
+    const board = { items: [card(1, { priority: "Urgent" }), card(2, { team: ["Pavi"] }), card(3, { open: false }), card(4, { blocked: true }), card(5, { due: "2020-01-01" })], sprint: { name: "Sprint 1", end: "2026-10-23", daysLeft: 5 }, team: ["Gokul", "Pavi"] }
+    expect(groupsFor({ kind: "focus", ids: [4, 1, 99] }, board)[0].items.map((i) => i.n)).toEqual([4, 1])
+    expect(groupsFor({ kind: "person", person: "gokul" }, board)[0].items.map((i) => i.n)).toEqual([1, 4, 5]) // open only, urgent first
+    expect(groupsFor({ kind: "sprint" }, board).map((g) => g.label)).toEqual(["Gokul", "Pavi"])
+    const attention = groupsFor({ kind: "attention" }, board)
+    expect(attention.map((g) => g.label)).toEqual(["Overdue", "Blocked"])
+    expect(groupsFor({ kind: "none" }, board)).toEqual([])
+    expect(groupsFor({ kind: "focus", ids: [1] }, null)).toEqual([])
+  })
+
+  it("serves the board as cards, using the short title and summary written for each task", async () => {
+    stubNetwork()
+    const res = await call("/api/board", {})
+    expect(res.status).toBe(200)
+    const json = (await res.json()) as { items: { n: number; title: string; summary: string; steps: string[]; team: string[]; due: string }[]; team: string[]; sprint: { name: string } }
+    expect(json.items[0].n).toBe(14)
+    expect(json.items[0].title).not.toContain("[S14]")
+    expect(json.items[0].summary.length).toBeGreaterThan(10)
+    expect(json.items[0].steps).toHaveLength(3)
+    expect(json.items[0].due).toBe("2026-10-23")
+    expect(json.team).toContain("Gokul")
+    expect((await call("/api/board", {}, "wrong")).status).toBe(401)
   })
 })

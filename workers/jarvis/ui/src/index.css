@@ -78,3 +78,33 @@
   * { @apply border-border outline-ring/50; }
   body { @apply bg-background text-foreground antialiased; }
 }
+
+/* ---- Hologram theme: the dark tokens plus a faint grid and cyan glow. `holo:` styles apply under html.holo ---- */
+@custom-variant holo (&:is(.holo *));
+
+html.holo {
+  --background: oklch(0.13 0.03 255);
+  --surface: oklch(0.15 0.035 255);
+  --card: oklch(0.2 0.04 255);
+  --border: oklch(0.45 0.09 215 / 28%);
+  color-scheme: dark;
+}
+html.holo .jarvis-stage {
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(34, 211, 238, 0.14), transparent 70%),
+    linear-gradient(rgba(34, 211, 238, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 238, 0.045) 1px, transparent 1px);
+  background-size: auto, 56px 56px, 56px 56px;
+}
+html.holo .task-card { box-shadow: inset 0 0 24px rgba(34, 211, 238, 0.05); }
+@media (prefers-reduced-motion: no-preference) {
+  html.holo .jarvis-stage::after {
+    content: "";
+    pointer-events: none;
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, rgba(34, 211, 238, 0.03) 0 1px, transparent 1px 4px);
+    animation: holo-drift 12s linear infinite;
+  }
+  @keyframes holo-drift { to { background-position-y: 40px; } }
+}

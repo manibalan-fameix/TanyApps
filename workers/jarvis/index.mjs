@@ -1,6 +1,7 @@
 // Voice assistant for the Tany project board: serves a small page (microphone + speaker in the browser) and /api/ask.
 // The browser does the listening and speaking; this Worker reads the board from GitHub and asks Gemini for the answer.
-import { askGemini, loadBoard, overdue, speakable, sprintReport, streamGemini, streamHear, hearEvents, pingGemini } from "../../scripts/jarvis/lib.mjs"
+import { askGemini, cfg, currentSprint, loadBoard, overdue, speakable, sprintReport, streamGemini, streamHear, hearEvents, showEvents, pingGemini } from "../../scripts/jarvis/lib.mjs"
+import cards from "../../scripts/jarvis/task-cards.json" with { type: "json" }
 import { speakStream } from "./tts.mjs"
 
 const SECURITY = {
@@ -26,7 +27,7 @@ let cache = { at: 0, items: null, loading: null }
 function refresh(env) {
   if (!cache.loading) {
     cache.loading = loadBoard(env.JARVIS_TOKEN)
-      .then((items) => { cache = { at: Date.now(), items, loading: null } })
+      .then((items) => { cache = { at: Date.now(), items: items.map(withCard), loading: null } })
       .catch((e) => { cache.loading = null; throw e })
   }
   return cache.loading
@@ -41,6 +42,18 @@ async function board(env, ctx) {
   return cache.items
 }
 let lastPing = 0
+/** Adds the short title, one-line summary and three steps written for each task (scripts/jarvis/make-cards.mjs). */
+function withCard(item) {
+  const c = cards[item.number]
+  return c ? { ...item, short: c.title, summary: c.summary, steps: c.steps } : item
+}
+
+/** What the page needs to draw a card. */
+const forPage = (i) => ({
+  n: i.number, title: i.short || i.title, full: i.title, summary: i.summary || "", steps: i.steps || [], open: i.open, blocked: i.blocked,
+  project: i.project, team: i.team, sprint: i.sprint, priority: i.priority, points: i.points, epic: i.epic,
+  due: i.due ? i.due.toISOString().slice(0, 10) : null, updated: i.updatedAt.toISOString(),
+})
 const hits = new Map()
 function limited(ip) {
   const now = Date.now(), recent = (hits.get(ip) ?? []).filter((t) => now - t < 60_000)
@@ -73,7 +86,7 @@ async function* deltas(text, items, lang, env) {
 }
 
 function streamAnswer(text, items, lang, env) {
-  return sse(deltas(text, items, lang, env))
+  return sse(showEvents(deltas(text, items, lang, env)))
 }
 
 export default {
@@ -81,7 +94,7 @@ export default {
     const url = new URL(request.url)
     // The page itself (built from workers/jarvis/ui) is served from the assets binding; only /api/* reaches this code.
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request)
-    if (!["/api/ask", "/api/speak", "/api/warm", "/api/hear"].includes(url.pathname)) return json({ error: "Not found." }, 404)
+    if (!["/api/ask", "/api/speak", "/api/warm", "/api/hear", "/api/board"].includes(url.pathname)) return json({ error: "Not found." }, 404)
     if (request.method !== "POST") return json({ error: "Use POST." }, 405)
 
     if (!env.JARVIS_PASSPHRASE) return json({ error: "JARVIS_PASSPHRASE is not set on the server." }, 500)
@@ -99,6 +112,11 @@ export default {
       return new Response(null, { status: 204, headers: SECURITY })
     }
 
+    // Every task as a card, for the screen. Cached on the server, so this is quick.
+    if (url.pathname === "/api/board") {
+      try { const sp = currentSprint(); return json({ items: (await board(env, ctx)).map(forPage), sprint: { name: sp.name, end: sp.end.toISOString().slice(0, 10), daysLeft: sp.daysLeft }, team: cfg.team }) } catch (e) { console.error(String(e?.message ?? e).slice(0, 200)); return json({ error: "I could not read the board right now." }, 502) }
+    }
+
     // The microphone recording (a 16 kHz WAV) goes straight to Gemini, which hears the question and writes the answer.
     if (url.pathname === "/api/hear") {
       if (!env.GEMINI_API_KEY) return json({ error: "No Gemini key." }, 503)
@@ -112,7 +130,7 @@ export default {
       try {
         const items = await board(env, ctx)
         const events = hearEvents(streamHear({ mime: "audio/wav", data: btoa(bin) }, items, new Date(), { key: env.GEMINI_API_KEY, model: env.JARVIS_MODEL || undefined, lang: request.headers.get("x-lang") === "ta" ? "ta" : "en", history }))
-        return sse(events)
+        return sse(showEvents(events))
       } catch (e) {
         console.error(String(e?.message ?? e).slice(0, 200))
         return json({ error: "I could not read the board right now." }, 502)
