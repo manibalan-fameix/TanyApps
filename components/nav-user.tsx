@@ -33,12 +33,15 @@ function initials(text: string) {
 
 export function NavUser({
   user,
+  minimal,
 }: {
   user: {
     name: string
     email: string
     avatar?: string
   }
+  /** Only the sign-out row: for the Tany super admin, which has no plan, billing or account pages. */
+  minimal?: boolean
 }) {
   const { isMobile } = useSidebar()
   return (
@@ -80,6 +83,8 @@ export function NavUser({
                 </div>
               </DropdownMenuLabel>
             </DropdownMenuGroup>
+            {minimal ? <DropdownMenuSeparator /> : (
+              <>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
               <DropdownMenuItem render={<Link href="/settings/plan" />}>
@@ -103,6 +108,8 @@ export function NavUser({
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuItem onClick={() => void signOutAction()}>
               <HugeiconsIcon icon={LogoutIcon} strokeWidth={2} />
               {copy.auth.signOut}

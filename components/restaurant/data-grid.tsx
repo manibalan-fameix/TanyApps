@@ -43,6 +43,8 @@ export function DataGrid<T extends { id: string }>({
   rowHeight = 64,
   onRowClick,
   context,
+  hideColumns,
+  toolbar,
 }: {
   rows: T[]
   columns: ColDef<T>[]
@@ -55,6 +57,10 @@ export function DataGrid<T extends { id: string }>({
   rowHeight?: number
   onRowClick?: (row: T) => void
   context?: object
+  /** Column fields to leave out, e.g. the business column on a page that is already about one business. */
+  hideColumns?: string[]
+  /** Extra controls next to the search box, e.g. an export link. */
+  toolbar?: React.ReactNode
 }) {
   const gridRef = useRef<AgGridReact<T>>(null)
   const [tab, setTab] = useState("all")
@@ -113,12 +119,15 @@ export function DataGrid<T extends { id: string }>({
         ) : (
           <span />
         )}
-        <div className="relative">
-          <HugeiconsIcon
-            icon={Search01Icon}
-            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={searchPlaceholder} className="w-64 pl-9" />
+        <div className="flex items-center gap-2">
+          {toolbar}
+          <div className="relative">
+            <HugeiconsIcon
+              icon={Search01Icon}
+              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={searchPlaceholder} className="w-64 pl-9" />
+          </div>
         </div>
       </div>
       <div style={{ height: "calc(100vh - 14rem)", minHeight: 420 }}>
@@ -127,7 +136,7 @@ export function DataGrid<T extends { id: string }>({
           ref={gridRef}
           theme={gridTheme}
           rowData={rows}
-          columnDefs={columns}
+          columnDefs={hideColumns ? columns.filter((c) => !hideColumns.includes(String(c.field))) : columns}
           defaultColDef={defaultColDef}
           getRowId={(p) => p.data.id}
           rowHeight={rowHeight}

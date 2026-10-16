@@ -26,9 +26,14 @@ export async function rememberSent(kv, { channel, userId, to, text, ts }) {
 
 /** One Slack event. Returns true when a reply was stored. */
 export async function takeEvent(kv, event) {
-  if (!kv || event?.type !== "message" || event.channel_type !== "im" || event.subtype || event.bot_id || !event.text) return false
+  const why = (r) => { console.log(`slack event ignored: ${r} (type=${event?.type} channel_type=${event?.channel_type} subtype=${event?.subtype ?? "-"} bot=${Boolean(event?.bot_id)})`); return false }
+  if (!kv) return why("no store")
+  if (event?.type !== "message" || event.channel_type !== "im") return why("not a DM message")
+  if (event.subtype || event.bot_id || !event.text) return why("edit, bot or empty")
   const conv = JSON.parse((await kv.get(`conv:${event.channel}`)) ?? "null")
-  if (!conv || event.user !== conv.userId || Number(event.ts) <= Number(conv.ts)) return false
+  if (!conv) return why("conversation not started by Jarvis")
+  if (event.user !== conv.userId) return why("written by someone other than the person messaged")
+  if (Number(event.ts) <= Number(conv.ts)) return why("not newer than Jarvis's message")
   const list = JSON.parse((await kv.get("replies")) ?? "[]")
   if (list.some((r) => r.id === event.ts)) return false
   list.push({ id: event.ts, from: conv.to, text: String(event.text).slice(0, 500), about: conv.about, asked: conv.text, at: new Date(Number(event.ts) * 1000).toISOString(), seen: false })

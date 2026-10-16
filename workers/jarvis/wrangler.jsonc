@@ -21,6 +21,6 @@
   // How the voice says "Tany". Change the spelling here if it should sound different (it is only used for speech, never shown).
   "vars": { "JARVIS_TANY_SPOKEN": "Thani" },
   // Slack replies to messages Jarvis sent (kept 3 days). Create once: `wrangler kv namespace create tany-jarvis-replies`.
-  "kv_namespaces": [{ "binding": "REPLIES", "id": "83d0220ca74444acad0e15866077e5e6" }],
+  "kv_namespaces": [{ "binding": "REPLIES", "id": "d924a15362e24306bedf1eac15205aed" }],
   "observability": { "enabled": true }
 }
