@@ -7,13 +7,13 @@
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
   "vars": {
     "ROOT_DOMAIN": "tany.in",
-    "CLOUDFLARE_ZONE_ID": "723f16f7cad8b2eb53542ecaa154e6b8",
+    "CLOUDFLARE_ZONE_ID": "aa82f4018aed83289d6805c42dc02e3e",
     "AUTH_TRUST_HOST": "true",
     "FIREBASE_API_KEY": "AIzaSyA6ZzDrrxRERpRRQE3jb8s8jeBjgMI-6yc",
     "FIREBASE_AUTH_DOMAIN": "showmoto-5e1b2.firebaseapp.com",
     "FIREBASE_PROJECT_ID": "showmoto-5e1b2",
     "FIREBASE_APP_ID": "1:366952901411:web:81a62d7f436422d13bfa96",
-    "R2_ACCOUNT_ID": "262572defdfe5c699680a2a02db9434b",
+    "R2_ACCOUNT_ID": "8b98f4164cf5f4c0400f25a3f66b2ede",
     "R2_BUCKET": "showmoto",
     "R2_PUBLIC_URL": "https://pub-7221cd485d6347b9bfa561f64eb7ce5c.r2.dev",
     "RC_PROVIDER": "mock",
@@ -21,7 +21,7 @@
     "TRACKER_WS_URL": "wss://track.tany.in/ws"
   },
   // Per-listing views, shared-link clicks and chats, read back by the dashboard through the Analytics Engine SQL API.
-  "analytics_engine_datasets": [{ "binding": "ANALYTICS", "dataset": "showmoto_listing_events" }],
+  "analytics_engine_datasets": [{ "binding": "ANALYTICS", "dataset": "tany_listing_events" }],
   // Each delivery's latest rider position lives in a Durable Object defined by workers/tracker. Deploy that worker first
   // (`pnpm deploy:tracker`, which `pnpm run deploy` does for you), then this one.
   "durable_objects": { "bindings": [{ "name": "TRACKER", "class_name": "OrderTracker", "script_name": "tanyapps-tracker" }] },

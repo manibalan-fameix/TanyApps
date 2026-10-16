@@ -1,6 +1,6 @@
 import { EVENT_TYPES, SOURCES, type EventType, type Source } from "./events"
 
-export const DATASET = "showmoto_listing_events"
+export const DATASET = "tany_listing_events"
 
 export type ListingStats = {
   carSlug: string

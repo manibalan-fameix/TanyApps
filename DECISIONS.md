@@ -41,7 +41,7 @@ Choices made without asking, newest first within each phase. Reverse any of them
 
 **Other**
 - Brand is Tany, product suite is TanyApps (TanyCars, TanyEats built; TanyMarts, TanyGifts, TanyMeds later). Copy lives in `lib/copy.ts`.
-- Existing cloud resources keep their original names (Firebase project `showmoto-5e1b2`, R2 bucket `showmoto`, Analytics dataset `showmoto_listing_events`) because they cannot be renamed in place.
+- Existing cloud resources keep their original names (Firebase project `showmoto-5e1b2`, R2 bucket `showmoto`) because they cannot be renamed in place.
 - Theme validation: text colours are auto-adjusted to WCAG AA (4.5:1). A primary colour under 3:1 against white is rejected because buttons and links would vanish. The "near-black" fallback goes to pure black in the mid-tone band where near-black cannot reach 4.5:1.
 - Radius options: none, sm, md (preset default), lg.
 - A user belongs to one dealer in v1; if several links exist the earliest wins.
@@ -82,3 +82,16 @@ Choices made without asking, newest first within each phase. Reverse any of them
 - Dev sign-in bypass now loads the real seeded dealer when a database exists, so the whole flow can write real rows.
 - Server actions accept request bodies up to 2 MB (plate photos travel to the OCR action as base64).
 - E2E runs use their own port and build directory and hide the Next.js dev badge, which otherwise covers the camera's Skip button.
+
+## Super admin (Tany team)
+
+- Lives at `/super` on the same app host and login as the dealer admin, in its own route group `app/(super)`. Same shell, sidebar, grids, stat cards and charts as the dealer admin.
+- Access is an email allow-list in `SUPER_ADMIN_EMAILS`. Signed out goes to login; anyone else gets a 404 so dealers cannot tell the area exists. In development `SEED_OWNER_EMAIL` and the dev user are allowed too. Every data function in `lib/super/data.ts` re-checks, so a page cannot forget the guard.
+- Read-only for now: no plan changes, suspensions or deletes from here. Those need an audit log table (who did what), so they wait for a migration.
+- Depth: overview and analytics with period-over-period change, activation funnel, health (healthy, new, at risk, dormant), cohorts and mixes; a tabbed account view per business; platform-wide lists (customers, menu, reviews, enquiries, coupons, delivery); live activity feed; search; CSV export of every list. All days are bucketed in IST.
+- GMV counts orders that are not cancelled and not awaiting online payment.
+- Health: at risk = payment trouble or cancelling; dormant = no lead, order, listing or booking in 30 days; new = joined this week.
+- CSV cells starting with = + - @ get a leading quote so a spreadsheet does not run them as formulas. Phone columns therefore start with a quote.
+- The only place outside `lib/db` and `lib/auth` that uses the unscoped database client is `lib/super` (it reads across all dealers by design).
+- Buyer and guest phone numbers show the last four digits only. Registration numbers and RC data are not shown.
+- MRR counts businesses in the paying or payment-grace phase at their plan price (yearly plans at 11/12 of monthly). Trials and the free plan count as zero.
