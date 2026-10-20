@@ -40,7 +40,7 @@ export async function GET(req: Request) {
   const restaurant = area ? { lat: area.lat, lng: area.lng } : null
   // Until the rider shares a position, show the planned road from the restaurant to the guest instead of an empty map.
   const origin = fix ?? (onTheWay ? restaurant : null)
-  const road = origin && destination ? await roadRoute(`g:${order.id}`, origin, destination) : null
+  const road = origin && destination ? await roadRoute(dealer.id, order.id, origin, destination) : null
   return json({
     ok: true,
     status: order.status,

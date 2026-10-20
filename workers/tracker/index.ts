@@ -14,6 +14,7 @@ import { DurableObject } from "cloudflare:workers"
 
 import { verifyTicket } from "../../lib/restaurant/ws-ticket"
 
+type RouteKept = { points: [number, number][]; km: number; minutes: number; at: number; to: { lat: number; lng: number } }
 type Fix = { lat: number; lng: number; accuracy: number | null; heading: number | null; at: number }
 
 /** Positions are only useful for the length of a delivery, so each object deletes itself after a few hours. */
@@ -50,6 +51,20 @@ export class OrderTracker extends DurableObject {
 
   async get(): Promise<Fix | null> {
     return (await this.ctx.storage.get<Fix>("fix")) ?? null
+  }
+
+  /**
+   * The road route for this delivery. It is looked up once and shared: the rider's page, the customer's page and the
+   * restaurant's board all read this copy instead of each asking a map service, until the rider leaves the road.
+   */
+  async putRoute(route: RouteKept): Promise<void> {
+    if (!Array.isArray(route?.points) || route.points.length < 2 || route.points.length > 400 || !finite(route.km) || !finite(route.minutes) || !finite(route.at)) throw new Error("invalid route")
+    await this.ctx.storage.put("route", route)
+    await this.ctx.storage.setAlarm(Date.now() + KEEP_MS)
+  }
+
+  async getRoute(): Promise<RouteKept | null> {
+    return (await this.ctx.storage.get<RouteKept>("route")) ?? null
   }
 
   /** The delivery is over: forget the position and tell every viewer to stop. */

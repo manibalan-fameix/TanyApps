@@ -2,6 +2,7 @@ import { eq, inArray } from "drizzle-orm"
 
 import { orderLocations } from "../db/schema"
 import { scopedDb } from "../db/scoped"
+import type { StoredRoute } from "./route-plan"
 import type { LiveFix } from "./tracking"
 
 /**
@@ -13,6 +14,9 @@ export interface TrackerStub {
   put(fix: LiveFix): Promise<void>
   get(): Promise<LiveFix | null>
   clear(): Promise<void>
+  /** The delivery's road route, kept next to the position so every viewer shares one lookup. Optional: older stubs lack it. */
+  putRoute?(route: StoredRoute): Promise<void>
+  getRoute?(): Promise<StoredRoute | null>
 }
 export interface TrackerNamespace {
   idFromName(name: string): unknown
@@ -89,4 +93,27 @@ export async function dropFix(dealerId: string, orderId: string, ns?: TrackerNam
     }
   }
   await scopedDb(dealerId).orderLocations.delete(eq(orderLocations.orderId, orderId))
+}
+
+/** The route stored for this delivery, or null when none is kept (or there is no Cloudflare store). Never throws. */
+export async function readRoute(dealerId: string, orderId: string, ns?: TrackerNamespace | null): Promise<StoredRoute | null> {
+  const space = ns === undefined ? await binding() : ns
+  if (!space) return null
+  try {
+    return (await stubFor(space, dealerId, orderId).getRoute?.()) ?? null
+  } catch (error) {
+    console.error(`tracker route get failed: ${error instanceof Error ? error.message : "unknown"}`)
+    return null
+  }
+}
+
+/** Keeps the route for the rest of the delivery. A failure only means the next viewer looks the route up again. */
+export async function saveRoute(dealerId: string, orderId: string, route: StoredRoute, ns?: TrackerNamespace | null): Promise<void> {
+  const space = ns === undefined ? await binding() : ns
+  if (!space) return
+  try {
+    await stubFor(space, dealerId, orderId).putRoute?.(route)
+  } catch (error) {
+    console.error(`tracker route put failed: ${error instanceof Error ? error.message : "unknown"}`)
+  }
 }

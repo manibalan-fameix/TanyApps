@@ -191,7 +191,7 @@ export async function fetchLiveDeliveries(): Promise<
       const destination = o.latitude !== null && o.longitude !== null ? { lat: o.latitude, lng: o.longitude } : null
       const km = fix && destination ? distanceKm(fix, destination) : null
       const p = o.partnerId ? rider.get(o.partnerId) : null
-      const road = fix && destination && o.status === "out_for_delivery" ? await roadRoute(`g:${o.id}`, fix, destination) : null
+      const road = fix && destination && o.status === "out_for_delivery" ? await roadRoute(s.dealer.id, o.id, fix, destination) : null
       return {
         id: o.id,
         code: o.code,

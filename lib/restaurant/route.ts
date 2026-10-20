@@ -1,11 +1,7 @@
-import { distanceKm } from "@/lib/restaurant/service-area"
+import { readRoute, saveRoute } from "@/lib/restaurant/live-location"
+import { remainingRoute, type RoadRoute, type StoredRoute } from "@/lib/restaurant/route-plan"
 
-export type RoadRoute = {
-  /** The road path from the rider to the guest, as [lat, lng] pairs. */
-  points: [number, number][]
-  km: number
-  minutes: number
-}
+export type { RoadRoute } from "@/lib/restaurant/route-plan"
 
 type Point = { lat: number; lng: number }
 
@@ -14,11 +10,14 @@ type Point = { lat: number; lng: number }
 const BASE = process.env.OSRM_URL || "https://router.project-osrm.org"
 // Plain road time ignores traffic, junctions and stops, so a scooter in a city takes longer.
 const REAL_WORLD_FACTOR = 1.25
-const REUSE_MS = 45_000
-const REUSE_KM = 0.12
+/** After a failed lookup, wait this long before asking again, so an outage does not make every poll wait for the timeout. */
+const RETRY_AFTER_FAIL_MS = 10_000
 const MAX_POINTS = 160
 
-const cache = new Map<string, { at: number; from: Point; to: Point; route: RoadRoute | null }>()
+// This server's own memory: a first stop before the shared copy, and the only copy when there is no Cloudflare store.
+const memory = new Map<string, StoredRoute>()
+const failedAt = new Map<string, number>()
+const inFlight = new Map<string, Promise<StoredRoute | null>>()
 
 /** Keeps the line light for the browser: every nth point, always including the last. */
 export function thin(points: [number, number][], max = MAX_POINTS): [number, number][] {
@@ -30,33 +29,65 @@ export function thin(points: [number, number][], max = MAX_POINTS): [number, num
   return out
 }
 
-/**
- * The road route from `from` to `to`, or null when the routing service is down (callers then fall back to the
- * straight-line estimate). Remembered per order so a page polling every few seconds does not call the service each time.
- */
-export async function roadRoute(key: string, from: Point, to: Point): Promise<RoadRoute | null> {
-  const hit = cache.get(key)
-  const same = hit && distanceKm(hit.to, to) < 0.01
-  if (hit && same && Date.now() - hit.at < REUSE_MS && distanceKm(hit.from, from) < REUSE_KM) return hit.route
-  if (cache.size > 500) cache.clear()
-  try {
-    const url = `${BASE}/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`
-    const res = await fetch(url, { signal: AbortSignal.timeout(4000), headers: { "User-Agent": "TanyApps-delivery-tracking/1.0" } })
-    if (!res.ok) throw new Error(String(res.status))
-    const data = (await res.json()) as { routes?: { distance: number; duration: number; geometry: { coordinates: [number, number][] } }[] }
-    const r = data.routes?.[0]
-    const route: RoadRoute | null = r
-      ? {
-          points: thin(r.geometry.coordinates.map(([lng, lat]) => [lat, lng] as [number, number])),
-          km: Math.round((r.distance / 1000) * 10) / 10,
-          minutes: Math.max(1, Math.ceil((r.duration * REAL_WORLD_FACTOR) / 60)),
-        }
-      : null
-    cache.set(key, { at: Date.now(), from, to, route })
-    return route
-  } catch {
-    // Remember the failure briefly too, so an outage does not make every poll wait for the timeout.
-    cache.set(key, { at: Date.now() - REUSE_MS + 10_000, from, to, route: null })
-    return null
+async function lookup(from: Point, to: Point): Promise<StoredRoute | null> {
+  const url = `${BASE}/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`
+  const res = await fetch(url, { signal: AbortSignal.timeout(4000), headers: { "User-Agent": "TanyApps-delivery-tracking/1.0" } })
+  if (!res.ok) throw new Error(String(res.status))
+  const data = (await res.json()) as { routes?: { distance: number; duration: number; geometry: { coordinates: [number, number][] } }[] }
+  const r = data.routes?.[0]
+  if (!r) return null
+  return {
+    points: thin(r.geometry.coordinates.map(([lng, lat]) => [lat, lng] as [number, number])),
+    km: Math.round((r.distance / 1000) * 10) / 10,
+    minutes: Math.max(1, Math.ceil((r.duration * REAL_WORLD_FACTOR) / 60)),
+    at: Date.now(),
+    to,
   }
+}
+
+/**
+ * The road route from `from` to `to` for one delivery, or null when the routing service is down (callers then fall back
+ * to the straight-line estimate).
+ *
+ * The routing service is asked once per delivery, not once per viewer or per poll. The route is kept with the order
+ * (in its Cloudflare object, and in this server's memory), and every later call just works out how much of it is left
+ * from the rider's position. It is looked up again only if the rider leaves the road, the destination changes, or the
+ * route is ten minutes old. Rider, customer and restaurant all share the same copy.
+ */
+export async function roadRoute(dealerId: string, orderId: string, from: Point, to: Point): Promise<RoadRoute | null> {
+  const key = `${dealerId}:${orderId}`
+  const mine = memory.get(key) ?? null
+  let left = remainingRoute(mine, from, to)
+  if (left) return left
+  // Another server may have refreshed it since: check the shared copy before asking the routing service.
+  const shared = await readRoute(dealerId, orderId)
+  left = shared && shared !== mine ? remainingRoute(shared, from, to) : null
+  if (left) {
+    memory.set(key, shared!)
+    return left
+  }
+
+  if (Date.now() - (failedAt.get(key) ?? 0) < RETRY_AFTER_FAIL_MS) return null
+  // Many viewers can need the same new route at the same instant; they all wait for one lookup.
+  let pending = inFlight.get(key)
+  if (!pending) {
+    pending = lookup(from, to)
+      .then(async (fresh) => {
+        if (fresh) {
+          if (memory.size > 500) memory.clear()
+          memory.set(key, fresh)
+          failedAt.delete(key)
+          await saveRoute(dealerId, orderId, fresh)
+        } else failedAt.set(key, Date.now())
+        return fresh
+      })
+      .catch(() => {
+        failedAt.set(key, Date.now())
+        return null
+      })
+      .finally(() => inFlight.delete(key))
+    inFlight.set(key, pending)
+  }
+  const fresh = await pending
+  return fresh ? { points: fresh.points, km: fresh.km, minutes: fresh.minutes } : null
 }

@@ -32,6 +32,6 @@ export async function POST(req: Request) {
 
   await saveFix(dealer.id, order.id, fix)
   // Send the road route back so the rider's own map can draw it without a second call.
-  const road = order.latitude !== null && order.longitude !== null ? await roadRoute(`r:${order.id}`, fix, { lat: order.latitude, lng: order.longitude }) : null
+  const road = order.latitude !== null && order.longitude !== null ? await roadRoute(dealer.id, order.id, fix, { lat: order.latitude, lng: order.longitude }) : null
   return json({ ok: true, status: order.status, route: road?.points ?? null, km: road?.km ?? null, minutes: road?.minutes ?? null })
 }
