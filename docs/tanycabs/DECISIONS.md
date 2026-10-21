@@ -105,8 +105,8 @@ Newest phase last. Each entry says what was decided, why, and what would reverse
 ### Assumptions I made (please confirm or correct)
 
 1. **The 60-minute cut-off and the 10-minute floor are constants**, not settings (you asked for the two main numbers to be settings). They are in `lib/cabs/holds.ts`.
-2. **Cron runs every 5 minutes**, so a hold can be released up to about 5 minutes after its deadline, and the half-window nudge for a 10-minute window lands between minute 5 and 10.
-3. **Inbox tabs:** *New* = waiting for the operator's answer; *Pending* = accepted but not yet given a vehicle and driver (assignment arrives in Phase 3, so today it is every accepted booking); *Today* = pickups today (India time) still active; *Upcoming* = pickups after today that are requested, confirmed or assigned.
+2. **The hold job runs every minute** (your answer, 2026-10-21; first built at 5 minutes). A hold is released within about a minute of its deadline. One `cron_runs` row is written per minute; a purge of old rows is not built yet.
+3. **Inbox tabs (confirmed by the owner):** *New* = waiting for the operator's answer; *Pending* = accepted (`confirmed`), not yet assigned; *Unpaid* = accepted, advance not yet paid; *Today* = pickups today (India time) still active; *Upcoming* = pickups after today that are requested, confirmed or assigned.
 4. **Counting toward the monthly allowance:** every trip created in the India calendar month except ones the clock released unanswered (`expired`). Rejected and cancelled bookings count, because the operator still had to handle them.
 5. **Minimum lead time:** the operator's `min_lead_minutes`, but never under 15 minutes, and not more than 365 days ahead. Operators booking by phone are not held to the lead time (past pickups by more than an hour are refused).
 6. **Operator-made bookings are confirmed immediately** (the operator has already agreed) and skip the hold.

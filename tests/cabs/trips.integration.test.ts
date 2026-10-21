@@ -344,7 +344,14 @@ describe.skipIf(!url)("bookings (live database)", () => {
       expect((await inbox("upcoming")).rows.map((r) => r.id).sort()).toEqual([confirmedFar.id, requestedFar.id].sort())
       expect((await inbox("all")).rows).toHaveLength(3)
       const counts = (await inbox("new")).counts
-      expect(counts).toMatchObject({ new: 2, pending: 1, upcoming: 2, all: 3 })
+      expect(counts).toMatchObject({ new: 2, pending: 1, unpaid: 0, upcoming: 2, all: 3 })
+      // A confirmed booking whose advance is not paid is Unpaid as well as Pending; once paid it leaves Unpaid.
+      await scoped.scopedDb(dealer).trips.update({ advanceDuePaise: 5000 }, drizzle.eq(s.trips.id, confirmedFar.id))
+      expect((await inbox("unpaid")).rows.map((r) => r.id)).toEqual([confirmedFar.id])
+      expect((await inbox("pending")).rows.map((r) => r.id)).toEqual([confirmedFar.id])
+      await scoped.scopedDb(dealer).trips.update({ advancePaidPaise: 5000 }, drizzle.eq(s.trips.id, confirmedFar.id))
+      expect((await inbox("unpaid")).rows).toEqual([])
+      expect((await inbox("new")).rows.some((r) => r.id === requestedFar.id)).toBe(true) // a request awaiting an answer is never "unpaid"
       if (later > 1.2) expect((await inbox("today")).rows.map((r) => r.id)).toContain(reqNow.id)
       // The list shows the customer's name and number to the operator, and only this business's bookings.
       expect((await inbox("all")).rows.every((r) => r.customerPhone.startsWith("+91"))).toBe(true)

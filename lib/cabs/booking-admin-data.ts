@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, ilike, inArray, lt, or } from "drizzle-orm"
+import { and, asc, desc, eq, gt, gte, ilike, inArray, lt, or } from "drizzle-orm"
 
 import { decrypt, tryDecrypt } from "../crypto"
 import { normalizePhone, phoneHash } from "../crypto/blind-index"
@@ -8,12 +8,15 @@ import { istDayNumber } from "./time"
 import { ACTIVE_STATUSES } from "./trip-status"
 import { type TripView, toTripView } from "./trip-data"
 
-export type InboxTab = "new" | "pending" | "today" | "upcoming" | "all"
-export const INBOX_TABS: readonly InboxTab[] = ["new", "pending", "today", "upcoming", "all"]
+export type InboxTab = "new" | "pending" | "unpaid" | "today" | "upcoming" | "all"
+export const INBOX_TABS: readonly InboxTab[] = ["new", "pending", "unpaid", "today", "upcoming", "all"]
 export const isInboxTab = (v: unknown): v is InboxTab => INBOX_TABS.includes(v as InboxTab)
 
-/** What each inbox tab means. New: waiting for the operator's answer. Pending: accepted, still to be given a vehicle and driver (or an advance). Today and Upcoming: pickups by India calendar day. */
-export const INBOX_LABEL: Record<InboxTab, string> = { new: "New", pending: "Pending", today: "Today", upcoming: "Upcoming", all: "All" }
+/**
+ * What each inbox tab means. New: waiting for the operator's answer. Pending: accepted (confirmed), not yet given a vehicle and driver.
+ * Unpaid: accepted, advance not yet paid. Today and Upcoming: pickups by India calendar day.
+ */
+export const INBOX_LABEL: Record<InboxTab, string> = { new: "New", pending: "Pending", unpaid: "Unpaid", today: "Today", upcoming: "Upcoming", all: "All" }
 
 export type InboxRow = TripView & { customerName: string; customerPhone: string }
 
@@ -28,6 +31,8 @@ function where(tab: InboxTab, now: Date) {
       return eq(trips.status, "requested")
     case "pending":
       return eq(trips.status, "confirmed")
+    case "unpaid":
+      return and(eq(trips.status, "confirmed"), gt(trips.advanceDuePaise, trips.advancePaidPaise))
     case "today":
       return and(gte(trips.startAt, start), lt(trips.startAt, end), inArray(trips.status, [...ACTIVE_STATUSES]))
     case "upcoming":
