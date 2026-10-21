@@ -42,6 +42,7 @@ export function BillingPanel({
   note,
   statusPlan,
   status,
+  industry,
 }: {
   currentPlan: PlanKey
   currentCycle: BillingCycle
@@ -55,6 +56,7 @@ export function BillingPanel({
   note?: React.ReactNode
   statusPlan: PlanKey
   status: PlanStatus
+  industry?: string
 }) {
   const router = useRouter()
   const [cycle, setCycle] = useState(currentCycle)
@@ -102,6 +104,7 @@ export function BillingPanel({
   return (
     <div className="flex flex-col items-center gap-6">
       <PricingTable
+        industry={industry}
         cycle={cycle}
         onCycle={setCycle}
         currentPlan={currentPlan}

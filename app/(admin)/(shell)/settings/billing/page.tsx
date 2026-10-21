@@ -129,6 +129,7 @@ export default async function BillingPage() {
       ) : (
         <div className="flex flex-col items-center">
           <BillingPanel
+            industry={ctx.dealer.industry}
             currentPlan={upcoming ?? plan}
             currentCycle={
               (dealer.nextBillingCycle ?? dealer.billingCycle) as BillingCycle

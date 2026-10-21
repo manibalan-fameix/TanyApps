@@ -2,6 +2,8 @@ import {
   accounts,
   auditLog,
   banners,
+  blockedPeriods,
+  cabSettings,
   bookings,
   carMedia,
   carViews,
@@ -12,6 +14,9 @@ import {
   dealerUsers,
   dealers,
   deliveryPartners,
+  driverDocuments,
+  driverDutyLogs,
+  drivers,
   deliveryZones,
   enquiries,
   leads,
@@ -21,13 +26,20 @@ import {
   notifications,
   orderLocations,
   orders,
+  packages,
   priceEvents,
   rcLookups,
+  rateCards,
+  rateSurcharges,
   rcTransfers,
   reviews,
+  routeDistances,
   stockAdjustments,
   users,
   variants,
+  vehicleClasses,
+  vehicleDocuments,
+  vehicles,
 } from "./schema/index.ts"
 
 /**
@@ -47,8 +59,11 @@ const MOTORS_DIRECT = { cars, leads, bookings } as const
 /** TanyEats. */
 const EATS_DIRECT = { menuCategories, menuItems, orders, deliveryPartners, deliveryZones, stockAdjustments, orderLocations } as const
 
+/** TanyCabs. */
+const CABS_DIRECT = { vehicleClasses, vehicles, vehicleDocuments, blockedPeriods, drivers, driverDocuments, driverDutyLogs, rateCards, rateSurcharges, packages, cabSettings } as const
+
 /** Tables carrying their own dealer_id. */
-export const DIRECT_TENANT_TABLES = { ...PLATFORM_DIRECT, ...MOTORS_DIRECT, ...EATS_DIRECT } as const
+export const DIRECT_TENANT_TABLES = { ...PLATFORM_DIRECT, ...MOTORS_DIRECT, ...EATS_DIRECT, ...CABS_DIRECT } as const
 
 /** Tables owned through a car (car_id). Scoped by an ownership subquery on cars. TanyMotos only: new tables use dealer_id. */
 export const CHILD_TENANT_TABLES = { carMedia, rcLookups, carViews, rcTransfers, priceEvents } as const
@@ -57,4 +72,4 @@ export const CHILD_TENANT_TABLES = { carMedia, rcLookups, carViews, rcTransfers,
  * Tables that are deliberately not tenant-scoped: the tenant root itself, authentication, and shared reference data. Code
  * reads them only through lib/tenant, lib/auth and lib/variants (the raw client is blocked everywhere else by ESLint).
  */
-export const GLOBAL_TABLES = { dealers, users, accounts, variants, cronRuns } as const
+export const GLOBAL_TABLES = { dealers, users, accounts, variants, cronRuns, routeDistances } as const

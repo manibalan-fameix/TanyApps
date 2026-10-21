@@ -10,6 +10,7 @@ import { cancelSubscription, createSubscription, getSubscription, verifySubscrip
 import { billingState } from "@/lib/billing/state"
 import { cars } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
+import { cabLimitsFor } from "@/lib/cabs/limits"
 import { BILLING_CYCLES, PLANS, SELLABLE_PLAN_KEYS } from "@/lib/plans"
 import { rateLimit } from "@/lib/core/rate-limit"
 import { getDealerBilling, updateDealerBilling } from "@/lib/tenant/billing"
@@ -35,6 +36,15 @@ export async function startCheckout(input: unknown): Promise<{ ok: true; checkou
   const { accessUntil, hasAccess, phase } = billingState(dealer)
   // An upgrade on a paid plan is charged now and takes effect at once. Everything else waits for the covered period.
   const isUpgrade = phase === "active" && (PLANS[parsed.data.plan].monthlyPrice ?? 0) > (PLANS[dealer.plan as keyof typeof PLANS]?.monthlyPrice ?? 0)
+
+  // A cab operator's smaller plan must still fit the vehicles and drivers they already have.
+  if (ctx.dealer.industry === "cabs") {
+    const limits = cabLimitsFor(parsed.data.plan)
+    const db = scopedDb(dealer.id)
+    const [vehicleCount, driverCount] = await Promise.all([db.vehicles.count(), db.drivers.count()])
+    if (limits && vehicleCount > limits.vehicles) return { ok: false, error: `You have ${vehicleCount} vehicles and ${PLANS[parsed.data.plan].label} allows ${limits.vehicles}. Remove ${vehicleCount - limits.vehicles} first.` }
+    if (limits && driverCount > limits.drivers) return { ok: false, error: `You have ${driverCount} drivers and ${PLANS[parsed.data.plan].label} allows ${limits.drivers}. Remove ${driverCount - limits.drivers} first.` }
+  }
 
   // A smaller plan must still fit the cars that are already live.
   const cap = PLANS[parsed.data.plan].maxLiveCars

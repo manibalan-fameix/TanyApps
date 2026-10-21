@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react"
 import { notFound } from "next/navigation"
 
+import { CabsShell } from "@/components/cabs/tenant/shell"
 import { StoreShell } from "@/components/restaurant/store/shell"
 import { PullToRefresh } from "@/components/pull-to-refresh"
 import { TenantMobileNav } from "@/components/tenant/mobile-nav"
@@ -54,7 +55,13 @@ export default async function TenantLayout({
       className="flex min-h-svh flex-col bg-background text-foreground"
     >
       <div className="flex-1">
-        {vertical.key === "restaurants" ? <StoreShell dealer={dealer}>{children}</StoreShell> : children}
+        {vertical.key === "restaurants" ? (
+          <StoreShell dealer={dealer}>{children}</StoreShell>
+        ) : vertical.key === "cabs" ? (
+          <CabsShell dealer={dealer}>{children}</CabsShell>
+        ) : (
+          children
+        )}
       </div>
       <PullToRefresh />
       {vertical.tenantMobileNav ? <TenantMobileNav phone={dealer.phone} /> : null}

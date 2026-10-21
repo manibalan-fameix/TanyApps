@@ -15,6 +15,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { HERO_ANGLE } from "@/lib/angles"
 import { calculateEmi } from "@/lib/cars/emi"
 import { copy } from "@/lib/copy"
+import { CabsHome } from "@/components/cabs/tenant/home"
 import { StoreHome } from "@/components/restaurant/store/home"
 import { loadStorefront } from "@/lib/restaurant/storefront-data"
 import {
@@ -45,6 +46,7 @@ export default async function DealerHome({
   const dealer = await getDealerBySlug((await params).dealer)
   if (!dealer) notFound()
   if (dealer.industry === "restaurants") return <StoreHome dealer={dealer} store={await loadStorefront(dealer)} />
+  if (dealer.industry === "cabs") return <CabsHome dealer={dealer} />
   const rawSearchParams = await searchParams
   const db = scopedDb(dealer.id)
 

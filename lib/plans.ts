@@ -62,9 +62,10 @@ export function planLimitLabel(industry: string, key: PlanKey): string {
       const max = RESTAURANT_MENU_LIMITS[key]
       return max === null ? "Unlimited menu items" : `Up to ${max} menu items`
     }
-    case "vehicles":
-      // Cab plan limits are decided with the cab pricing in Phase 1; cabs cannot be chosen in onboarding before that.
-      return "Plan limits are set when TanyCabs launches"
+    case "vehicles": {
+      const l = getVertical("cabs").cabLimits?.[key]
+      return l ? `Up to ${l.vehicles} vehicles, ${l.drivers} drivers, ${l.bookingsPerMonth.toLocaleString("en-IN")} bookings a month` : "Not offered on this plan"
+    }
     case "live_cars":
       return `Up to ${PLANS[key].maxLiveCars} cars live at once`
   }
@@ -76,7 +77,7 @@ export function freeTierPhrase(industry: string): string {
     case "menu_items":
       return `up to ${RESTAURANT_MENU_LIMITS.free} menu items`
     case "vehicles":
-      return "a starter fleet"
+      return "a starter fleet" // cabs has no free plan, so this is not shown
     case "live_cars":
       return `up to ${PLANS.free.maxLiveCars} cars`
   }

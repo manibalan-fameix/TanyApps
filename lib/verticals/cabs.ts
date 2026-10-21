@@ -1,9 +1,9 @@
 import type { Vertical } from "./types"
 
 /**
- * TanyCabs. Registered so the type system knows about it, but `adminReady` is false: it cannot be chosen in onboarding
- * until Phase 1 builds its admin and public pages. The Razorpay category is a placeholder to confirm against Razorpay's
- * category list before the first cab operator is onboarded (see docs/tanycabs/DECISIONS.md).
+ * TanyCabs. Selectable in onboarding only for people on the CABS_ALLOWED_EMAILS allow-list (see ./flags.ts).
+ * Razorpay: `transport` / `cab_hailing` is the only taxi entry in Razorpay's Route category list (checked 2026-10-21).
+ * Plan limits are the owner's, set 2026-10-21. There is no free plan; the trial is the standard 30 days.
  */
 export const cabs: Vertical = {
   key: "cabs",
@@ -19,10 +19,18 @@ export const cabs: Vertical = {
   previewName: "Your Cab Service",
   phoneLabel: "Mobile number travellers can call",
   firstItemCta: "Add your first vehicle",
-  firstItemHref: "/cabs/fleet",
-  adminReady: false,
+  firstItemHref: "/cabs/vehicles",
+  adminReady: true,
   planLimit: "vehicles",
-  razorpay: { category: "transport", subcategory: "taxi" },
+  offeredPlans: ["starter", "growth", "pro"],
+  // Vehicles and drivers are hard limits (adding more is blocked with an upgrade prompt). Bookings are a soft limit: a
+  // customer booking is never refused; the operator sees a banner at 80% and 100% of the month's allowance.
+  cabLimits: {
+    starter: { vehicles: 10, drivers: 15, bookingsPerMonth: 400 },
+    growth: { vehicles: 30, drivers: 45, bookingsPerMonth: 1_500 },
+    pro: { vehicles: 75, drivers: 110, bookingsPerMonth: 4_000 },
+  },
+  razorpay: { category: "transport", subcategory: "cab_hailing" },
   paymentsPurpose: "travellers can pay for their trips online",
   tenantMobileNav: false,
   liveMessage: "Your booking page has its own link. Share it on WhatsApp and Instagram.",

@@ -1,4 +1,4 @@
-import { and, eq, lt } from "drizzle-orm"
+import { and, eq, lt, or } from "drizzle-orm"
 
 import { unscopedDb } from "../db/client"
 import { orders } from "../db/schema"
@@ -53,15 +53,29 @@ export async function applyOrderPayment(razorpayOrderId: string, paymentId: stri
       .returning({ id: orders.id })
     if (rows.length === 1) return { found: true, applied: true, code: order.code }
   }
-  // Cancelled or expired first: give the money back.
+  // Cancelled or expired first: give the money back, once. Two events can arrive for the same payment (order.paid and
+  // payment.captured), even at the same instant, so the refund is claimed with a conditional update: only the caller that
+  // flips the order from "pending" to "refunding" sends it. A claim left behind by a crash is taken over after a while.
   const [fresh] = await db.orders.select(eq(orders.id, order.id), { limit: 1 })
-  if (fresh && fresh.paymentStatus !== "paid") {
-    await db.orders.update({ razorpayPaymentId: paymentId }, eq(orders.id, order.id))
+  if (fresh && fresh.paymentStatus !== "paid" && fresh.paymentStatus !== "refunded") {
+    const stale = new Date(now.getTime() - REFUND_CLAIM_STALE_MS)
+    const claimed = await db.orders
+      .update(
+        { paymentStatus: "refunding", razorpayPaymentId: paymentId, updatedAt: now },
+        and(eq(orders.id, order.id), or(eq(orders.paymentStatus, "pending"), and(eq(orders.paymentStatus, "refunding"), lt(orders.updatedAt, stale))))!,
+      )
+      .returning({ id: orders.id })
+    if (claimed.length === 0) return { found: true, applied: false, code: order.code } // someone else is refunding, or has
     const done = await refundOrder(order.dealerId, { ...fresh, razorpayPaymentId: paymentId, paymentStatus: "paid" })
+    // A failed refund goes back to "pending" so Razorpay's retry of the webhook can claim it again.
+    if (!done.ok) await db.orders.update({ paymentStatus: "pending" }, and(eq(orders.id, order.id), eq(orders.paymentStatus, "refunding"))!)
     return { found: true, applied: false, code: order.code, refunded: done.ok, refundFailed: !done.ok }
   }
   return { found: true, applied: false, code: order.code }
 }
+
+/** How long a refund claim may stay "refunding" before another call may take it over (a crashed worker). */
+export const REFUND_CLAIM_STALE_MS = 5 * 60_000
 
 /** Sends a paid online order's money back (reversing the restaurant's transfer) and records it. */
 export async function refundOrder(

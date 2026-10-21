@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { type IndustryKey } from "@/lib/industries"
 import { PRODUCT_EXAMPLES, PRODUCTS, type ProductKey } from "@/lib/products"
+import { liveIndustry, useEnabledIndustries } from "@/components/onboarding/enabled-industries"
 import { cn } from "@/lib/utils"
 
 const EXAMPLES = PRODUCTS.map((p) => ({ key: p.key, ...PRODUCT_EXAMPLES[p.key] }))
@@ -25,6 +26,7 @@ export function FindMyTany({
   /** The recommended product, and its industry when it is live; both null when cleared. */
   onPick: (industry: IndustryKey | null, product: ProductKey | null) => void
 }) {
+  const enabled = useEnabledIndustries()
   const [text, setText] = useState("")
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -44,12 +46,12 @@ export function FindMyTany({
       }
       setResult(res)
       const picked = PRODUCTS.find((p) => p.key === res.product)
-      onPick(picked && "industry" in picked ? picked.industry : null, res.product)
+      onPick(picked ? (liveIndustry(picked, enabled) ?? null) : null, res.product)
     })
   }
 
   const match = result ? PRODUCTS.find((p) => p.key === result.product) : undefined
-  const live = match !== undefined && "industry" in match
+  const live = match !== undefined && liveIndustry(match, enabled) !== undefined
 
   // Once there is a recommendation it replaces the form; Back returns to the form with the text kept.
   if (result && match) {

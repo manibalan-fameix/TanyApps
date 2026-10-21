@@ -4,6 +4,9 @@ import { getFirebaseWebConfig } from "@/lib/auth/firebase"
 import { getDealerContext } from "@/lib/auth/context"
 import { getUserContact } from "@/lib/tenant/user-phone"
 
+import { EnabledIndustriesProvider } from "@/components/onboarding/enabled-industries"
+import { LIVE_INDUSTRY_KEYS, industriesFor } from "@/lib/verticals"
+
 import { OnboardingWizard } from "./onboarding-wizard"
 
 export const metadata = { title: "Set up your showroom" }
@@ -30,8 +33,11 @@ export default async function OnboardingPage() {
   const row = await getUserContact(ctx.user.id)
   const digits = row.phone?.replace(/\D/g, "") ?? ""
   const verifiedPhone = digits.length >= 10 ? digits.slice(-10) : ""
+  // A flagged vertical (cabs) is offered only to people on its allow-list, matched on their email.
+  const enabledIndustries = industriesFor(row.email ?? ctx.user.email, LIVE_INDUSTRY_KEYS)
   return (
     <main>
+      <EnabledIndustriesProvider value={enabledIndustries}>
       <OnboardingWizard
         rootDomain={PUBLIC_DOMAIN}
         firstName={firstName}
@@ -40,6 +46,7 @@ export default async function OnboardingPage() {
         firebaseConfig={getFirebaseWebConfig()}
         testPhones={testPhones}
       />
+      </EnabledIndustriesProvider>
     </main>
   )
 }

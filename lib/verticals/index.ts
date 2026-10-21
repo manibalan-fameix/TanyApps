@@ -5,7 +5,8 @@ import { restaurants } from "./restaurants"
 import type { Vertical } from "./types"
 
 export { DEFAULT_INDUSTRY, INDUSTRY_KEYS, type IndustryKey } from "./keys"
-export type { PlanLimitKind, Vertical } from "./types"
+export type { CabPlanLimits, PlanLimitKind, Vertical } from "./types"
+export { allowedEmails, canCreateVertical, industriesFor } from "./flags"
 
 /** One entry per industry. `Record<IndustryKey, ...>` makes a new key fail to compile until it is registered here. */
 export const VERTICALS: Record<IndustryKey, Vertical> = { motors, restaurants, cabs }

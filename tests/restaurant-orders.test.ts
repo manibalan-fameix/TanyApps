@@ -386,7 +386,8 @@ describe("guest location", () => {
   })
   it("reads a reverse-geocode answer into pincode, area and address", () => {
     const r = parseNominatim({ address: { country_code: "in", house_number: "42", road: "South Usman Road", suburb: "T. Nagar", city: "Chennai", postcode: "600 017" } })
-    expect(r).toEqual({ pincode: "600017", area: "T. Nagar", city: "Chennai", address: "42, South Usman Road, T. Nagar, Chennai, 600017" })
+    expect(r).toEqual({ pincode: "600017", area: "T. Nagar", city: "Chennai", address: "42, South Usman Road, T. Nagar, Chennai, 600017", state: "" })
+    expect(parseNominatim({ address: { country_code: "in", city: "Chennai", state: "Tamil Nadu" } })?.state).toBe("Tamil Nadu")
     expect(parseNominatim({ address: { country_code: "gb", postcode: "SW1A 1AA" } })).toBeNull()
     expect(parseNominatim(null)).toBeNull()
     // No usable pincode: keep what we know and let the guest type the pincode.

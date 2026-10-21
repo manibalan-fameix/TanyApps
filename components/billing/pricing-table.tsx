@@ -10,6 +10,7 @@ import { copy } from "@/lib/copy"
 import {
   FREE_PLAN_KEY,
   PLAN_KEYS,
+  planLimitLabel,
   PLANS,
   SELLABLE_PLAN_KEYS,
   planPrice,
@@ -18,6 +19,7 @@ import {
   type PlanKey,
   type SellablePlanKey,
 } from "@/lib/plans"
+import { getVertical } from "@/lib/verticals"
 import { cn } from "@/lib/utils"
 
 const t = copy.admin.pricing
@@ -38,6 +40,16 @@ const perCarSum = (plan: SellablePlanKey, cycle: BillingCycle) =>
     ? `${rupees(planPrice(plan, cycle))} ÷ 12 months ÷ ${PLANS[plan].maxLiveCars} cars`
     : `${rupees(planPrice(plan, cycle))} ÷ ${PLANS[plan].maxLiveCars} cars`
 const rank = (p: PlanKey) => PLAN_KEYS.indexOf(p)
+
+/** What each plan says for a cab operator. Only limits and features that exist today; nothing promised ahead of the build. */
+function cabPlanCopy(key: PlanKey): { blurb: string; features: string[] } {
+  const base = ["Your own booking page", "Vehicles, drivers and documents", "Rate cards and fare estimates"]
+  const limit = planLimitLabel("cabs", key)
+  if (key === "starter") return { blurb: "For a small fleet getting its trips online", features: [limit, ...base] }
+  if (key === "growth") return { blurb: "For a growing fleet with more cars and drivers", features: [limit, "Everything in Starter"] }
+  if (key === "pro") return { blurb: "For a larger fleet that wants its own brand", features: [limit, "Everything in Growth", "White label: no Tany badge", "Your own domain name"] }
+  return { blurb: "", features: [limit] }
+}
 const TONE: Record<PlanStatus["tone"], string> = {
   success: "border-success/30 bg-success/15 text-success",
   primary: "border-primary/30 bg-primary/10 text-primary",
@@ -110,6 +122,8 @@ type Props = {
   onChoose: (plan: SellablePlanKey) => void
   /** Small print in the strip under the plans. */
   note?: React.ReactNode
+  /** The kind of business, which decides the plans shown and how their limits are worded. */
+  industry?: string
 }
 
 /** Button text for one plan, given where the dealer is now. */
@@ -140,7 +154,10 @@ export function PricingTable(props: Props) {
     pending,
     onChoose,
     note,
+    industry = "motors",
   } = props
+  const vertical = getVertical(industry)
+  const isCabs = vertical.key === "cabs"
   const yearly = cycle === "yearly"
 
   return (
@@ -171,8 +188,8 @@ export function PricingTable(props: Props) {
       <div className="w-full overflow-hidden rounded-[2rem] border border-border bg-card">
         {/* gap-px on a coloured grid draws the thin dividers, whatever the column count. */}
         <div className="grid gap-px bg-border md:grid-cols-2 xl:grid-cols-5 md:[&>section:last-child]:col-span-2 xl:[&>section:last-child]:col-span-1">
-          {PLAN_KEYS.map((key) => {
-            const info = t.plans[key]
+          {PLAN_KEYS.filter((k) => !isCabs || vertical.offeredPlans.includes(k)).map((key) => {
+            const info = isCabs ? cabPlanCopy(key) : t.plans[key]
             const sellable = (SELLABLE_PLAN_KEYS as readonly string[]).includes(
               key
             )
@@ -352,7 +369,7 @@ export function PricingTable(props: Props) {
                 )}
 
                 <ul className="flex flex-col">
-                  {sellable ? (
+                  {sellable && !isCabs ? (
                     <li
                       className="flex items-start gap-3 border-b border-dashed border-border py-4 text-base"
                       data-testid={`plan-per-car-${key}`}

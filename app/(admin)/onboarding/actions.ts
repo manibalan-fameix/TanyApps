@@ -1,7 +1,7 @@
 "use server"
 
 import { verifyFirebaseIdToken } from "@/lib/auth/firebase"
-import { claimVerifiedPhone, getUserPhone } from "@/lib/tenant/user-phone"
+import { claimVerifiedPhone, getUserContact, getUserPhone } from "@/lib/tenant/user-phone"
 import { mapDealerSubdomain } from "@/lib/cloudflare/domains"
 import { isFreePlan } from "@/lib/plans"
 import { createTrialSubscription } from "@/lib/billing/razorpay"
@@ -13,6 +13,7 @@ import { rateLimit } from "@/lib/core/rate-limit"
 import { BrokenLinkError, recommendProduct } from "@/lib/ai/recommend-product"
 import type { ProductKey } from "@/lib/products"
 import { createDealerForOwner, isSlugTaken } from "@/lib/tenant/create-dealer"
+import { canCreateVertical } from "@/lib/verticals"
 
 export type SlugStatus = "available" | "taken" | "invalid" | "limited"
 
@@ -103,6 +104,12 @@ export async function createDealership(
     for (const issue of parsed.error.issues)
       fieldErrors[String(issue.path[0])] ??= issue.message
     return { ok: false, fieldErrors }
+  }
+
+  // Flagged verticals (cabs) can be created only by people on the allow-list, whatever the form sent.
+  const { email } = await getUserContact(ctx.user.id)
+  if (!canCreateVertical(parsed.data.industry, email ?? ctx.user.email)) {
+    return { ok: false, fieldErrors: { industry: "This product is not available to your account yet." } }
   }
 
   // The number buyers call must be one this user proved by OTP (here or at sign-in).

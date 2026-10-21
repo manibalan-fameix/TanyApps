@@ -17,7 +17,9 @@ export const restaurants: Vertical = {
   firstItemHref: "/menu/new",
   adminReady: true,
   planLimit: "menu_items",
-  razorpay: { category: "food", subcategory: "restaurants" },
+  offeredPlans: ["free", "starter", "growth", "pro"],
+  // Razorpay's subcategory is singular: "restaurant" (checked 2026-10-21).
+  razorpay: { category: "food", subcategory: "restaurant" },
   paymentsPurpose: "guests can pay for their orders online",
   tenantMobileNav: false,
   liveMessage: "Your menu page has its own link. Share it on WhatsApp and Instagram, and print it as a QR code for your tables.",

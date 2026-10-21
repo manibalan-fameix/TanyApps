@@ -15,6 +15,7 @@ import { ScrollHint } from "@/components/onboarding/scroll-hint"
 import { Input } from "@/components/ui/input"
 import { type IndustryKey } from "@/lib/industries"
 import { PRODUCT_AUDIENCE, PRODUCTS, type ProductKey } from "@/lib/products"
+import { liveIndustry, useEnabledIndustries } from "@/components/onboarding/enabled-industries"
 import { cn } from "@/lib/utils"
 
 /** Searchable product cards, three per row. Only products with an industry can be chosen; the rest are marked coming soon. */
@@ -34,6 +35,7 @@ export function IndustryPicker({
   onProductChange?: (product: ProductKey) => void
 }) {
   const compact = useIsCompact()
+  const enabled = useEnabledIndustries()
   const [query, setQuery] = useState("")
   const q = query.trim().toLowerCase()
   const products = PRODUCTS.filter(
@@ -79,7 +81,7 @@ export function IndustryPicker({
           className="onboarding-product-grid grid min-h-0 grid-cols-3 gap-3 overflow-y-auto p-1 pr-6 pb-40"
         >
           {products.map((p) => {
-            const industry = "industry" in p ? p.industry : undefined
+            const industry = liveIndustry(p, enabled)
             const selected = industry !== undefined && value === industry
             return (
               <button
@@ -174,11 +176,12 @@ function ExploreProductScroller({
   onChange: (key: IndustryKey | null) => void
   onProductChange?: (product: ProductKey) => void
 }) {
+  const enabled = useEnabledIndustries()
   const scrollerRef = useRef<HTMLDivElement>(null)
   const itemsRef = useRef<(HTMLButtonElement | null)[]>([])
   // -1 until the user picks: the card shows only "tany" and the list waits below it.
   const [activeIndex, setActiveIndex] = useState(() =>
-    products.findIndex((p) => "industry" in p && p.industry === value)
+    products.findIndex((p) => liveIndustry(p, enabled) === value)
   )
 
   const activeProduct = products[Math.max(0, activeIndex)]
@@ -245,7 +248,7 @@ function ExploreProductScroller({
     if (index === activeIndex) return
     setActiveIndex(index)
     const product = products[index]
-    const nextIndustry = "industry" in product ? product.industry : undefined
+    const nextIndustry = liveIndustry(product, enabled)
     onProductChange?.(product.key)
     // Coming-soon products keep the last live choice so the preview stays put.
     if (nextIndustry && nextIndustry !== value) onChange(nextIndustry)
@@ -410,7 +413,7 @@ function ExploreProductScroller({
           )}
         >
           <div className="absolute top-1/2 right-5 flex -translate-y-1/2 items-center gap-2">
-            {hasSelection && !("industry" in activeProduct) ? (
+            {hasSelection && liveIndustry(activeProduct, enabled) === undefined ? (
               <span
                 style={{
                   color: `var(--logo-${activeProduct.key})`,
@@ -421,7 +424,7 @@ function ExploreProductScroller({
                 Coming soon
               </span>
             ) : null}
-            {hasSelection && "industry" in activeProduct ? (
+            {hasSelection && liveIndustry(activeProduct, enabled) !== undefined ? (
               <HugeiconsIcon
                 icon={CheckmarkCircle01Icon}
                 className="size-7 text-primary"

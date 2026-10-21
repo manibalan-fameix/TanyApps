@@ -143,6 +143,31 @@ export const navRestaurantGroups: NavGroup[] = [
 /** Every restaurant page, flat. Used for page titles and the phone "More" sheet. */
 export const navRestaurant: NavMainItem[] = navRestaurantGroups.flatMap((g) => g.items)
 
+export const navCabsGroups: NavGroup[] = [
+  { label: "Main", items: [{ title: n.dashboard, url: "/dashboard", icon: DashboardSquare01Icon }] },
+  {
+    label: "Fleet",
+    items: [
+      { title: "Vehicles", url: "/cabs/vehicles", icon: Car01Icon },
+      { title: "Vehicle classes", url: "/cabs/vehicle-classes", icon: Folder01Icon },
+      { title: "Drivers", url: "/cabs/drivers", icon: UserMultiple02Icon },
+    ],
+  },
+  {
+    label: "Pricing",
+    items: [
+      { title: "Rate cards", url: "/cabs/pricing", icon: Wallet01Icon },
+      { title: "Extra charges", url: "/cabs/pricing/surcharges", icon: PercentCircleIcon },
+      { title: "Tour packages", url: "/cabs/packages", icon: RouteIcon },
+    ],
+  },
+  {
+    label: "System",
+    items: [{ ...settingsItem, items: [{ title: "Fares, GST and rules", url: "/cabs/settings" }, ...settingsItem.items!] }],
+  },
+]
+export const navCabs: NavMainItem[] = navCabsGroups.flatMap((g) => g.items)
+
 export type NavTab = { href: string; icon: IconSvgElement; label: string; isActive: (pathname: string) => boolean }
 
 const under = (pathname: string, url: string) => pathname === url || pathname.startsWith(`${url}/`)
@@ -186,14 +211,15 @@ export const ADMIN_NAV: Record<IndustryKey, AdminNavSpec> = {
     tabUrls: ["/dashboard", "/menu", "/orders"],
   },
   // Not selectable yet (Vertical.adminReady is false). Phase 1 replaces this with the real cab navigation.
+  // Bookings arrive in Phase 2 and replace the Drivers tab on the phone bar.
   cabs: {
-    groups: null,
-    items: navMain,
+    groups: navCabsGroups,
+    items: navCabs,
     showRecentCars: false,
-    addItem: { href: "/cabs/fleet", label: "Add vehicle" },
-    catalogueTab: { href: "/cabs/fleet", icon: Car01Icon, label: "Fleet", isActive: (p) => under(p, "/cabs/fleet") },
-    inboxTab: { href: "/cabs/bookings", icon: UserMultiple02Icon, label: "Bookings", isActive: (p) => under(p, "/cabs/bookings") },
-    tabUrls: ["/dashboard", "/cabs/fleet", "/cabs/bookings"],
+    addItem: { href: "/cabs/vehicles", label: "Add vehicle" },
+    catalogueTab: { href: "/cabs/vehicles", icon: Car01Icon, label: "Vehicles", isActive: (p) => under(p, "/cabs/vehicles") },
+    inboxTab: { href: "/cabs/drivers", icon: UserMultiple02Icon, label: "Drivers", isActive: (p) => under(p, "/cabs/drivers") },
+    tabUrls: ["/dashboard", "/cabs/vehicles", "/cabs/drivers"],
   },
 }
 
@@ -211,7 +237,7 @@ export const userMenuPages = [
 ]
 
 const allPages: { title: string; url: string }[] = [
-  ...[...navMain, ...navRestaurant].flatMap((i) => [
+  ...[...navMain, ...navRestaurant, ...navCabs].flatMap((i) => [
     { title: i.title, url: i.url },
     ...(i.items ?? []),
   ]),

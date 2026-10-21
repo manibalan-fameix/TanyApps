@@ -23,6 +23,7 @@ export function ImageUpload({
   kind,
   label,
   wide,
+  requestUpload,
 }: {
   value: string
   onChange: (url: string) => void
@@ -30,6 +31,8 @@ export function ImageUpload({
   label: string
   /** Wide preview for banners. */
   wide?: boolean
+  /** Asks the server where to PUT the photo. Defaults to the restaurant action; other verticals pass their own. */
+  requestUpload?: () => Promise<{ ok: true; url: string; method: string; headers: Record<string, string>; publicUrl: string } | { ok: false; error: string }>
 }) {
   const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
@@ -40,7 +43,7 @@ export function ImageUpload({
     setBusy(true)
     try {
       const { blob } = await resizeToJpeg(file, MAX_EDGE)
-      const target = await requestImageUpload(kind)
+      const target = await (requestUpload ? requestUpload() : requestImageUpload(kind))
       if (!target.ok) throw new Error(target.error)
       const res = await fetch(target.url, { method: target.method, headers: target.headers, body: blob })
       if (!res.ok) throw new Error("Upload failed.")
