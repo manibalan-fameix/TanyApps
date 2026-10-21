@@ -33,13 +33,16 @@ export function payoutAccountFor(dealer: PayoutAccount): string | null {
 export type PaymentApplied = { found: boolean; applied: boolean; code?: string; refunded?: boolean; refundFailed?: boolean }
 
 /**
- * Records a captured payment against its order. Called by the guest's checkout and by Razorpay's webhook, in either
- * order, so it is safe to run more than once. An order that was cancelled or expired before the payment arrived is
+ * Records a captured payment against its order. Called by the guest's checkout (which passes `expectedDealerId`, the
+ * restaurant of the host it is on) and by Razorpay's webhook (which does not), in either order, so it is safe to run more
+ * than once. An order that was cancelled or expired before the payment arrived is
  * refunded instead of being revived, so a guest is never charged for an order nobody will cook.
  */
-export async function applyOrderPayment(razorpayOrderId: string, paymentId: string, now = new Date()): Promise<PaymentApplied> {
+export async function applyOrderPayment(razorpayOrderId: string, paymentId: string, now = new Date(), expectedDealerId?: string): Promise<PaymentApplied> {
   const [order] = await unscopedDb.select().from(orders).where(eq(orders.razorpayOrderId, razorpayOrderId)).limit(1)
   if (!order) return { found: false, applied: false }
+  // The checkout path knows which restaurant the guest is on; a payment for another restaurant's order is not theirs to confirm.
+  if (expectedDealerId && order.dealerId !== expectedDealerId) return { found: false, applied: false }
   if (order.paymentStatus === "paid" || order.paymentStatus === "refunded") return { found: true, applied: false, code: order.code }
 
   const db = scopedDb(order.dealerId)

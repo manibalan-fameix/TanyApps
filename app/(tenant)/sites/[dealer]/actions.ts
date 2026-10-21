@@ -171,7 +171,7 @@ export async function confirmOrderPayment(input: { orderId: string; paymentId: s
   if (!allow(`confirm:${ctx.ip}`, 30, 10 * 60_000)) return { ok: false, error: "Too many tries. Please wait a moment." }
   if (!(await verifyBookingPaymentSignature(input))) return { ok: false, error: "We could not verify that payment." }
   try {
-    const r = await applyOrderPayment(input.orderId, input.paymentId)
+    const r = await applyOrderPayment(input.orderId, input.paymentId, new Date(), ctx.dealer.id)
     if (!r.found || !r.code) return { ok: false, error: "We could not find that order." }
     if (r.refunded) return { ok: false, error: "This order expired before your payment arrived, so it has been refunded." }
     return { ok: true, code: r.code }
