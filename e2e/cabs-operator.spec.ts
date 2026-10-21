@@ -124,6 +124,7 @@ test("a new cab operator sets up, adds a vehicle with documents, sets rates and 
   await page.getByLabel("Pickup (India time)").fill("2026-11-02T10:00")
   await page.getByLabel("Distance (km)").fill("18.4")
   await expect(page.getByTestId("fare-total")).toHaveText("₹480")
+  await expect(page.getByTestId("notice-tolls_parking_extra")).toHaveText("Tolls & parking extra, as actual")
   await expect(page.getByText("CGST 2.5%")).toBeVisible()
   await expect(page.getByText("SGST 2.5%")).toBeVisible()
 

@@ -1,4 +1,5 @@
-import { type BillingCycle, type SellablePlanKey, PLANS, TRIAL_DAYS, planPrice } from "../plans"
+import { type BillingCycle, type SellablePlanKey, PLANS, TRIAL_DAYS, priceFor } from "../plans"
+import { getVertical } from "../verticals"
 
 const API = "https://api.razorpay.com/v1"
 
@@ -29,9 +30,11 @@ type RazorpayPlan = { id: string; notes?: Record<string, string> }
 const planIds = new Map<string, string>()
 
 /** Finds the Razorpay plan for a plan and billing cycle, creating it on first use. Plans are keyed by notes.key. */
-async function ensurePlan(creds: Credentials, plan: SellablePlanKey, cycle: BillingCycle): Promise<string> {
-  const key = `tany_${plan}_${cycle}`
-  const amount = planPrice(plan, cycle) * 100
+async function ensurePlan(creds: Credentials, industry: string, plan: SellablePlanKey, cycle: BillingCycle): Promise<string> {
+  // A kind of business with its own prices gets its own plans, so its prices can never be mixed up with the shared ones. Cars and
+  // restaurants keep the keys they already have.
+  const key = getVertical(industry).planPrices ? `tany_${industry}_${plan}_${cycle}` : `tany_${plan}_${cycle}`
+  const amount = priceFor(industry, plan, cycle) * 100
   const cached = planIds.get(`${key}:${amount}`)
   if (cached) return cached
 
@@ -74,13 +77,15 @@ export type RazorpaySubscription = {
  */
 export async function createSubscription(input: {
   dealerId: string
+  /** The dealer's kind of business, which decides the price. */
+  industry: string
   plan: SellablePlanKey
   cycle: BillingCycle
   startAt?: number
 }): Promise<{ subscriptionId: string; keyId: string } | null> {
   const creds = razorpayCredentials()
   if (!creds) return null
-  const planId = await ensurePlan(creds, input.plan, input.cycle)
+  const planId = await ensurePlan(creds, input.industry, input.plan, input.cycle)
   const sub = await call<{ id: string }>(creds, "/subscriptions", {
     method: "POST",
     body: {
@@ -96,7 +101,7 @@ export async function createSubscription(input: {
 }
 
 /** Free trial: the first charge is after `TRIAL_DAYS`. */
-export const createTrialSubscription = (input: { dealerId: string; plan: SellablePlanKey; cycle: BillingCycle }) =>
+export const createTrialSubscription = (input: { dealerId: string; industry: string; plan: SellablePlanKey; cycle: BillingCycle }) =>
   createSubscription({ ...input, startAt: Math.floor(Date.now() / 1000) + TRIAL_DAYS * 86_400 })
 
 export async function getSubscription(id: string): Promise<RazorpaySubscription | null> {

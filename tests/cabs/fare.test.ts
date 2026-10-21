@@ -122,6 +122,36 @@ describe("outstation", () => {
   })
 })
 
+describe("a same-day return", () => {
+  it("is one day: one daily minimum and one day of allowance, however late the vehicle is released", () => {
+    for (const back of ["2026-11-02T10:30:00", "2026-11-02T18:00:00", "2026-11-02T23:59:00"]) {
+      const r = ok(quote(outstation({ startAt: ist("2026-11-02T06:00:00"), returnAt: ist(back), distanceM: 100_000 })))
+      expect(r.meta, back).toMatchObject({ days: 1, billedM: 250_000, minKmApplied: true })
+      expect(line(r, "bata")?.paise, back).toBe(40_000)
+    }
+  })
+  it("becomes two days the moment the return is after midnight, even by a minute", () => {
+    const r = ok(quote(outstation({ startAt: ist("2026-11-02T22:00:00"), returnAt: ist("2026-11-03T00:01:00"), distanceM: 100_000 })))
+    expect(r.meta.days).toBe(2)
+    expect(line(r, "bata")?.paise).toBe(80_000)
+  })
+  it("counts the same in a server running in another time zone (days are India's, not the server's)", () => {
+    // 20:00 UTC on the 2nd is 01:30 IST on the 3rd: still a same-day trip for the customer if both ends are on the 3rd in India.
+    const r = ok(quote(outstation({ startAt: new Date("2026-11-02T20:00:00Z"), returnAt: new Date("2026-11-03T12:00:00Z"), distanceM: 100_000 })))
+    expect(r.meta.days).toBe(1)
+  })
+})
+
+describe("notices", () => {
+  it("always tell the customer that tolls and parking are extra, at actuals, and never add them to the total", () => {
+    for (const q of [input(), outstation(), local(), input({ tripType: "package_tour", rateCard: null, packagePricePaise: 100_000 })]) {
+      expect(ok(quote(q)).notices).toEqual(["tolls_parking_extra"])
+    }
+    const withToll = ok(quote(input({ tollEstimatePaise: 80_000 })))
+    expect(withToll.totalPaise).toBe(ok(quote(input())).totalPaise)
+  })
+})
+
 describe("local hourly packages", () => {
   it("is the package price, with no overage line when no overrun is expected", () => {
     const r = ok(quote(local()))

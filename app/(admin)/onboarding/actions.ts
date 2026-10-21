@@ -170,6 +170,7 @@ export async function createDealership(
     if (!isFreePlan(plan))
       checkout = await createTrialSubscription({
         dealerId,
+        industry: parsed.data.industry,
         plan,
         cycle: parsed.data.billingCycle,
       })

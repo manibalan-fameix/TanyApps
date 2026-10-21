@@ -653,4 +653,11 @@ export const copy = {
       capUsage: (used: number, cap: number) => `${used} of ${cap}`,
     },
   },
+  /** TanyCabs, customer-facing. English here, Tamil in lib/copy-ta.ts with the same shape (lib/cabs/lang.ts picks one). */
+  cabs: {
+    notices: {
+      /** Shown under every quote and fare preview. Tolls and parking are never part of the quoted total. */
+      tolls_parking_extra: "Tolls & parking extra, as actual",
+    },
+  },
 } as const

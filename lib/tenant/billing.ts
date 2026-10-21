@@ -5,13 +5,14 @@ import { dealers } from "../db/schema"
 
 export type DealerBilling = Pick<
   typeof dealers.$inferSelect,
-  "id" | "plan" | "billingCycle" | "trialEndsAt" | "paidThrough" | "cancelRequestedAt" | "nextPlan" | "nextBillingCycle" | "nextPlanStartsAt" | "subscriptionId" | "subscriptionStatus"
+  "id" | "slug" | "plan" | "billingCycle" | "trialEndsAt" | "paidThrough" | "cancelRequestedAt" | "nextPlan" | "nextBillingCycle" | "nextPlanStartsAt" | "subscriptionId" | "subscriptionStatus"
 >
 
 export async function getDealerBilling(dealerId: string): Promise<DealerBilling | null> {
   const [row] = await unscopedDb
     .select({
       id: dealers.id,
+      slug: dealers.slug,
       plan: dealers.plan,
       billingCycle: dealers.billingCycle,
       trialEndsAt: dealers.trialEndsAt,
