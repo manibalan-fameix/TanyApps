@@ -3,22 +3,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const countMetric = vi.fn()
 vi.mock("../lib/core/metrics", () => ({ countMetric: (...a: unknown[]) => countMetric(...a) }))
 
-import { dispatchCapturedPayment, type PaymentHandlers } from "../lib/core/payments/webhook"
+import { dispatchPaymentEvent, type PaymentHandlers, type PaymentHandlerResult } from "../lib/core/payments/webhook"
 import { createBookingOrder, createFoodOrder } from "../lib/route/razorpay"
 
-function handlers(over: { eats?: { found: boolean; refundFailed?: boolean }; motors?: { found: boolean } } = {}) {
-  const eats = vi.fn(async () => over.eats ?? { found: true })
-  const motors = vi.fn(async () => over.motors ?? { found: true })
+function handlers(over: { eats?: PaymentHandlerResult; motors?: PaymentHandlerResult } = {}) {
+  const eats = vi.fn(async () => over.eats ?? { found: true, applied: true })
+  const motors = vi.fn(async () => over.motors ?? { found: true, applied: true })
   return { eats, motors, set: { eats_order: eats, motors_booking: motors } as PaymentHandlers }
 }
-const pay = (notes?: Record<string, unknown> | null) => ({ orderId: "order_1", paymentId: "pay_1", notes })
+const paid = (kind?: unknown) => ({ source: "order.paid" as const, orderId: "order_1", paymentId: "pay_1", orderNotes: kind === undefined ? null : { kind } })
+const captured = () => ({ source: "payment.captured" as const, orderId: "order_1", paymentId: "pay_1" })
 
 beforeEach(() => countMetric.mockClear())
 
-describe("dispatchCapturedPayment", () => {
-  it("sends an eats_order payment to the food flow only, with no fallback count", async () => {
+describe("dispatchPaymentEvent: order.paid (primary)", () => {
+  it("sends an eats_order payment to the food flow only, with nothing counted", async () => {
     const h = handlers()
-    expect(await dispatchCapturedPayment(pay({ kind: "eats_order" }), h.set)).toBe("handled")
+    expect(await dispatchPaymentEvent(paid("eats_order"), h.set)).toBe("handled")
     expect(h.eats).toHaveBeenCalledWith("order_1", "pay_1")
     expect(h.motors).not.toHaveBeenCalled()
     expect(countMetric).not.toHaveBeenCalled()
@@ -26,42 +27,62 @@ describe("dispatchCapturedPayment", () => {
 
   it("sends a motors_booking payment to the car flow only", async () => {
     const h = handlers()
-    expect(await dispatchCapturedPayment(pay({ kind: "motors_booking" }), h.set)).toBe("handled")
+    expect(await dispatchPaymentEvent(paid("motors_booking"), h.set)).toBe("handled")
     expect(h.motors).toHaveBeenCalledWith("order_1", "pay_1")
     expect(h.eats).not.toHaveBeenCalled()
   })
 
   it("counts a kind whose order cannot be found instead of guessing another flow", async () => {
     const h = handlers({ eats: { found: false } })
-    expect(await dispatchCapturedPayment(pay({ kind: "eats_order" }), h.set)).toBe("unmatched")
+    expect(await dispatchPaymentEvent(paid("eats_order"), h.set)).toBe("unmatched")
     expect(h.motors).not.toHaveBeenCalled()
     expect(countMetric).toHaveBeenCalledWith("razorpay_webhook_unmatched", { kind: "eats_order" })
   })
 
-  it("falls back to the old Eats-then-Motors lookup when there is no kind, and counts every hit", async () => {
+  it("uses the old Eats-then-Motors lookup for an order with no kind, and counts it", async () => {
     const found = handlers()
-    expect(await dispatchCapturedPayment(pay(null), found.set)).toBe("fallback")
-    expect(found.eats).toHaveBeenCalledTimes(1)
+    expect(await dispatchPaymentEvent(paid(), found.set)).toBe("fallback")
     expect(found.motors).not.toHaveBeenCalled()
-
     const miss = handlers({ eats: { found: false } })
-    expect(await dispatchCapturedPayment(pay({}), miss.set)).toBe("fallback")
+    expect(await dispatchPaymentEvent({ ...paid(), orderNotes: {} }, miss.set)).toBe("fallback")
     expect(miss.motors).toHaveBeenCalledTimes(1)
     expect(countMetric).toHaveBeenCalledTimes(2)
-    expect(countMetric).toHaveBeenCalledWith("razorpay_webhook_fallback")
+    expect(countMetric).toHaveBeenCalledWith("razorpay_webhook_fallback", { event: "order.paid", reason: "no_kind" })
   })
 
   it("acknowledges and counts an unknown kind without touching any flow", async () => {
     const h = handlers()
-    expect(await dispatchCapturedPayment(pay({ kind: "cab_trip" }), h.set)).toBe("ignored")
+    expect(await dispatchPaymentEvent(paid("cab_trip"), h.set)).toBe("ignored")
     expect(h.eats).not.toHaveBeenCalled()
     expect(h.motors).not.toHaveBeenCalled()
     expect(countMetric).toHaveBeenCalledWith("razorpay_webhook_unknown_kind", { kind: "cab_trip" })
   })
 
-  it("throws when a late payment's refund failed, so Razorpay retries (kind and fallback paths)", async () => {
-    await expect(dispatchCapturedPayment(pay({ kind: "eats_order" }), handlers({ eats: { found: true, refundFailed: true } }).set)).rejects.toThrow("refund")
-    await expect(dispatchCapturedPayment(pay(null), handlers({ eats: { found: true, refundFailed: true } }).set)).rejects.toThrow("refund")
+  it("throws when a late payment's refund failed, so Razorpay retries", async () => {
+    await expect(dispatchPaymentEvent(paid("eats_order"), handlers({ eats: { found: true, refundFailed: true } }).set)).rejects.toThrow("refund")
+  })
+})
+
+describe("dispatchPaymentEvent: payment.captured (fallback)", () => {
+  it("looks the order up the old way, and counts a hit only when it did the work", async () => {
+    const first = handlers()
+    await dispatchPaymentEvent(captured(), first.set)
+    expect(countMetric).toHaveBeenCalledWith("razorpay_webhook_fallback", { event: "payment.captured", reason: "did_the_work" })
+
+    countMetric.mockClear()
+    const already = handlers({ eats: { found: true, applied: false } })
+    await dispatchPaymentEvent(captured(), already.set)
+    expect(countMetric).not.toHaveBeenCalled() // order.paid got there first
+  })
+
+  it("falls through to the car flow when no food order matches", async () => {
+    const h = handlers({ eats: { found: false } })
+    await dispatchPaymentEvent(captured(), h.set)
+    expect(h.motors).toHaveBeenCalledTimes(1)
+  })
+
+  it("throws when a late payment's refund failed", async () => {
+    await expect(dispatchPaymentEvent(captured(), handlers({ eats: { found: true, refundFailed: true } }).set)).rejects.toThrow("refund")
   })
 })
 
