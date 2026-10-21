@@ -26,6 +26,7 @@ const MESSAGES: Record<string, string> = {
   "auth/popup-blocked": "Your browser blocked the sign-in window. Allow pop-ups and try again.",
   "auth/network-request-failed": "Network problem. Check your connection and try again.",
   "auth/unauthorized-domain": "This website is not authorised for sign-in yet.",
+  "auth/account-exists-with-different-credential": "An account with this email already exists using another sign-in method. Log in with that one.",
   "auth/operation-not-allowed": "This sign-in method is not enabled yet.",
   "auth/captcha-check-failed": "Security check failed. Refresh the page and try again.",
   "auth/missing-client-identifier": "Security check failed. Refresh the page and try again.",

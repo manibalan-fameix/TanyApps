@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest"
 
 import { verifyFirebaseIdToken } from "../lib/auth/firebase"
 
-const PROJECT = "showmoto-test"
+const PROJECT = "tany-test"
 let privateKey: CryptoKey
 let keys: ReturnType<typeof createLocalJWKSet>
 

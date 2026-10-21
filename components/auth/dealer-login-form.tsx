@@ -1,7 +1,9 @@
 "use client"
 
 import {
+  FacebookAuthProvider,
   GoogleAuthProvider,
+  type AuthProvider,
   createUserWithEmailAndPassword,
   sendEmailVerification,
   sendPasswordResetEmail,
@@ -18,6 +20,7 @@ import {
 import { cn } from "cn"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import { useActionState, useEffect, useRef, useState } from "react"
 
 import { Logo } from "@/components/logo"
@@ -93,22 +96,10 @@ export function DealerLoginForm({
   async function finish(user: User, forMode: "signin" | "signup" = mode) {
     const auth = getFirebaseAuth(config!)
     const idToken = await user.getIdToken()
-    // Logging in never creates an account: unknown users are pointed to "Create dealer account".
-    // Exception: an email that was just verified is the second half of sign-up, so it continues to onboarding.
+    // Unknown to Tany: a login attempt becomes sign-up, so they land in onboarding instead of a dead end.
     if (forMode === "signin" && !(await firebaseAccountExists(idToken))) {
-      if (
-        user.providerData[0]?.providerId === "password" &&
-        user.emailVerified
-      ) {
-        forMode = "signup"
-      } else {
-        await firebaseSignOut(auth)
-        setConfirmation(null)
-        setMode("signup")
-        return setInfo(
-          "We couldn't find a dealer account for this login. Create one below to get started."
-        )
-      }
+      forMode = "signup"
+      toast.info("You're new to Tany. Create your account to get started.")
     }
     const result = await signInWithFirebaseToken(idToken)
     await firebaseSignOut(auth)
@@ -161,10 +152,9 @@ export function DealerLoginForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const google = () =>
+  const social = (provider: AuthProvider) =>
     run(async () => {
       const auth = getFirebaseAuth(config!)
-      const provider = new GoogleAuthProvider()
       try {
         await finish((await signInWithPopup(auth, provider)).user)
       } catch (e) {
@@ -176,6 +166,13 @@ export function DealerLoginForm({
         await signInWithRedirect(auth, provider)
       }
     })
+
+  const google = () => social(new GoogleAuthProvider())
+  const facebook = () => {
+    const provider = new FacebookAuthProvider()
+    provider.addScope("email")
+    return social(provider)
+  }
 
   // ---- Phone ----
   const [method, setMethod] = useState<"email" | "phone">("email")
@@ -330,8 +327,8 @@ export function DealerLoginForm({
         </CardTitle>
         <CardDescription>
           {mode === "signup"
-            ? "Sign up with Google, your phone number or email"
-            : "Login with your Google account or phone number"}
+            ? "Sign up with Google, Facebook, your phone number or email"
+            : "Login with Google, Facebook or your phone number"}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -382,6 +379,27 @@ export function DealerLoginForm({
                 {mode === "signup"
                   ? "Sign up with Google"
                   : "Login with Google"}
+              </Button>
+              <Button
+                variant="outline"
+                type="button"
+                className="h-11 text-base"
+                onClick={facebook}
+                disabled={busy || !enabled}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    fill="#1877F2"
+                    d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.7 4.53-4.7 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.26h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z"
+                  />
+                </svg>
+                {mode === "signup"
+                  ? "Sign up with Facebook"
+                  : "Login with Facebook"}
               </Button>
               <Button
                 variant="outline"
