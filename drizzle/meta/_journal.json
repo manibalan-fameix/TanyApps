@@ -169,6 +169,13 @@
       "when": 1792569941788,
       "tag": "0023_nappy_captain_britain",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792571107404,
+      "tag": "0024_natural_shockwave",
+      "breakpoints": true
     }
   ]
 }

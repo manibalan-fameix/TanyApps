@@ -6,6 +6,7 @@ import {
   carViews,
   cars,
   coupons,
+  cronRuns,
   dealerDomains,
   dealerUsers,
   dealers,
@@ -53,4 +54,4 @@ export const CHILD_TENANT_TABLES = { carMedia, rcLookups, carViews, rcTransfers,
  * Tables that are deliberately not tenant-scoped: the tenant root itself, authentication, and shared reference data. Code
  * reads them only through lib/tenant, lib/auth and lib/variants (the raw client is blocked everywhere else by ESLint).
  */
-export const GLOBAL_TABLES = { dealers, users, accounts, variants } as const
+export const GLOBAL_TABLES = { dealers, users, accounts, variants, cronRuns } as const
