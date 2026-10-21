@@ -1,6 +1,6 @@
 # Phase 1 report: cabs skeleton, fleet and pricing
 
-Branch `tanycabs/phase-1-fleet-pricing`, stacked on `tanycabs/phase-0-foundation` (which is **not merged to `main` yet**). 12 commits, about 115 files changed. Nothing is pushed or deployed, and nothing was run against Neon except the one read-only query below.
+Branch `tanycabs/phase-1-fleet-pricing`, stacked on `tanycabs/phase-0-foundation` (which is **not merged to `main` yet**). 11 commits, about 115 files changed. Nothing is pushed or deployed, and nothing was run against Neon except the one read-only query below.
 
 A separate branch, `fix/motors-refund-route-reversal` (from `main`, 2 commits), holds two fixes you asked to keep apart. Decisions, assumptions and mistakes are in [DECISIONS.md](../DECISIONS.md) ("Phase 1"). **Please read its "Assumptions I made" list: several are yours to confirm.**
 
