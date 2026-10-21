@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
-import { buildCarSystemPrompt, buildGeneralSystemPrompt, getChatClient, getChatModel, sanitizeHistory, type CarChatContext } from "../lib/ai/chat"
+import { buildCarSystemPrompt, buildGeneralSystemPrompt, createCloudRunChatClient, getChatClient, getChatModel, sanitizeHistory, type CarChatContext } from "../lib/ai/chat"
 
 const carContext: CarChatContext = {
   title: "2019 Maruti Baleno Alpha",
@@ -104,5 +104,41 @@ describe("chat client config", () => {
     expect(getChatModel({})).toBe("gemini-3.6-flash")
     expect(getChatModel({ VISION_MODEL: "vision-model" })).toBe("vision-model")
     expect(getChatModel({ VISION_MODEL: "vision-model", CHAT_MODEL: "chat-model" })).toBe("chat-model")
+  })
+
+  it("uses Cloud Run when configured without requiring a Gemini key", () => {
+    expect(getChatClient({ CLOUD_RUN_GENERATE_URL: "https://ai.example.com/generate" })).not.toBeNull()
+  })
+
+  it("streams Cloud Run SSE text and sends the protected request shape", async () => {
+    const fetchFn = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect((init?.headers as Record<string, string>).authorization).toBe("Bearer token")
+      expect(JSON.parse(String(init?.body)).prompt).toContain("Buyer: What is the price?")
+      return new Response('data: {"text":"₹6,50,000"}\n\ndata: [DONE]\n', {
+        headers: { "content-type": "text/event-stream" },
+      })
+    }) as unknown as typeof fetch
+    const chunks: string[] = []
+    for await (const chunk of createCloudRunChatClient("https://ai.example.com/generate", "token", fetchFn).stream({
+      model: "gemini-3.6-flash",
+      system: "Facts",
+      messages: [{ role: "user", content: "What is the price?" }],
+      maxTokens: 100,
+    })) chunks.push(chunk)
+    expect(chunks).toEqual(["₹6,50,000"])
+  })
+
+  it("extracts the response from a regular Cloud Run JSON response", async () => {
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ prompt: "x", response: "API OK" }), {
+      headers: { "content-type": "application/json" },
+    })) as unknown as typeof fetch
+    const chunks: string[] = []
+    for await (const chunk of createCloudRunChatClient("https://ai.example.com/generate", undefined, fetchFn).stream({
+      model: "gemini-3.6-flash",
+      system: "Facts",
+      messages: [{ role: "user", content: "Test" }],
+      maxTokens: 100,
+    })) chunks.push(chunk)
+    expect(chunks).toEqual(["API OK"])
   })
 })

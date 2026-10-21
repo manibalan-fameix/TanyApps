@@ -160,8 +160,87 @@ export interface ChatClient {
   stream(req: { model: string; system: string; messages: { role: "user" | "assistant"; content: string }[]; maxTokens: number }): AsyncGenerator<string>
 }
 
-/** Null when VISION_API_KEY (a Google Gemini API key) is not set: the chat widget stays hidden rather than erroring. */
+type ChatRequest = Parameters<ChatClient["stream"]>[0]
+
+/**
+ * Calls the Cloud Run /generate service. The service owns Vertex AI authentication, so this app
+ * never needs a Google service-account key or Vertex API key. The response may be plain text or
+ * Gemini-style SSE (`data: {"text":"..."}` / `data: {"candidates":[...]}`).
+ */
+export function createCloudRunChatClient(
+  endpoint: string,
+  bearerToken?: string,
+  fetchFn: typeof fetch = fetch,
+): ChatClient {
+  return {
+    async *stream(req: ChatRequest): AsyncGenerator<string> {
+      const prompt = [
+        req.system,
+        "",
+        "Conversation:",
+        ...req.messages.map((message) => `${message.role === "assistant" ? "Assistant" : "Buyer"}: ${message.content}`),
+        "Assistant:",
+      ].join("\n")
+
+      const headers: Record<string, string> = { "content-type": "application/json" }
+      if (bearerToken) headers.authorization = `Bearer ${bearerToken}`
+
+      const response = await fetchFn(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          prompt,
+          system: req.system,
+          messages: req.messages,
+          model: req.model,
+          maxOutputTokens: req.maxTokens,
+        }),
+      })
+      if (!response.ok || !response.body) throw new Error(`Cloud Run AI request failed (${response.status})`)
+
+      const contentType = response.headers.get("content-type") ?? ""
+      if (!contentType.includes("text/event-stream")) {
+        const raw = await response.text()
+        try {
+          const payload = JSON.parse(raw) as { text?: string; response?: string; output?: string }
+          yield payload.response ?? payload.text ?? payload.output ?? raw
+        } catch {
+          yield raw
+        }
+        return
+      }
+
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+      let buffer = ""
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += value
+        const lines = buffer.split("\n")
+        buffer = lines.pop() ?? ""
+        for (const line of lines) {
+          const raw = contentType.includes("text/event-stream") ? line.replace(/^data:\s*/, "").trim() : line
+          if (!raw || raw === "[DONE]") continue
+          try {
+            const payload = JSON.parse(raw) as { text?: string; response?: string; candidates?: { content?: { parts?: { text?: string }[] } }[] }
+            const text = payload.text ?? payload.response ?? payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? ""
+            if (text) yield text
+          } catch {
+            // Some simple Cloud Run services stream raw text after the `data:` prefix.
+            yield raw
+          }
+        }
+      }
+      if (buffer.trim()) yield buffer.trim()
+    },
+  }
+}
+
+/** Cloud Run takes precedence when configured; direct Gemini remains a local/dev fallback. */
 export function getChatClient(env: Record<string, string | undefined> = process.env): ChatClient | null {
+  const cloudRunUrl = env.CLOUD_RUN_GENERATE_URL?.trim()
+  if (cloudRunUrl) return createCloudRunChatClient(cloudRunUrl, env.CLOUD_RUN_AUTH_TOKEN)
+
   const apiKey = env.VISION_API_KEY
   if (!apiKey) return null
   return {
@@ -179,5 +258,5 @@ export function getChatClient(env: Record<string, string | undefined> = process.
 
 /** Server-only check so buyer pages can skip rendering the chat widget entirely when unconfigured. */
 export function isChatEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  return Boolean(env.VISION_API_KEY)
+  return Boolean(env.CLOUD_RUN_GENERATE_URL?.trim() || env.VISION_API_KEY)
 }

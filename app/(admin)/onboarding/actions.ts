@@ -10,6 +10,8 @@ import { onboardSchema, slugSchema } from "@/lib/dealers/onboard"
 import { tenantUrl } from "@/lib/env"
 import { getStorage } from "@/lib/storage"
 import { allow } from "@/lib/rate-limit"
+import { BrokenLinkError, recommendProduct } from "@/lib/ai/recommend-product"
+import type { ProductKey } from "@/lib/products"
 import { createDealerForOwner, isSlugTaken } from "@/lib/tenant/create-dealer"
 
 export type SlugStatus = "available" | "taken" | "invalid" | "limited"
@@ -170,4 +172,29 @@ export async function createDealership(
     )
   }
   return { ok: true, url: tenantUrl(parsed.data.slug), checkout }
+}
+
+/** "Find my Tany": maps a one-line business description to a product. Signed-in users only, rate limited. */
+export async function findMyProduct(
+  description: string
+): Promise<
+  | { ok: true; product: ProductKey; reason: string }
+  | { ok: false; error: string }
+> {
+  const ctx = await getDealerContext()
+  if (ctx.status !== "no-dealer") return { ok: false, error: "Please sign in again." }
+  const text = description.trim().slice(0, 300)
+  if (text.length < 3) return { ok: false, error: "Tell us a little about your business." }
+  if (!allow(`recommend:${ctx.user.id}`, 15, 10 * 60_000))
+    return { ok: false, error: "Too many tries. Please wait a few minutes." }
+  let rec
+  try {
+    rec = await recommendProduct(text)
+  } catch (e) {
+    if (e instanceof BrokenLinkError)
+      return { ok: false, error: "We couldn't open that link. Check it, or describe your business in a sentence." }
+    throw e
+  }
+  if (!rec) return { ok: false, error: "We could not match that. Try describing what you sell or do." }
+  return { ok: true, ...rec }
 }
