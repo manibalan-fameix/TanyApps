@@ -41,7 +41,7 @@ Choices made without asking, newest first within each phase. Reverse any of them
 
 **Other**
 - Brand is Tany, product suite is TanyApps (TanyCars, TanyEats built; TanyMarts, TanyGifts, TanyMeds later). Copy lives in `lib/copy.ts`.
-- Existing cloud resources keep their original names (Firebase project `showmoto-5e1b2`, R2 bucket `showmoto`) because they cannot be renamed in place.
+- Existing cloud resources keep their original names (former Firebase project `showmoto-5e1b2`; R2 now `tany` at cdn.tany.in) because they cannot be renamed in place.
 - Theme validation: text colours are auto-adjusted to WCAG AA (4.5:1). A primary colour under 3:1 against white is rejected because buttons and links would vanish. The "near-black" fallback goes to pure black in the mid-tone band where near-black cannot reach 4.5:1.
 - Radius options: none, sm, md (preset default), lg.
 - A user belongs to one dealer in v1; if several links exist the earliest wins.

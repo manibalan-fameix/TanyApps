@@ -56,7 +56,7 @@ function BookingDialog({
       const result = await authoriseBookingPayment(res.checkout, {
         carSlug,
         description: `Booking amount for ${carSlug}`,
-        color: "#1d4ed8",
+        color: "#E5270B",
         prefill: { name, contact: phone },
       })
       if (result === "done") {

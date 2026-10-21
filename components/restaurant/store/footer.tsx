@@ -49,7 +49,7 @@ export function StoreFooter({ dealer, store }: { dealer: DealerProfile; store: S
           </ul>
         </div>
       </div>
-      {dealer.whiteLabel ? null : <PoweredBy />}
+      {dealer.whiteLabel ? null : <PoweredBy product="restaurants" />}
     </footer>
   )
 }

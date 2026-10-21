@@ -47,3 +47,6 @@ next-env.d.ts
 # Jarvis page (built on deploy)
 /workers/jarvis/ui/node_modules
 /workers/jarvis/ui/dist
+
+# Claude Code local settings
+.claude/settings.local.json
