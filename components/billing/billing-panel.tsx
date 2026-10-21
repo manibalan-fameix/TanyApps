@@ -66,7 +66,7 @@ export function BillingPanel({
       if (!res.ok) return void toast.error(res.error)
       const result = await authorisePayment(res.checkout, {
         description: `${PLANS[plan].label} (${cycle})`,
-        color: "#1d4ed8",
+        color: "#E5270B",
       })
       if (result === "done")
         toast.success(
