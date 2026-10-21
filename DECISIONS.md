@@ -37,7 +37,7 @@ Choices made without asking, newest first within each phase. Reverse any of them
 - The proxy strips any client-supplied `x-tenant-slug` and sets its own. Tenant hosts can reach `/api/t/*` only; everything else under `/api` is 404 there.
 
 **Plans (no billing)**
-- starter 20 cars, growth 50, pro 100, scale 1000 (the "100+" tier). White label and custom domain on for pro and scale. Adjust in `lib/plans.ts`.
+- starter 25 cars (raised from 20), growth 50, pro 100, scale 1000 (the "100+" tier). White label and custom domain on for pro and scale. Adjust in `lib/plans.ts`.
 
 **Other**
 - Brand is Tany, product suite is TanyApps (TanyCars, TanyEats built; TanyMarts, TanyGifts, TanyMeds later). Copy lives in `lib/copy.ts`.
