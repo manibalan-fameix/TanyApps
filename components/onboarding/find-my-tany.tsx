@@ -77,7 +77,7 @@ export function FindMyTany({
             <p className="text-sm text-foreground/80">{result.reason}</p>
             {!live ? (
               <p className="text-xs font-medium text-primary">
-                Coming soon. Browse products and pick TanyMotos or TanyEats to continue.
+                This product is not available yet. Choose a live product to continue.
               </p>
             ) : null}
           </div>

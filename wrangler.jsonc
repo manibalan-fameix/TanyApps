@@ -43,5 +43,45 @@
     { "pattern": "app.tany.in", "custom_domain": true },
     { "pattern": "*.tany.in/*", "zone_name": "tany.in" }
   ],
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+
+  // STAGING: the same code on its own hostnames, database, buckets, secrets and Razorpay test keys. Deploy with `pnpm deploy:staging`
+  // (docs/tanycabs/STAGING.md). Wrangler does not inherit vars, routes or bindings into an environment, so each is repeated here.
+  "env": {
+    "staging": {
+      "name": "tanyapps-staging",
+      "vars": {
+        "ROOT_DOMAIN": "staging.tany.in",
+        "CLOUDFLARE_ZONE_ID": "aa82f4018aed83289d6805c42dc02e3e",
+        "AUTH_TRUST_HOST": "true",
+        // The same Firebase project as production unless you create a separate one (STAGING.md). The web keys are public values.
+        "FIREBASE_API_KEY": "AIzaSyDwdZSWGytJA4jgaefwFK05woapq84MTdI",
+        "FIREBASE_AUTH_DOMAIN": "tany-6c638.firebaseapp.com",
+        "FIREBASE_PROJECT_ID": "tany-6c638",
+        "FIREBASE_APP_ID": "1:582955315597:web:6c70cfd8b1f84bf4ef8dc4",
+        "R2_ACCOUNT_ID": "8b98f4164cf5f4c0400f25a3f66b2ede",
+        "R2_BUCKET": "tany-staging",
+        "R2_PUBLIC_URL": "https://cdn.staging.tany.in",
+        "RC_PROVIDER": "mock",
+        "TRACKER_WS_URL": "wss://track.staging.tany.in/ws"
+      },
+      "analytics_engine_datasets": [
+        { "binding": "ANALYTICS", "dataset": "tany_listing_events_staging" },
+        { "binding": "METRICS", "dataset": "tany_platform_metrics_staging" }
+      ],
+      "durable_objects": {
+        "bindings": [
+          { "name": "TRACKER", "class_name": "OrderTracker", "script_name": "tanyapps-tracker-staging" },
+          { "name": "RATE_LIMITER", "class_name": "RateLimiter", "script_name": "tanyapps-tracker-staging" }
+        ]
+      },
+      // Business sites on staging are <slug>.staging.tany.in. That is TWO labels under tany.in, which the free Universal certificate
+      // does not cover: it needs an Advanced Certificate for *.staging.tany.in (STAGING.md, step 2).
+      "routes": [
+        { "pattern": "staging.tany.in", "custom_domain": true },
+        { "pattern": "app.staging.tany.in", "custom_domain": true },
+        { "pattern": "*.staging.tany.in/*", "zone_name": "tany.in" }
+      ]
+    }
+  }
 }

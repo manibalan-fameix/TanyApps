@@ -31,7 +31,23 @@ export const TRIAL_DAYS = 30
 /** A yearly plan is billed for this many months: the twelfth is free. */
 export const YEARLY_PAID_MONTHS = 11
 
-/** Price in rupees for one billing period. */
+/** Monthly price in rupees for a plan, for this kind of business: its own price if it has one, else the shared plan table's. */
+export function monthlyPriceFor(industry: string, key: SellablePlanKey): number {
+  return getVertical(industry).planPrices?.[key] ?? (PLANS[key].monthlyPrice as number)
+}
+
+/** Months paid for a year of a plan, for this kind of business. */
+export function yearlyMonthsFor(industry: string): number {
+  return getVertical(industry).yearlyPaidMonths ?? YEARLY_PAID_MONTHS
+}
+
+/** Price in rupees for one billing period, for this kind of business. */
+export function priceFor(industry: string, key: SellablePlanKey, cycle: BillingCycle): number {
+  const monthly = monthlyPriceFor(industry, key)
+  return cycle === "yearly" ? monthly * yearlyMonthsFor(industry) : monthly
+}
+
+/** Price in rupees for one billing period on the shared plan table (cars and restaurants). */
 export function planPrice(key: SellablePlanKey, cycle: BillingCycle): number {
   const monthly = PLANS[key].monthlyPrice as number
   return cycle === "yearly" ? monthly * YEARLY_PAID_MONTHS : monthly

@@ -583,7 +583,7 @@ export function VoiceStep({
 
       <BarAction>
         <div
-          className="flex flex-col gap-2 border-t border-border bg-card/95 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-x-4 sm:px-14 sm:pb-3"
+          className="flex flex-col gap-2 border-t border-border bg-card/95 px-4 pt-3 pb-[calc(0.75rem+var(--safe-area-inset-bottom))] backdrop-blur sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-x-4 sm:px-14 sm:pb-3"
           data-testid="voice-bar"
         >
           <div className="order-2 flex min-w-0 items-center gap-3 sm:order-none">

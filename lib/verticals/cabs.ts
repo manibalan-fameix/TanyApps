@@ -1,7 +1,7 @@
 import type { Vertical } from "./types"
 
 /**
- * TanyCabs. Selectable in onboarding only for people on the CABS_ALLOWED_EMAILS allow-list (see ./flags.ts).
+ * TanyCabs. Live and selectable by every signed-in operator.
  * Razorpay: `transport` / `cab_hailing` is the only taxi entry in Razorpay's Route category list (checked 2026-10-21).
  * Plan limits are the owner's, set 2026-10-21. There is no free plan; the trial is the standard 30 days.
  */
@@ -23,6 +23,9 @@ export const cabs: Vertical = {
   adminReady: true,
   planLimit: "vehicles",
   offeredPlans: ["starter", "growth", "pro"],
+  // The owner's cab prices, set 2026-10-21: Starter 3,999, Growth 7,999, Pro 14,999 a month.
+  planPrices: { starter: 3_999, growth: 7_999, pro: 14_999 },
+  // Yearly is 11 months for 12, as for cars and restaurants (the owner confirmed 2026-10-21): no override here.
   // Vehicles and drivers are hard limits (adding more is blocked with an upgrade prompt). Bookings are a soft limit: a
   // customer booking is never refused; the operator sees a banner at 80% and 100% of the month's allowance.
   cabLimits: {

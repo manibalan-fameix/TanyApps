@@ -5,6 +5,8 @@ import { CabsShell } from "@/components/cabs/tenant/shell"
 import { StoreShell } from "@/components/restaurant/store/shell"
 import { PullToRefresh } from "@/components/pull-to-refresh"
 import { TenantMobileNav } from "@/components/tenant/mobile-nav"
+import { currentLang } from "@/lib/cabs/lang-server"
+import { currentCustomer } from "@/lib/core/login/customer"
 import { getVertical } from "@/lib/verticals"
 import { getDealerBySlug } from "@/lib/tenant/dealer"
 import { themeToCssVars } from "@/lib/theme/tokens"
@@ -21,6 +23,8 @@ export async function generateMetadata({
           default: dealer.displayName,
           template: `%s | ${dealer.displayName}`,
         },
+        // A cab operator's customers can keep the site on their phone; the app-wide manifest is for the dashboard.
+        ...(dealer.industry === "cabs" ? { manifest: "/pwa-manifest" } : {}),
       }
     : {}
 }
@@ -58,7 +62,7 @@ export default async function TenantLayout({
         {vertical.key === "restaurants" ? (
           <StoreShell dealer={dealer}>{children}</StoreShell>
         ) : vertical.key === "cabs" ? (
-          <CabsShell dealer={dealer}>{children}</CabsShell>
+          <CabsShell dealer={dealer} lang={await currentLang()} signedIn={Boolean(await currentCustomer(dealer.id))}>{children}</CabsShell>
         ) : (
           children
         )}

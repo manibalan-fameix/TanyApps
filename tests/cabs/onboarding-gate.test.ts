@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-// The gate that matters is on the server: hiding the card in the browser is only a courtesy.
+// The server still validates the industry, but live verticals are not allow-listed.
 const ctx = vi.fn()
 const contact = vi.fn()
 const phone = vi.fn()
@@ -35,21 +35,21 @@ beforeEach(() => {
   vi.stubEnv("NODE_ENV", "production")
 })
 
-describe("creating a business: the cabs allow-list", () => {
-  it("refuses a cab business for someone who is not on the list, before anything is created", async () => {
+describe("creating a business: live cabs", () => {
+  it("allows a cab business past the industry check", async () => {
     contact.mockResolvedValue({ phone: null, email: "stranger@example.com" })
     const r = await createDealership(draft("cabs"))
-    expect(r).toEqual({ ok: false, fieldErrors: { industry: "This product is not available to your account yet." } })
+    expect(r).toMatchObject({ ok: false, fieldErrors: { phone: expect.any(String) } })
     expect(create).not.toHaveBeenCalled()
   })
 
-  it("refuses it when the person has no email at all", async () => {
+  it("does not require an email", async () => {
     ctx.mockResolvedValue({ status: "no-dealer", user: { id: "u1", email: null, name: "S" } })
     contact.mockResolvedValue({ phone: "+919876543210", email: null })
-    expect(await createDealership(draft("cabs"))).toMatchObject({ ok: false, fieldErrors: { industry: expect.any(String) } })
+    expect(await createDealership(draft("cabs"))).toMatchObject({ ok: false, fieldErrors: { phone: expect.any(String) } })
   })
 
-  it("lets a listed person past the gate (the next check, their verified phone, is then what stops this test)", async () => {
+  it("checks the verified phone after the industry check", async () => {
     contact.mockResolvedValue({ phone: null, email: "owner@anna.in" })
     const r = await createDealership(draft("cabs"))
     expect(r).toMatchObject({ ok: false, fieldErrors: { phone: expect.any(String) } })
@@ -64,7 +64,7 @@ describe("creating a business: the cabs allow-list", () => {
     }
   })
 
-  it("never lets a cab business start on the free plan, even from a listed person", async () => {
+  it("never lets a cab business start on the free plan", async () => {
     contact.mockResolvedValue({ phone: null, email: "owner@anna.in" })
     expect(await createDealership(draft("cabs", "free"))).toMatchObject({ ok: false, fieldErrors: { plan: expect.any(String) } })
     expect(create).not.toHaveBeenCalled()

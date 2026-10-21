@@ -1,4 +1,6 @@
-import { integer, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core"
+import { integer, index, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core"
+
+import { industry } from "./enums.ts"
 
 // Auth.js tables (JWT sessions, so no sessions table). Shape follows @auth/drizzle-adapter.
 export const users = pgTable("users", {
@@ -29,4 +31,20 @@ export const accounts = pgTable(
     session_state: text("session_state"),
   },
   (t) => [primaryKey({ columns: [t.provider, t.providerAccountId] })],
+)
+
+/** A verified contact number for a user's dealer in a specific product. The same number may be used in another product. */
+export const userProductPhones = pgTable(
+  "user_product_phones",
+  {
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    industry: industry("industry").notNull(),
+    phone: text("phone").notNull(),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.industry] }),
+    unique("user_product_phones_phone_industry_unique").on(t.phone, t.industry),
+    index("user_product_phones_phone_idx").on(t.phone),
+  ],
 )

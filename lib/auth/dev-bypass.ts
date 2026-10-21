@@ -5,10 +5,11 @@ import { DEFAULT_THEME } from "../theme/tokens"
 export const DEV_BYPASS_COOKIE = "dev-bypass"
 
 /**
- * Local development only, and only while Google sign-in is not configured.
+ * Local development only, and only while Google sign-in is not configured (or while the browser tests run: E2E=1 lets the
+ * operator's demo sign-in coexist with the Firebase emulator the customer login needs).
  * Hard-gated on NODE_ENV so it can never be active in a production build.
  */
-export const isDevBypassEnabled = () => process.env.NODE_ENV === "development" && !isAuthConfigured()
+export const isDevBypassEnabled = () => process.env.NODE_ENV === "development" && (!isAuthConfigured() || process.env.E2E === "1")
 
 export const DEV_USER = { id: "dev-user", name: "Dev Owner", email: "dev@localhost" }
 

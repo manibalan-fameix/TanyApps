@@ -56,6 +56,7 @@ export async function startCheckout(input: unknown): Promise<{ ok: true; checkou
   try {
     const checkout = await createSubscription({
       dealerId: dealer.id,
+      industry: ctx.dealer.industry,
       ...parsed.data,
       startAt: hasAccess && accessUntil && !isUpgrade ? Math.floor(accessUntil.getTime() / 1000) : undefined,
     })

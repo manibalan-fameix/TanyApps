@@ -21,7 +21,7 @@ export function StoreBottomNav() {
   const pathname = usePathname()
   const cart = useCart()
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden" aria-label="Mobile navigation">
+    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-background/95 pb-[var(--safe-area-inset-bottom)] backdrop-blur md:hidden" aria-label="Mobile navigation">
       <ul className="grid h-16 grid-cols-5">
         {ITEMS.map((item) => {
           const on = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)

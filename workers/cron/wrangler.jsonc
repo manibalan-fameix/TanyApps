@@ -7,9 +7,18 @@
   "workers_dev": false,
   "preview_urls": false,
   // Cron expressions are UTC. Keep in step with SCHEDULE in index.ts.
-  "triggers": { "crons": ["*/5 * * * *", "30 2 * * *", "30 0 1 * *"] },
+  "triggers": { "crons": ["* * * * *", "*/5 * * * *", "30 2 * * *", "30 0 1 * *"] },
   // Where the app lives (the app host, the only host that serves /api/internal). The secret is set with:
   //   pnpm exec wrangler secret put CRON_SECRET -c workers/cron/wrangler.jsonc
   "vars": { "CRON_TARGET_URL": "https://app.tany.in" },
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+
+  // STAGING (docs/tanycabs/STAGING.md): its own worker, calling the staging app. Its own secret: pnpm deploy:staging / upload-secrets.sh set it.
+  "env": {
+    "staging": {
+      "name": "tanyapps-cron-staging",
+      "triggers": { "crons": ["* * * * *", "*/5 * * * *", "30 2 * * *", "30 0 1 * *"] },
+      "vars": { "CRON_TARGET_URL": "https://app.staging.tany.in" }
+    }
+  }
 }

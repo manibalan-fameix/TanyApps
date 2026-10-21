@@ -66,7 +66,7 @@ Newest phase last. Each entry says what was decided, why, and what would reverse
 
 ### Technical decisions
 
-- **Feature flag:** `CABS_ALLOWED_EMAILS` (comma-separated verified emails), checked in the **server action** that creates a business as well as in the UI. Everyone else sees the same "coming soon" card as before, so the product still looks unreleased. A super-admin toggle would need a table and a write path that super admin does not have yet.
+- **Rollout:** TanyCabs is live for every signed-in operator. The server-side vertical check remains in place so future staged rollouts can be added without trusting the onboarding UI.
 - **Google caching:** Google's Routes API policy says "caching of most Routes API content is restricted" and allows storing place IDs only. I found no allowance for distance or duration. So **Google distances are not stored in `route_distances` unless `GOOGLE_ROUTE_CACHE_DAYS` is set** (capped at 30). Free-router (OSRM) distances are kept 30 days, and an operator's own distance (`manual`) is kept for good. This departs from "cached in route_distances" in your brief on purpose; if counsel confirms caching is allowed, setting one variable turns it on.
 - **Tolls:** Google's toll docs do not say India is supported and toll requests cost more, so `GOOGLE_ROUTES_TOLLS` is off by default and the toll estimate is "unknown" (null), never "free".
 - **No Google key in production means no place search**, not a silent fallback to OpenStreetMap/Nominatim/OSRM, whose usage policies forbid production traffic. Development without a key uses them.
@@ -89,3 +89,49 @@ Newest phase last. Each entry says what was decided, why, and what would reverse
 
 - Verified by running: all four migrations on a scratch Postgres; every operator action against a live database (isolation, encryption at rest, limits including a concurrent race, ownership of files); both webhook events in every order including simultaneously (and that the old refund logic really double-refunds); the whole operator journey in Chromium; the production build; 100% statement/branch/function/line coverage of the fare engine.
 - **Not verified:** anything against real Google, Razorpay or Cloudflare (Google requests were checked against the documented request shapes with a faked network; `addressComponents`' inner field names are from memory of the API, parsed defensively); toll prices in India; the private bucket on R2 (local disk was used); the existing `e2e/add-car.spec.ts` (its `signIn` helper looks for a "Continue with Google" button the login page no longer has, so it is probably stale; I left it alone).
+
+## Phase 2: booking
+
+### Owner decisions (2026-10-21)
+
+- **Cab prices:** Starter ₹3,999, Growth ₹7,999, Pro ₹14,999 a month. **Yearly is 11 months for 12**, as cars and restaurants (the first message said 10×; corrected the same day, so cabs has no override).
+- **Pilot override:** a named business gets a plan at ₹0 until a date, from `PILOT_DEALERS="slug:plan:YYYY-MM-DD"` (the last day is included, India time).
+- **Round trips** count calendar days; a same-day return is 1 day (tested).
+- **Distance cache off.** Distance and duration live only inside each trip's immutable quote snapshot. **Tolls off:** every quote and breakdown says "Tolls & parking extra, as actual" (English and Tamil).
+- **Customer login:** Firebase phone OTP for the pilot, on the app host only, behind an interface (`PhoneOtpServer` / `PhoneOtpClient`) so MSG91 is a configuration change. +91 numbers only, checked in the browser and again on the server. App Check with reCAPTCHA Enterprise on the login page.
+- **Holds:** a `requested` booking waits `min(30 min, minutes to pickup − 60)`, never under 10 minutes; the operator is nudged at half the window; at the end it becomes `expired`, the customer is told (with a "call the operator" button) and a `trip_events` row is written. An accepted booking with an unpaid advance waits 20 minutes. Both numbers (30 and 20) are columns in `cab_settings`.
+- Sessions slide for 30 days, renewed at most once a day; a customer can end every session from their account page.
+
+### Assumptions I made (please confirm or correct)
+
+1. **The 60-minute cut-off and the 10-minute floor are constants**, not settings (you asked for the two main numbers to be settings). They are in `lib/cabs/holds.ts`.
+2. **The hold job runs every minute** (your answer, 2026-10-21; first built at 5 minutes). A hold is released within about a minute of its deadline. One `cron_runs` row is written per minute; a purge of old rows is not built yet.
+3. **Inbox tabs (confirmed by the owner):** *New* = waiting for the operator's answer; *Pending* = accepted (`confirmed`), not yet assigned; *Unpaid* = accepted, advance not yet paid; *Today* = pickups today (India time) still active; *Upcoming* = pickups after today that are requested, confirmed or assigned.
+4. **Counting toward the monthly allowance:** every trip created in the India calendar month except ones the clock released unanswered (`expired`). Rejected and cancelled bookings count, because the operator still had to handle them.
+5. **Minimum lead time:** the operator's `min_lead_minutes`, but never under 15 minutes, and not more than 365 days ahead. Operators booking by phone are not held to the lead time (past pickups by more than an hour are refused).
+6. **Operator-made bookings are confirmed immediately** (the operator has already agreed) and skip the hold.
+7. **No advance is collected in this phase.** `advance_due_paise` is computed and shown, and the 20-minute payment hold is built and tested, but payments (Razorpay for cabs) arrive later. With the default (`advance_bps` unset) nothing is due and no payment clock starts.
+8. **Customer notifications are outbox rows only.** Nothing sends WhatsApp or SMS yet (Phase 4). They use the `wa_link` channel: the operator can tap a prefilled WhatsApp link on the booking page. The customer's real-time cue is the booking page itself (it refreshes every 15 seconds) and its "call the operator" button.
+9. **Quick picks** (airports and stations) are looked up by name through the map service when tapped, because I cannot verify Google place ids offline. Check the first suggestion is the right terminal when you test with a real key.
+10. **Fare changes between viewing and booking:** the server prices again at request time; if the total differs from what the customer saw, nothing is created and they are shown the new fare.
+11. **A booking's `adjusted_total_paise` does not change the stored quote.** The customer's quote stays exactly as shown; the agreed price sits beside it with a reason, an event and an audit entry. Adjusting is allowed only while `requested` or `confirmed`.
+12. **The share (tracking) token** is created and only its hash stored, but there is nowhere to show the link until live tracking (Phase 3), so the raw token is returned once at creation and not kept.
+13. **Tamil text is mine** and needs review; every string is listed in `progress/phase-2.md`.
+
+### Technical decisions
+
+- **Central login.** The app host does the OTP and issues a signed ticket (60 s, single use, addressed to one host, carrying the browser's `state`); the business's own host checks it and sets a host-only cookie (`__Host-tany_cs`: HttpOnly, Secure, SameSite=Lax, no Domain). See `progress/phase-2-otp-spike.md`.
+- **The spike's hash-based customer ids are gone.** A session now names a real `customers.id` and its `session_version`; spike sessions fail the check and the person logs in again.
+- **Places are sealed.** A place the customer picks comes back from the server as a signed token (24 h). Pricing opens the token, so a forged state, place or coordinates can never change a fare or tax. (An operator's own form sends places directly; they are signed in and trusted.)
+- **The quote is immutable** (`trips.quote` jsonb) and the snapshot leaves out place names (a pickup name can be a home address).
+- **Status changes are conditional updates** (`WHERE status = <what the caller saw>`), so an operator accepting while the customer cancels, or the clock expiring it, can never both win. Tested by racing them.
+- **`scopedTransaction`** was added to `lib/db/scoped.ts`: a transaction in which every table is still tenant-scoped (a WebSocket connection on Neon).
+- **Addresses, phones, notes and SOS contacts are encrypted;** audit entries redact them.
+- **`E2E=1` lets the operator demo sign-in coexist with the Firebase emulator** (still development-only).
+- **Fixtures:** `GEO_FIXTURE=1` swaps in a fake map service for browser tests; it is refused when `NODE_ENV=production`.
+
+### Mistakes made and corrected during this phase
+
+- A booking test of mine expected the wrong fare (I forgot the distance I had set); the code was right.
+- `upsertCustomer` called an update with nothing to set for an existing, unverified customer (found by the live test for operator bookings). Fixed.
+- The booking e2e clicked "Send code" before the login page had loaded, so no code was sent. Test fixed to wait.

@@ -10,6 +10,9 @@ type ScheduledEvent = { cron: string; scheduledTime: number }
 
 /** Which jobs each schedule runs. Keep in step with `triggers.crons` in wrangler.jsonc. */
 export const SCHEDULE: Record<string, string[]> = {
+  // Every minute: cab booking holds (an operator's answer window can be as short as 10 minutes, so five-minute steps are too coarse).
+  // Safe because the lock keeps one run per (job, minute) and the job only touches rows past their deadline.
+  "* * * * *": ["expire-trip-holds"],
   "*/5 * * * *": ["expire-unpaid-orders"],
   // 08:00 IST every day (02:30 UTC).
   "30 2 * * *": ["daily"],

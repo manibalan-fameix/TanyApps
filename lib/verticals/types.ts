@@ -42,6 +42,10 @@ export type Vertical = {
   planLimit: PlanLimitKind
   /** The plans a new business of this kind can start on. Cabs has no free plan. */
   offeredPlans: readonly PlanKey[]
+  /** Monthly prices in rupees for this kind of business, where they differ from the shared plan table (lib/plans.ts). */
+  planPrices?: Partial<Record<PlanKey, number>>
+  /** Months paid for a year of this plan. Defaults to the shared setting (11: one month free). */
+  yearlyPaidMonths?: number
   /** Per-plan limits for verticals whose limits are not just a count of one thing (today only cabs). */
   cabLimits?: Partial<Record<PlanKey, CabPlanLimits>>
   /** The category Razorpay files this kind of business's linked account under. */

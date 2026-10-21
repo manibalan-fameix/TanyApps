@@ -14,7 +14,9 @@ import {
   PLANS,
   SELLABLE_PLAN_KEYS,
   planPrice,
-  YEARLY_PAID_MONTHS,
+  monthlyPriceFor,
+  priceFor,
+  yearlyMonthsFor,
   type BillingCycle,
   type PlanKey,
   type SellablePlanKey,
@@ -25,8 +27,8 @@ import { cn } from "@/lib/utils"
 const t = copy.admin.pricing
 const rupees = (n: number) => `₹${n.toLocaleString("en-IN")}`
 /** What a year on this plan saves against twelve monthly payments: the months that are free. */
-const yearlySaving = (plan: SellablePlanKey) =>
-  (PLANS[plan].monthlyPrice as number) * (12 - YEARLY_PAID_MONTHS)
+const yearlySaving = (industry: string, plan: SellablePlanKey) =>
+  monthlyPriceFor(industry, plan) * (12 - yearlyMonthsFor(industry))
 /** What one live car costs a month on this plan when it is full: the plan's price, spread over its cars. */
 const perCar = (plan: SellablePlanKey, cycle: BillingCycle) =>
   Math.round(
@@ -267,7 +269,7 @@ export function PricingTable(props: Props) {
                       <>
                         <p className="flex flex-wrap items-baseline gap-2">
                           <span className="text-4xl font-medium tracking-tight">
-                            {rupees(planPrice(key as SellablePlanKey, cycle))}
+                            {rupees(priceFor(industry, key as SellablePlanKey, cycle))}
                           </span>
                           <span className="text-lg text-muted-foreground">
                             {yearly ? t.perYear : t.perMonth}
@@ -286,7 +288,7 @@ export function PricingTable(props: Props) {
                               data-testid={`plan-saving-${key}`}
                             >
                               {t.save(
-                                rupees(yearlySaving(key as SellablePlanKey))
+                                rupees(yearlySaving(industry, key as SellablePlanKey))
                               )}
                             </span>
                             {t.yearlyNote}

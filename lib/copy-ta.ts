@@ -322,3 +322,13 @@ export const voiceTg: VoiceCopy = {
     protectionPlans: "Warranty plan, roadside assistance",
   },
 }
+
+/** The shape of TanyCabs' customer text: the English copy with plain strings so another language can fill it. */
+export type CabsCopy = Widen<typeof copy.cabs>
+
+/** TanyCabs' customer text in Tamil. Written by the assistant: have a Tamil speaker review it before launch. */
+export const cabsTa: CabsCopy = {
+  notices: {
+    tolls_parking_extra: "சுங்கக் கட்டணம் (டோல்) மற்றும் பார்க்கிங் கட்டணம் தனி, உண்மையான தொகைப்படி",
+  },
+}

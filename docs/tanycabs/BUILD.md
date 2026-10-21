@@ -70,7 +70,7 @@ app/api/internal/cron/...           cron entrypoint, secret-authenticated
 requested → confirmed → assigned → driver_en_route → arrived → in_trip → completed → closed
    │            │           │                          │
    ├→ rejected  ├→ cancelled (customer/operator, with fee per policy)
-   └→ expired (unpaid hold > 20 min)                   └→ no_show
+   └→ expired (not answered in the response window; or, once accepted, advance unpaid in 20 min)                   └→ no_show
 ```
 
 `closed` means the invoice is issued and all payments are settled. Every transition writes a `trip_events` row with the actor.
@@ -106,7 +106,7 @@ The difference against the advance becomes the balance due.
 ## 3. Data model (all tenant tables carry `dealer_id`; money in paise)
 
 **Customers & corporate**
-- `customers`: phone_enc, phone_hash (unique per dealer), name, email, verified_at, language, corporate_account_id null.
+- `customers`: phone_enc, phone_hash (unique per dealer), name, email_enc, verified_at, language, session_version (bump = sign out everywhere), last_login_at. (corporate_account_id arrives with corporate accounts in Phase 5.)
 - `customer_addresses`: label, address_enc, lat, lng, place_id.
 - `customer_contacts`: name, phone_enc. These are SOS/family contacts.
 - `corporate_accounts`: name, gstin, billing_email, billing_address, credit_days, requires_approval, discount_bps, active.
@@ -129,14 +129,15 @@ The difference against the advance becomes the balance due.
 - `packages`: name, slug, description, days, itinerary (jsonb), vehicle_class_prices (jsonb), images.
 - `route_distances`: origin_place_id, dest_place_id, km, minutes, toll_estimate_paise, source, fetched_at. This is a cache.
 - `cab_settings`: one row per dealer.
-  - advance_bps, cancellation_policy (jsonb tiers), night_window, gst_rate_bps, sac_code, gstin, state_code, invoice_prefix, min_lead_minutes, service_cities, buffer_minutes.
+  - advance_bps, cancellation_policy (jsonb tiers), night_window, gst_rate_bps, sac_code, gstin, state_code, invoice_prefix, min_lead_minutes, service_cities, buffer_minutes, respond_window_minutes (default 30), unpaid_hold_minutes (default 20).
 
 **Trips**
-- `trips`: code, customer_id, corporate_account_id, booked_by, trip_type, status, source (`web|phone|walk_in|corporate`).
+- `trips`: code (6 characters, display only), customer_id, corporate_account_id, booked_by_type/id, trip_type, status, source (`web|phone|walk_in|corporate`).
   - Route: pickup (jsonb with address_enc, lat, lng, place_id), drop, stops (jsonb).
   - Times: start_at, end_at_planned, return_at.
   - Request: pax, bags, notes, vehicle_class_id, package_id.
-  - Money: quote (jsonb), quote_total_paise, advance_due_paise.
+  - Money: quote (jsonb, immutable snapshot incl. distance and duration), quote_total_paise, advance_due_paise, advance_paid_paise, adjusted_total_paise + adjustment_reason (the operator's agreed price; the quote itself never changes).
+  - Holds: hold_expires_at (the deadline the booking waits on: the operator's answer when `requested`, the customer's advance when `confirmed`), hold_alert_at / hold_alerted_at (half-way nudge).
   - Assignment: vehicle_id, driver_id.
   - Security: share_token_hash, start_otp_hash, otp_attempts.
   - Odometer: odo_start, odo_end.

@@ -101,6 +101,7 @@ test("a new cab operator sets up, adds a vehicle with documents, sets rates and 
   // ----- no fare can be quoted until the owner has decided the rates and GST -----
   await page.goto("/cabs/pricing")
   await expect(page.getByText("No rate cards yet")).toBeVisible()
+  await page.waitForLoadState("networkidle") // typing before the page is live would be wiped when it loads
   await page.getByLabel("Pickup (India time)").fill("2026-11-02T10:00")
   await page.getByLabel("Distance (km)").fill("18.4")
   await expect(page.getByText(/No active rate card/)).toBeVisible()
@@ -121,9 +122,11 @@ test("a new cab operator sets up, adds a vehicle with documents, sets rates and 
 
   // ----- the real engine prices it: 200 + 18.4 km at 14 = 457.60, +5% GST = 480.48, shown as a whole ₹480 -----
   await page.goto("/cabs/pricing")
+  await page.waitForLoadState("networkidle") // typing before the page is live would be wiped when it loads
   await page.getByLabel("Pickup (India time)").fill("2026-11-02T10:00")
   await page.getByLabel("Distance (km)").fill("18.4")
   await expect(page.getByTestId("fare-total")).toHaveText("₹480")
+  await expect(page.getByTestId("notice-tolls_parking_extra")).toHaveText("Tolls & parking extra, as actual")
   await expect(page.getByText("CGST 2.5%")).toBeVisible()
   await expect(page.getByText("SGST 2.5%")).toBeVisible()
 
@@ -133,10 +136,10 @@ test("a new cab operator sets up, adds a vehicle with documents, sets rates and 
   await expect(page.getByText(/document.* expired/)).toBeVisible()
 })
 
-test("a cab operator's public site shows the vehicles and no prices", async ({ page }) => {
+test("a cab operator's public site offers booking and lists the vehicles, with no prices until a trip is chosen", async ({ page }) => {
   await page.goto("http://sri-murugan.localhost:" + (process.env.E2E_CABS_PORT ?? "3101") + "/")
-  await expect(page.getByRole("heading", { name: "Anna Travels" })).toBeVisible()
-  await expect(page.getByText("Online booking is coming soon")).toBeVisible()
-  await expect(page.getByText("Sedan")).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Book your cab" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Our vehicles" })).toBeVisible()
+  await expect(page.getByText("Sedan").first()).toBeVisible()
   await expect(page.getByText("₹")).toHaveCount(0)
 })

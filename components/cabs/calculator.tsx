@@ -44,7 +44,7 @@ export function FareCalculator({ classes, data, homeState }: { classes: ClassOpt
     const entered = [from, to].map((p) => p.stateCode).filter((c): c is string => Boolean(c) && c !== findState(homeState)?.code)
     set({
       distanceKm: (res.route.distanceM / 1000).toFixed(1),
-      tollRupees: res.route.tollEstimatePaise !== null ? String(res.route.tollEstimatePaise / 100) : "",
+      tollRupees: "", // tolls are off: they are never estimated, only billed as actual
       places: [from.name, to.name].filter(Boolean).join(", "),
       statesEntered: [...new Set(entered)],
       supplyState: from.gstStateCode ?? "",
@@ -112,7 +112,6 @@ export function FareCalculator({ classes, data, homeState }: { classes: ClassOpt
           </div>
         </Field>
         <div className="grid gap-3 sm:grid-cols-2">
-          <TextField id="fc-toll" label="Tolls, if known (₹)" value={f.tollRupees} onChange={(tollRupees) => set({ tollRupees: tollRupees.replace(/[^\d.]/g, "") })} inputMode="decimal" hint="Shown, not added: tolls are billed at actuals." />
           <SelectField id="fc-supply" label="Service supplied in" value={f.supplyState} onChange={(supplyState) => set({ supplyState })} options={[{ value: "", label: "Your own state" }, ...STATES.map((s) => ({ value: s.code, label: s.name }))]} />
         </div>
       </FieldGroup>

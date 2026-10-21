@@ -5,9 +5,9 @@ import {
   BILLING_CYCLES,
   PLANS,
   SIGNUP_PLAN_KEYS,
-  YEARLY_PAID_MONTHS,
+  yearlyMonthsFor,
   planLimitLabel,
-  planPrice,
+  priceFor,
   type BillingCycle,
   type SignupPlanKey,
 } from "@/lib/plans"
@@ -78,13 +78,13 @@ export function PlanPicker({
                   </span>
                 ) : cycle === "yearly" ? (
                   <span className="text-xs text-success">
-                    Pay for {YEARLY_PAID_MONTHS} months, get 12
+                    Pay for {yearlyMonthsFor(industry)} months, get 12
                   </span>
                 ) : null}
               </span>
               <span className="text-right">
                 <span className="block text-lg font-bold">
-                  {key === "free" ? "₹0" : rupees(planPrice(key, cycle))}
+                  {key === "free" ? "₹0" : rupees(priceFor(industry, key, cycle))}
                 </span>
                 <span className="text-xs text-muted-foreground">
                   {key === "free"

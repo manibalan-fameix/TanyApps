@@ -120,7 +120,14 @@ export type QuoteSuccess = {
   meta: { days: number; distanceM: number; billedM: number; minKmApplied: boolean }
   /** Things the operator should fix (a night surcharge with no window). The quote is still valid. */
   warnings: string[]
+  /**
+   * Notices that must be shown with every quote, as keys the screens translate (copy.cabs.notices). Today: tolls and parking are
+   * not in the total and are billed as actual. Shown on the operator's preview and the customer's booking alike.
+   */
+  notices: QuoteNotice[]
 }
+
+export type QuoteNotice = "tolls_parking_extra"
 
 export type QuoteResult = QuoteSuccess | QuoteFailure
 
@@ -346,6 +353,7 @@ export function quote(input: QuoteInput): QuoteResult {
     tollEstimatePaise: toll,
     meta: { days, distanceM: input.distanceM, billedM, minKmApplied },
     warnings,
+    notices: ["tolls_parking_extra"],
   }
 }
 

@@ -132,3 +132,11 @@ export function scopedDb(dealerId: string, db: Db = unscopedDb) {
 }
 
 export type ScopedDb = ReturnType<typeof scopedDb>
+
+/**
+ * Runs `fn` in one database transaction with a scoped handle that uses it, so a booking, its event and its notification commit
+ * together or not at all. On Neon this opens a short-lived WebSocket connection (see lib/db/client.ts).
+ */
+export async function scopedTransaction<T>(dealerId: string, fn: (db: ScopedDb) => Promise<T>): Promise<T> {
+  return unscopedDb.transaction(async (tx) => fn(scopedDb(dealerId, tx as unknown as Db)))
+}

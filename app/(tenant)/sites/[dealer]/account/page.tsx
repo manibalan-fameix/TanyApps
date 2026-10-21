@@ -14,7 +14,7 @@ export default async function AccountPage({
   if (!dealer) notFound()
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-6 bg-background p-6 max-md:pb-[calc(6rem+env(safe-area-inset-bottom))] md:p-10">
+    <div className="flex flex-1 flex-col items-center justify-center gap-6 bg-background p-6 max-md:pb-[calc(6rem+var(--safe-area-inset-bottom))] md:p-10">
       <div className="w-full max-w-sm">
         <LoginForm name={dealer.displayName} />
       </div>

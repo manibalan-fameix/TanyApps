@@ -85,7 +85,7 @@ export function PullToRefresh() {
   return (
     <div
       aria-hidden={!visible}
-      className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center pt-[env(safe-area-inset-top)] md:hidden"
+      className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center pt-[var(--safe-area-inset-top)] md:hidden"
       style={{
         transform: `translateY(${visible ? offset - 40 : -48}px)`,
         opacity: visible ? 1 : 0,

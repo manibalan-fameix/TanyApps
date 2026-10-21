@@ -215,7 +215,7 @@ function UploadPill() {
   return (
     <div
       role="status"
-      className="fixed inset-x-4 bottom-4 z-40 mx-auto flex max-w-sm items-center gap-3 rounded-2xl bg-card p-3 text-card-foreground shadow-lg ring-1 ring-foreground/10 max-md:bottom-[calc(5rem+env(safe-area-inset-bottom))]"
+      className="fixed inset-x-4 bottom-4 z-40 mx-auto flex max-w-sm items-center gap-3 rounded-2xl bg-card p-3 text-card-foreground shadow-lg ring-1 ring-foreground/10 max-md:bottom-[calc(5rem+var(--safe-area-inset-bottom))]"
     >
       <HugeiconsIcon
         icon={failed.length ? Alert02Icon : CloudUploadIcon}

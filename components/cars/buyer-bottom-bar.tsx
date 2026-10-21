@@ -17,7 +17,7 @@ export function BuyerBottomBar({
 }) {
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 rounded-t-2xl border-t border-border bg-background shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
-      <div className="flex items-center justify-between gap-4 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-8">
+      <div className="flex items-center justify-between gap-4 px-5 py-3 pb-[max(0.75rem,var(--safe-area-inset-bottom))] sm:px-8">
         <div className="hidden min-w-0 sm:block">
           <p className="truncate text-base font-medium tracking-tight sm:text-xl">{title}</p>
           {facts.length ? <p className="truncate text-sm text-muted-foreground">{facts.join(" · ")}</p> : null}

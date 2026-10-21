@@ -1,9 +1,11 @@
 import type { QuoteSuccess } from "@/lib/cabs/fare"
+import { cabsCopy } from "@/lib/cabs/lang"
 import { formatPaise } from "@/lib/cabs/money"
 import { cn } from "@/lib/utils"
 
 /** A quote as the customer will read it: each line, the total, and the advance. The same component serves the booking page later. */
-export function FareBreakdown({ result, className }: { result: QuoteSuccess; className?: string }) {
+export function FareBreakdown({ result, className, lang = "en" }: { result: QuoteSuccess; className?: string; lang?: string }) {
+  const text = cabsCopy(lang)
   return (
     <div className={cn("flex flex-col gap-3 text-sm", className)}>
       <ul className="flex flex-col divide-y rounded-lg border">
@@ -27,6 +29,9 @@ export function FareBreakdown({ result, className }: { result: QuoteSuccess; cla
           <span className="tabular-nums">{formatPaise(result.advanceDuePaise)}</span>
         </p>
       ) : null}
+      {result.notices.map((n) => (
+        <p key={n} className="px-1 text-xs text-muted-foreground" data-testid={`notice-${n}`}>{text.notices[n]}</p>
+      ))}
       {result.warnings.map((w) => (
         <p key={w} className="rounded-md bg-amber-500/10 px-3 py-2 text-amber-800 dark:text-amber-200">{w}</p>
       ))}

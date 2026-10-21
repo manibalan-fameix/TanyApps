@@ -27,7 +27,7 @@ import {
   variants,
 } from "../db/schema"
 import { billingState, effectivePlanKey } from "../billing/state"
-import { PLANS, YEARLY_PAID_MONTHS, getPlan, type PlanKey } from "../plans"
+import { PLANS, type PlanKey, getPlan, monthlyPriceFor, yearlyMonthsFor } from "../plans"
 import { tryDecrypt } from "../crypto"
 import { requireSuperAdmin } from "./guard"
 
@@ -45,12 +45,11 @@ export const maskPhone = (p: string | null | undefined) =>
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null)
 
-/** Monthly revenue a paying dealer brings in, in rupees. Yearly plans pay 11 months for 12. */
-export function monthlyRevenue(planKey: string, cycle: string): number {
-  const price = PLANS[planKey as PlanKey]?.monthlyPrice ?? 0
-  return cycle === "yearly"
-    ? Math.round((price * YEARLY_PAID_MONTHS) / 12)
-    : price
+/** Monthly revenue a paying dealer brings in, in rupees. Yearly plans pay fewer than 12 months (see yearlyMonthsFor). */
+export function monthlyRevenue(planKey: string, cycle: string, industry = "motors"): number {
+  const sellable = (["starter", "growth", "pro"] as const).find((k) => k === (planKey as PlanKey))
+  const price = sellable ? monthlyPriceFor(industry, sellable) : 0
+  return cycle === "yearly" ? Math.round((price * yearlyMonthsFor(industry)) / 12) : price
 }
 
 export type BusinessRow = {
@@ -217,7 +216,7 @@ export async function loadBusinesses(): Promise<BusinessRow[]> {
       phase: state.phase,
       mrr:
         state.phase === "active" || state.phase === "grace"
-          ? monthlyRevenue(planKey, d.billingCycle)
+          ? monthlyRevenue(planKey, d.billingCycle, d.industry)
           : 0,
       city: d.city,
       phone: d.phone ?? "",
@@ -380,7 +379,7 @@ export async function loadOverview(): Promise<Overview> {
       .reduce((s, r) => s + r.mrr, 0),
     trialMrr: rows
       .filter((r) => r.phase === "trial")
-      .reduce((s, r) => s + monthlyRevenue(r.plan, r.billingCycle), 0),
+      .reduce((s, r) => s + monthlyRevenue(r.plan, r.billingCycle, r.industry), 0),
     paymentIssues: rows.filter(
       (r) =>
         r.phase === "grace" ||

@@ -1,15 +1,7 @@
 import type { IndustryKey } from "./keys"
 
-/**
- * Feature flags for verticals that are built but not open to everyone yet. A flagged vertical can be created only by people
- * whose verified email is on its allow-list; nobody else can choose it in onboarding or create it by calling the action.
- *
- * Cabs: CABS_ALLOWED_EMAILS, comma-separated. Empty or unset means nobody. In development the seeded owner and the dev user
- * are allowed so the flow can be tried locally.
- */
-const FLAGS: Partial<Record<IndustryKey, { env: string }>> = {
-  cabs: { env: "CABS_ALLOWED_EMAILS" },
-}
+/** Feature flags for verticals that are not open to everyone yet. */
+const FLAGS: Partial<Record<IndustryKey, { env: string }>> = {}
 
 export function allowedEmails(industry: IndustryKey, env: Record<string, string | undefined> = process.env): Set<string> {
   const flag = FLAGS[industry]

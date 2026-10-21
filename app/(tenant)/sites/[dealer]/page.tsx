@@ -46,7 +46,7 @@ export default async function DealerHome({
   const dealer = await getDealerBySlug((await params).dealer)
   if (!dealer) notFound()
   if (dealer.industry === "restaurants") return <StoreHome dealer={dealer} store={await loadStorefront(dealer)} />
-  if (dealer.industry === "cabs") return <CabsHome dealer={dealer} />
+  if (dealer.industry === "cabs") return <CabsHome dealer={dealer} search={await searchParams} />
   const rawSearchParams = await searchParams
   const db = scopedDb(dealer.id)
 
@@ -176,7 +176,7 @@ export default async function DealerHome({
             resultCount={results.length}
           />
           <SidebarInset className="min-w-0 overflow-y-auto bg-background">
-            <main className="w-full px-[60px] py-4 max-lg:px-6 max-md:pb-[calc(6rem+env(safe-area-inset-bottom))] sm:py-6 lg:py-8">
+            <main className="w-full px-[60px] py-4 max-lg:px-6 max-md:pb-[calc(6rem+var(--safe-area-inset-bottom))] sm:py-6 lg:py-8">
               <OfferBannerCarousel />
 
               <section className="mt-6">

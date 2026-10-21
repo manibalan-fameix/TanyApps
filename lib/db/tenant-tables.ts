@@ -4,6 +4,11 @@ import {
   banners,
   blockedPeriods,
   cabSettings,
+  customerAddresses,
+  customerContacts,
+  customers,
+  tripEvents,
+  trips,
   bookings,
   carMedia,
   carViews,
@@ -36,6 +41,7 @@ import {
   routeDistances,
   stockAdjustments,
   users,
+  userProductPhones,
   variants,
   vehicleClasses,
   vehicleDocuments,
@@ -60,7 +66,7 @@ const MOTORS_DIRECT = { cars, leads, bookings } as const
 const EATS_DIRECT = { menuCategories, menuItems, orders, deliveryPartners, deliveryZones, stockAdjustments, orderLocations } as const
 
 /** TanyCabs. */
-const CABS_DIRECT = { vehicleClasses, vehicles, vehicleDocuments, blockedPeriods, drivers, driverDocuments, driverDutyLogs, rateCards, rateSurcharges, packages, cabSettings } as const
+const CABS_DIRECT = { vehicleClasses, vehicles, vehicleDocuments, blockedPeriods, drivers, driverDocuments, driverDutyLogs, rateCards, rateSurcharges, packages, cabSettings, customers, customerAddresses, customerContacts, trips, tripEvents } as const
 
 /** Tables carrying their own dealer_id. */
 export const DIRECT_TENANT_TABLES = { ...PLATFORM_DIRECT, ...MOTORS_DIRECT, ...EATS_DIRECT, ...CABS_DIRECT } as const
@@ -72,4 +78,4 @@ export const CHILD_TENANT_TABLES = { carMedia, rcLookups, carViews, rcTransfers,
  * Tables that are deliberately not tenant-scoped: the tenant root itself, authentication, and shared reference data. Code
  * reads them only through lib/tenant, lib/auth and lib/variants (the raw client is blocked everywhere else by ESLint).
  */
-export const GLOBAL_TABLES = { dealers, users, accounts, variants, cronRuns, routeDistances } as const
+export const GLOBAL_TABLES = { dealers, users, accounts, userProductPhones, variants, cronRuns, routeDistances } as const

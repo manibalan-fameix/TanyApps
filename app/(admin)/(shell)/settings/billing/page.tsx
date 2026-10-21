@@ -27,6 +27,7 @@ const BADGE = {
   active: "Active",
   grace: "Payment pending",
   suspended: "Offline",
+  pilot: "Pilot",
 } as const
 
 export default async function BillingPage() {
@@ -70,6 +71,7 @@ export default async function BillingPage() {
     grace: `Payment pending. Your showroom stays online for ${GRACE_DAYS} days while we retry.`,
     suspended:
       "Your showroom is offline. Add a payment method to bring it back.",
+    pilot: `Pilot: free use of the ${PLANS[plan].label} plan until ${until}. After that you move to a paid plan.`,
   }[state.phase]
 
   const lines: string[] = []
@@ -104,6 +106,7 @@ export default async function BillingPage() {
           active: "success",
           grace: "destructive",
           suspended: "destructive",
+          pilot: "primary",
         }[state.phase]) as "success" | "primary" | "destructive" | "muted",
     headline,
     lines,
