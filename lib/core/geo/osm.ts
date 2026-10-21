@@ -1,6 +1,6 @@
 import { findState } from "../../cabs/states"
 import { reverseGeocode, searchPlaces } from "./geocode"
-import type { PlaceDetail, PlaceRef, PlaceSuggestion, PlacesProvider, RouteResult } from "./places"
+import type { PlaceDetail, PlaceSuggestion, PlacesProvider, RouteResult } from "./places"
 import { validCoords } from "./validate"
 
 /**
