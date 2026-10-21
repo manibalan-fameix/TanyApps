@@ -1,7 +1,11 @@
+import type { PlanKey } from "../plans"
 import type { ProductKey } from "../products"
 import type { IndustryKey } from "./keys"
 
-/** How a vertical's plan limit is counted. Plan numbers live in lib/plans.ts. */
+/** Limits a cab plan puts on an operator. Vehicles and drivers are hard limits; bookings per month is soft (see lib/cabs/limits.ts). */
+export type CabPlanLimits = { vehicles: number; drivers: number; bookingsPerMonth: number }
+
+/** How a vertical's plan limit is counted. Plan numbers for cars and menu items live in lib/plans.ts. */
 export type PlanLimitKind = "live_cars" | "menu_items" | "vehicles"
 
 /**
@@ -36,6 +40,10 @@ export type Vertical = {
   /** Whether the admin and public pages for this industry are built and the industry can be chosen in onboarding. */
   adminReady: boolean
   planLimit: PlanLimitKind
+  /** The plans a new business of this kind can start on. Cabs has no free plan. */
+  offeredPlans: readonly PlanKey[]
+  /** Per-plan limits for verticals whose limits are not just a count of one thing (today only cabs). */
+  cabLimits?: Partial<Record<PlanKey, CabPlanLimits>>
   /** The category Razorpay files this kind of business's linked account under. */
   razorpay: { category: string; subcategory: string }
   /** What the owner's customers pay for online, finishing "so ... can ...". */
