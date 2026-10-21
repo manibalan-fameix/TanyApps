@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { type IndustryKey } from "@/lib/industries"
 import { PRODUCT_AUDIENCE, PRODUCTS, type ProductKey } from "@/lib/products"
+import { liveIndustry, useEnabledIndustries } from "@/components/onboarding/enabled-industries"
 
 const COUNT = PRODUCTS.length
 
@@ -33,18 +34,19 @@ export function ProductCarousel({
   /** The product's animation, or null to show its icon instead. */
   renderStory?: (product: ProductKey) => React.ReactNode
 }) {
+  const enabled = useEnabledIndustries()
   const [index, setIndex] = useState(() =>
     Math.max(
       0,
-      PRODUCTS.findIndex((p) => "industry" in p && p.industry === value)
+      PRODUCTS.findIndex((p) => liveIndustry(p, enabled) === value)
     )
   )
   const [drag, setDrag] = useState<number | null>(null)
   const trackRef = useRef<HTMLDivElement>(null)
   const startRef = useRef<{ x: number; t: number } | null>(null)
-  const latest = useRef({ value, onChange, onProductChange })
+  const latest = useRef({ value, onChange, onProductChange, enabled })
   useEffect(() => {
-    latest.current = { value, onChange, onProductChange }
+    latest.current = { value, onChange, onProductChange, enabled }
   })
 
   // Report the choice once the slide has settled, so the page behind does not re-render mid-slide.
@@ -56,8 +58,8 @@ export function ProductCarousel({
         const { value, onChange, onProductChange } = latest.current
         onProductChange?.(product.key)
         // Coming-soon products keep the last live choice so the preview stays put.
-        if ("industry" in product && product.industry !== value)
-          onChange(product.industry)
+        const next = liveIndustry(product, latest.current.enabled)
+        if (next && next !== value) onChange(next)
       },
       firstRef.current ? 0 : 340
     )
@@ -186,7 +188,7 @@ function CardFace({
   product: (typeof PRODUCTS)[number]
   story?: React.ReactNode
 }) {
-  const live = "industry" in product
+  const live = liveIndustry(product, useEnabledIndustries()) !== undefined
   return (
     <div className="flex min-h-0 flex-col">
     <div className="relative z-10 flex min-h-0 flex-col overflow-hidden rounded-3xl bg-background">

@@ -30,7 +30,6 @@ import { signOutAction } from "@/lib/auth/actions"
 import {
   HOW_IT_WORKS,
   INDUSTRY_PRODUCT,
-  LIVE_PRODUCTS,
   PRODUCTS,
   type ProductKey,
 } from "@/lib/products"
@@ -55,6 +54,7 @@ import { cn } from "@/lib/utils"
 import { authorisePayment } from "@/components/billing/razorpay-checkout"
 import { celebrate } from "@/components/onboarding/confetti"
 import { CreatingShowroom } from "@/components/onboarding/creating-showroom"
+import { useEnabledIndustries } from "@/components/onboarding/enabled-industries"
 import { IndustryPicker } from "@/components/onboarding/industry-picker"
 import { FindMyTany } from "@/components/onboarding/find-my-tany"
 import { PhoneVerify } from "@/components/onboarding/phone-verify"
@@ -145,7 +145,10 @@ export function OnboardingWizard({
   const [accent, setAccent] = useState<string>(PALETTES[0].accent)
   const [radius, setRadius] = useState<OnboardDraft["radius"]>("md")
   const [logo, setLogo] = useState<string | null>(null)
-  const [plan, setPlan] = useState<SignupPlanKey>("free")
+  const [chosenPlan, setPlan] = useState<SignupPlanKey>("free")
+  // A kind of business may not offer every plan (cabs has no free plan): fall back to its first one.
+  const offered = getIndustry(industry ?? "motors").offeredPlans
+  const plan = (offered.includes(chosenPlan) ? chosenPlan : offered[0]) as SignupPlanKey
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly")
   const [billingNote, setBillingNote] = useState<
     "authorised" | "later" | "free"
@@ -218,9 +221,11 @@ export function OnboardingWizard({
   // Product centred in the explore reel; may be one that is not live yet.
   const [pickMode, setPickMode] = useState<"browse" | "find">("find")
   const [exploreProduct, setExploreProduct] = useState<ProductKey | null>(null)
+  // Cabs is open only to people on its allow-list; for everyone else it stays a "coming soon" card.
+  const enabledIndustries = useEnabledIndustries()
   const comingSoon =
     exploreProduct !== null &&
-    !LIVE_PRODUCTS.includes(exploreProduct)
+    !enabledIndustries.some((i) => INDUSTRY_PRODUCT[i] === exploreProduct)
 
   const next = () => {
     if (step === 0 && comingSoon) {

@@ -11,6 +11,7 @@ import {
   type BillingCycle,
   type SignupPlanKey,
 } from "@/lib/plans"
+import { getVertical } from "@/lib/verticals"
 import { cn } from "@/lib/utils"
 
 export const rupees = (n: number) => `₹${n.toLocaleString("en-IN")}`
@@ -51,7 +52,7 @@ export function PlanPicker({
         </div>
       )}
       <div className="grid gap-3" role="radiogroup" aria-label="Plan">
-        {SIGNUP_PLAN_KEYS.map((key) => {
+        {SIGNUP_PLAN_KEYS.filter((k) => getVertical(industry).offeredPlans.includes(k)).map((key) => {
           const p = PLANS[key]
           const selected = plan === key
           return (

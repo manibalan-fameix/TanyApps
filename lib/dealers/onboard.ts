@@ -1,7 +1,7 @@
 import { z } from "zod"
 
 import type { BusinessHours, DayKey } from "../hours"
-import { LIVE_INDUSTRY_KEYS } from "../verticals"
+import { LIVE_INDUSTRY_KEYS, getVertical } from "../verticals"
 import { BILLING_CYCLES, SIGNUP_PLAN_KEYS, TRIAL_DAYS, isFreePlan } from "../plans"
 import { isValidSlug } from "../tenant/host"
 import { RADIUS_OPTIONS, type RadiusKey, dealerThemeSchema, readableOn } from "../theme/tokens"
@@ -52,24 +52,26 @@ export const slugSchema = z
   .min(2, "Use at least 2 characters.")
   .refine(isValidSlug, "Use letters, numbers and hyphens only. This name is not available.")
 
-export const onboardSchema = z.object({
-  industry: z.enum(LIVE_INDUSTRY_KEYS).default("motors"),
-  displayName: z.string().trim().min(2, "Enter your business name.").max(80),
-  slug: slugSchema,
-  city: z.string().trim().min(2, "Enter your city.").max(60),
-  phone: z
-    .string()
-    .trim()
-    .transform((v) => v.replace(/[\s-]/g, ""))
-    .pipe(z.string().regex(/^(\+91|91|0)?[6-9][0-9]{9}$/, "Enter a valid 10-digit mobile number."))
-    .transform((v) => `+91${v.slice(-10)}`),
-  hours: hoursSchema,
-  primary: hex,
-  accent: hex,
-  radius: z.enum(RADIUS_KEYS),
-  plan: z.enum(SIGNUP_PLAN_KEYS),
-  billingCycle: z.enum(BILLING_CYCLES),
-})
+export const onboardSchema = z
+  .object({
+    industry: z.enum(LIVE_INDUSTRY_KEYS).default("motors"),
+    displayName: z.string().trim().min(2, "Enter your business name.").max(80),
+    slug: slugSchema,
+    city: z.string().trim().min(2, "Enter your city.").max(60),
+    phone: z
+      .string()
+      .trim()
+      .transform((v) => v.replace(/[\s-]/g, ""))
+      .pipe(z.string().regex(/^(\+91|91|0)?[6-9][0-9]{9}$/, "Enter a valid 10-digit mobile number."))
+      .transform((v) => `+91${v.slice(-10)}`),
+    hours: hoursSchema,
+    primary: hex,
+    accent: hex,
+    radius: z.enum(RADIUS_KEYS),
+    plan: z.enum(SIGNUP_PLAN_KEYS),
+    billingCycle: z.enum(BILLING_CYCLES),
+  })
+  .refine((v) => getVertical(v.industry).offeredPlans.includes(v.plan), { path: ["plan"], message: "That plan is not available for this kind of business." })
 
 export type OnboardInput = z.infer<typeof onboardSchema>
 export type OnboardDraft = z.input<typeof onboardSchema>

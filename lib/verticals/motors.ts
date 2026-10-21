@@ -17,7 +17,9 @@ export const motors: Vertical = {
   firstItemHref: "/cars/new",
   adminReady: true,
   planLimit: "live_cars",
-  razorpay: { category: "automobile", subcategory: "dealer" },
+  offeredPlans: ["free", "starter", "growth", "pro"],
+  // Razorpay's list has no "automobile" category; car dealers are an ecommerce subcategory (checked 2026-10-21).
+  razorpay: { category: "ecommerce", subcategory: "automobile_and_truck_dealers" },
   paymentsPurpose: "buyers can pay a booking amount online",
   tenantMobileNav: true,
   liveMessage: "Your showroom has its own link. Add a car and share it on WhatsApp and Instagram.",
