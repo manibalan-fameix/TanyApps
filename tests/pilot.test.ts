@@ -75,12 +75,12 @@ describe("a pilot in billing", () => {
 })
 
 describe("cab prices", () => {
-  it("are the owner's: 3,999 / 7,999 / 14,999 a month, yearly at ten months", () => {
+  it("are the owner's: 3,999 / 7,999 / 14,999 a month, yearly at eleven months, as the other verticals", () => {
     expect(priceFor("cabs", "starter", "monthly")).toBe(3_999)
     expect(priceFor("cabs", "growth", "monthly")).toBe(7_999)
     expect(priceFor("cabs", "pro", "monthly")).toBe(14_999)
-    expect(priceFor("cabs", "starter", "yearly")).toBe(39_990)
-    expect(priceFor("cabs", "pro", "yearly")).toBe(149_990)
+    expect(priceFor("cabs", "starter", "yearly")).toBe(43_989)
+    expect(priceFor("cabs", "pro", "yearly")).toBe(164_989)
   })
   it("leave cars and restaurants on the shared table, yearly at eleven months", () => {
     for (const industry of ["motors", "restaurants"]) {

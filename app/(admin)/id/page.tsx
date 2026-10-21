@@ -19,7 +19,7 @@ export default async function CentralLogin({ searchParams }: { searchParams: Pro
   return (
     <main className="flex min-h-svh flex-col items-center justify-center bg-muted p-6">
       <div className="w-full max-w-sm rounded-xl border bg-background p-6">
-        <OtpLogin config={getFirebaseWebConfig()} emulator={emulatorHost()} host={target.host} state={q.state} next={safeNext(q.next)} lang={lang} />
+        <OtpLogin config={getFirebaseWebConfig()} emulator={emulatorHost()} appCheckSiteKey={process.env.FIREBASE_APPCHECK_SITE_KEY?.trim() || null} host={target.host} state={q.state} next={safeNext(q.next)} lang={lang} />
       </div>
     </main>
   )

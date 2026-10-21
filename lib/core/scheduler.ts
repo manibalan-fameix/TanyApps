@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm"
 
 import { unscopedDb } from "../db/client"
 import { cronRuns } from "../db/schema"
+import { expireTripHoldsJob } from "./jobs/expire-trip-holds"
 import { expireUnpaidOrdersJob } from "./jobs/expire-unpaid-orders"
 
 /**
@@ -19,6 +20,7 @@ const noop = (name: string): Job => ({ name, run: async () => "nothing to do yet
 export const JOBS: Record<string, Job> = Object.fromEntries(
   [
     expireUnpaidOrdersJob,
+    expireTripHoldsJob,
     // Placeholders for the daily (08:00 IST) and monthly (06:00 IST, 1st) triggers, so the whole path is proven end to end.
     // Document-expiry digests, corporate invoices and the like replace these in the phases that build them.
     noop("daily"),

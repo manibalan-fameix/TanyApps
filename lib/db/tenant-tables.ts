@@ -4,6 +4,11 @@ import {
   banners,
   blockedPeriods,
   cabSettings,
+  customerAddresses,
+  customerContacts,
+  customers,
+  tripEvents,
+  trips,
   bookings,
   carMedia,
   carViews,
@@ -61,7 +66,7 @@ const MOTORS_DIRECT = { cars, leads, bookings } as const
 const EATS_DIRECT = { menuCategories, menuItems, orders, deliveryPartners, deliveryZones, stockAdjustments, orderLocations } as const
 
 /** TanyCabs. */
-const CABS_DIRECT = { vehicleClasses, vehicles, vehicleDocuments, blockedPeriods, drivers, driverDocuments, driverDutyLogs, rateCards, rateSurcharges, packages, cabSettings } as const
+const CABS_DIRECT = { vehicleClasses, vehicles, vehicleDocuments, blockedPeriods, drivers, driverDocuments, driverDutyLogs, rateCards, rateSurcharges, packages, cabSettings, customers, customerAddresses, customerContacts, trips, tripEvents } as const
 
 /** Tables carrying their own dealer_id. */
 export const DIRECT_TENANT_TABLES = { ...PLATFORM_DIRECT, ...MOTORS_DIRECT, ...EATS_DIRECT, ...CABS_DIRECT } as const

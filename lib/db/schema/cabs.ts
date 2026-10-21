@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm"
-import { boolean, check, date, index, integer, jsonb, pgEnum, pgTable, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core"
+import { boolean, check, date, doublePrecision, index, integer, jsonb, pgEnum, pgTable, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core"
 
 import { dealers } from "./dealers.ts"
 
@@ -284,11 +284,16 @@ export const cabSettings = pgTable(
     minLeadMinutes: integer("min_lead_minutes").notNull().default(0),
     bufferMinutes: integer("buffer_minutes").notNull().default(0),
     serviceCities: jsonb("service_cities").$type<string[]>().notNull().default([]),
+    /** How long a customer's request may wait for the operator, at most. The real window is shorter for a soon pickup (lib/cabs/holds.ts). */
+    respondWindowMinutes: integer("respond_window_minutes").notNull().default(30),
+    /** After the operator accepts a booking that needs an advance, how long the customer has to pay it. */
+    unpaidHoldMinutes: integer("unpaid_hold_minutes").notNull().default(20),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     check("cab_settings_bps_ck", sql`coalesce(${t.advanceBps},0) between 0 and 10000 and coalesce(${t.gstRateBps},0) between 0 and 10000`),
     check("cab_settings_state_ck", sql`${t.stateCode} is null or ${t.stateCode} ~ '^[0-9]{2}$'`),
+    check("cab_settings_holds_ck", sql`${t.respondWindowMinutes} between 10 and 240 and ${t.unpaidHoldMinutes} between 5 and 240`),
   ],
 )
 
@@ -312,4 +317,162 @@ export const routeDistances = pgTable(
     fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("route_distances_pair_uq").on(t.originPlaceId, t.destPlaceId, t.source), check("route_distances_pos_ck", sql`${t.distanceM} >= 0 and ${t.durationS} >= 0`)],
+)
+
+
+// ---------- customers and trips ----------
+
+export const tripStatus = pgEnum("trip_status", [
+  "requested", "confirmed", "assigned", "driver_en_route", "arrived", "in_trip", "completed", "closed", "rejected", "cancelled", "expired", "no_show",
+])
+export const tripSource = pgEnum("trip_source", ["web", "phone", "walk_in", "corporate"])
+export const tripActorType = pgEnum("trip_actor_type", ["customer", "operator", "system", "driver"])
+
+/**
+ * A person who books with one business. The same phone number is a separate customer at each business (nothing is shared across
+ * businesses). The phone is encrypted; `phone_hash` finds and de-duplicates it.
+ */
+export const customers = pgTable(
+  "customers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    dealerId: dealerId(),
+    /** E.164, AES-256-GCM. */
+    phoneEnc: text("phone_enc").notNull(),
+    phoneHash: text("phone_hash").notNull(),
+    name: text("name"),
+    emailEnc: text("email_enc"),
+    /** When the phone was last proved by an OTP. Set at the first login: a customer row only exists for a verified phone, except walk-ins the operator types in. */
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    language: text("language").notNull().default("en"),
+    /** Bumped to sign the customer out of every device at once. A session is valid only while its version matches. */
+    sessionVersion: integer("session_version").notNull().default(1),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("customers_dealer_phone_uq").on(t.dealerId, t.phoneHash), check("customers_language_ck", sql`${t.language} in ('en','ta')`)],
+)
+
+/** Saved places ("Home", "Office"). The address is encrypted. */
+export const customerAddresses = pgTable(
+  "customer_addresses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    dealerId: dealerId(),
+    customerId: uuid("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    addressEnc: text("address_enc").notNull(),
+    lat: doublePrecision("lat"),
+    lng: doublePrecision("lng"),
+    placeId: text("place_id"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("customer_addresses_customer_idx").on(t.dealerId, t.customerId)],
+)
+
+/** People to alert in an emergency (SOS, in a later phase). */
+export const customerContacts = pgTable(
+  "customer_contacts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    dealerId: dealerId(),
+    customerId: uuid("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    phoneEnc: text("phone_enc").notNull(),
+    phoneHash: text("phone_hash").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("customer_contacts_phone_uq").on(t.customerId, t.phoneHash)],
+)
+
+/** A place on a trip. The address is encrypted; the coordinates and place id are kept to price and dispatch. */
+export type TripPlace = { placeId: string | null; addressEnc: string; lat: number | null; lng: number | null; stateCode: string | null }
+
+/** Immutable once written: what the customer was shown and agreed to. Corrections go in the `adjusted_*` columns, never here. */
+export type TripQuoteSnapshot = {
+  version: 1
+  at: string
+  /** Everything the fare engine was given, and what it returned, so the number can be reproduced later. */
+  input: Record<string, unknown>
+  result: Record<string, unknown>
+  /** Road distance and time as used for this quote. Kept here only, never in a shared cache. */
+  distanceM: number
+  durationS: number | null
+  distanceSource: "google" | "osrm" | "manual" | null
+}
+
+export const trips = pgTable(
+  "trips",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    dealerId: dealerId(),
+    /** Six characters for people to read out over the phone. Display only: it is not a secret and grants no access. */
+    code: text("code").notNull(),
+    customerId: uuid("customer_id").notNull().references(() => customers.id),
+    tripType: tripType("trip_type").notNull(),
+    status: tripStatus("status").notNull().default("requested"),
+    source: tripSource("source").notNull().default("web"),
+    /** Who made the booking: the customer, or the operator's team member who typed it in. */
+    bookedByType: tripActorType("booked_by_type").notNull().default("customer"),
+    bookedById: text("booked_by_id"),
+    pickup: jsonb("pickup").$type<TripPlace>().notNull(),
+    drop: jsonb("drop").$type<TripPlace | null>(),
+    startAt: timestamp("start_at", { withTimezone: true }).notNull(),
+    returnAt: timestamp("return_at", { withTimezone: true }),
+    pax: integer("pax").notNull(),
+    bags: integer("bags").notNull().default(0),
+    notesEnc: text("notes_enc"),
+    vehicleClassId: uuid("vehicle_class_id").notNull().references(() => vehicleClasses.id),
+    packageId: uuid("package_id").references(() => packages.id),
+    quote: jsonb("quote").$type<TripQuoteSnapshot>().notNull(),
+    quoteTotalPaise: integer("quote_total_paise").notNull(),
+    advanceDuePaise: integer("advance_due_paise").notNull().default(0),
+    advancePaidPaise: integer("advance_paid_paise").notNull().default(0),
+    /** The operator's agreed price when it differs from the quote. The quote above never changes. */
+    adjustedTotalPaise: integer("adjusted_total_paise"),
+    adjustmentReason: text("adjustment_reason"),
+    /** The deadline the booking is waiting on: for `requested`, the operator's answer; for an accepted booking with an unpaid advance, the customer's payment. */
+    holdExpiresAt: timestamp("hold_expires_at", { withTimezone: true }),
+    /** When to nudge the operator (half-way through the window), and when it was done. */
+    holdAlertAt: timestamp("hold_alert_at", { withTimezone: true }),
+    holdAlertedAt: timestamp("hold_alerted_at", { withTimezone: true }),
+    /** SHA-256 of a 128-bit random token for the tracking link. The token itself is never stored. */
+    shareTokenHash: text("share_token_hash").notNull(),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    rejectReason: text("reject_reason"),
+    cancelledReason: text("cancelled_reason"),
+    cancelledByType: tripActorType("cancelled_by_type"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("trips_dealer_code_uq").on(t.dealerId, t.code),
+    uniqueIndex("trips_share_token_uq").on(t.shareTokenHash),
+    index("trips_dealer_status_idx").on(t.dealerId, t.status, t.startAt),
+    index("trips_customer_idx").on(t.dealerId, t.customerId, t.createdAt),
+    index("trips_hold_idx").on(t.status, t.holdExpiresAt),
+    check("trips_code_ck", sql`${t.code} ~ '^[A-Z0-9]{6}$'`),
+    check("trips_money_ck", sql`${t.quoteTotalPaise} >= 0 and ${t.advanceDuePaise} between 0 and ${t.quoteTotalPaise} and ${t.advancePaidPaise} >= 0 and coalesce(${t.adjustedTotalPaise},0) >= 0`),
+    check("trips_pax_ck", sql`${t.pax} between 1 and 60 and ${t.bags} between 0 and 60`),
+    check("trips_return_ck", sql`${t.returnAt} is null or ${t.returnAt} > ${t.startAt}`),
+  ],
+)
+
+/** Every change to a trip, with who did it. Append-only. */
+export const tripEvents = pgTable(
+  "trip_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    dealerId: dealerId(),
+    tripId: uuid("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+    /** created, accepted, rejected, quote_adjusted, cancelled, expired, hold_alert, repeat_of ... */
+    type: text("type").notNull(),
+    fromStatus: tripStatus("from_status"),
+    toStatus: tripStatus("to_status"),
+    actorType: tripActorType("actor_type").notNull(),
+    actorId: text("actor_id"),
+    data: jsonb("data").$type<Record<string, unknown>>().notNull().default({}),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("trip_events_trip_idx").on(t.dealerId, t.tripId, t.at)],
 )

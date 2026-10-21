@@ -146,6 +146,14 @@ export const navRestaurant: NavMainItem[] = navRestaurantGroups.flatMap((g) => g
 export const navCabsGroups: NavGroup[] = [
   { label: "Main", items: [{ title: n.dashboard, url: "/dashboard", icon: DashboardSquare01Icon }] },
   {
+    label: "Bookings",
+    items: [
+      { title: "Bookings", url: "/cabs/bookings", icon: ShoppingBag01Icon },
+      { title: "New booking", url: "/cabs/bookings/new", icon: RouteIcon },
+      { title: "Customers", url: "/cabs/customers", icon: UserMultiple02Icon },
+    ],
+  },
+  {
     label: "Fleet",
     items: [
       { title: "Vehicles", url: "/cabs/vehicles", icon: Car01Icon },
@@ -211,15 +219,14 @@ export const ADMIN_NAV: Record<IndustryKey, AdminNavSpec> = {
     tabUrls: ["/dashboard", "/menu", "/orders"],
   },
   // Not selectable yet (Vertical.adminReady is false). Phase 1 replaces this with the real cab navigation.
-  // Bookings arrive in Phase 2 and replace the Drivers tab on the phone bar.
   cabs: {
     groups: navCabsGroups,
     items: navCabs,
     showRecentCars: false,
-    addItem: { href: "/cabs/vehicles", label: "Add vehicle" },
+    addItem: { href: "/cabs/bookings/new", label: "New booking" },
     catalogueTab: { href: "/cabs/vehicles", icon: Car01Icon, label: "Vehicles", isActive: (p) => under(p, "/cabs/vehicles") },
-    inboxTab: { href: "/cabs/drivers", icon: UserMultiple02Icon, label: "Drivers", isActive: (p) => under(p, "/cabs/drivers") },
-    tabUrls: ["/dashboard", "/cabs/vehicles", "/cabs/drivers"],
+    inboxTab: { href: "/cabs/bookings", icon: ShoppingBag01Icon, label: "Bookings", isActive: (p) => under(p, "/cabs/bookings") },
+    tabUrls: ["/dashboard", "/cabs/vehicles", "/cabs/bookings"],
   },
 }
 

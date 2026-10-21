@@ -6,8 +6,8 @@ import { randomToken, signToken, verifyToken } from "./sign"
  */
 export const SESSION_DAYS = 30
 export const SESSION_SECONDS = SESSION_DAYS * 86_400
-/** Renew when fewer than this many seconds are left, so an active customer stays signed in without a fixed end. */
-export const RENEW_BELOW_SECONDS = 7 * 86_400
+/** A session is renewed (a fresh 30 days) when it is at least a day old, so an active customer stays signed in and the cookie is rewritten at most once a day. */
+export const RENEW_AFTER_SECONDS = 86_400
 
 export type CustomerSession = {
   /** The customer's id in that business (the customers table in Step 2). */
@@ -32,7 +32,7 @@ export async function readSession(token: string | null | undefined, dealerId: st
   return s && typeof s.cid === "string" && s.did === dealerId && typeof s.v === "number" ? s : null
 }
 
-export const needsRenewal = (s: CustomerSession, now = Date.now()) => s.exp - Math.floor(now / 1000) < RENEW_BELOW_SECONDS
+export const needsRenewal = (s: CustomerSession, now = Date.now()) => Math.floor(now / 1000) - s.iat >= RENEW_AFTER_SECONDS
 
 /** Cookie names. In production the `__Host-` prefix makes the browser refuse the cookie unless it is Secure, host-only and Path=/. */
 export const sessionCookieName = (production = process.env.NODE_ENV === "production") => (production ? "__Host-tany_cs" : "tany_cs")

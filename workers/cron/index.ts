@@ -10,7 +10,7 @@ type ScheduledEvent = { cron: string; scheduledTime: number }
 
 /** Which jobs each schedule runs. Keep in step with `triggers.crons` in wrangler.jsonc. */
 export const SCHEDULE: Record<string, string[]> = {
-  "*/5 * * * *": ["expire-unpaid-orders"],
+  "*/5 * * * *": ["expire-unpaid-orders", "expire-trip-holds"],
   // 08:00 IST every day (02:30 UTC).
   "30 2 * * *": ["daily"],
   // 06:00 IST on the 1st of the month (00:30 UTC).

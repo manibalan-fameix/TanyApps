@@ -12,7 +12,7 @@ const b64 = (bytes: ArrayBuffer | Uint8Array) => {
 }
 const unb64 = (s: string) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0))
 
-export type TokenKind = "login-ticket" | "customer-session"
+export type TokenKind = "login-ticket" | "customer-session" | "place"
 
 /** The signing secret. Never a well-known value in production. */
 export function authSecret(env: Record<string, string | undefined> = process.env): string {

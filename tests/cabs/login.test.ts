@@ -62,10 +62,15 @@ describe("customer session", () => {
     expect(await readSession(t, "d", now + (SESSION_SECONDS - 5) * 1000, S)).not.toBeNull()
     expect(await readSession(t, "d", now + (SESSION_SECONDS + 5) * 1000, S)).toBeNull()
   })
-  it("asks for renewal in the last week only", async () => {
+  it("is renewed at most once a day, and each renewal gives a fresh 30 days", async () => {
     const t = (await readSession(await issueSession({ cid: "c", did: "d", v: 1 }, now, S), "d", now, S))!
-    expect(needsRenewal(t, now + 10 * 86_400_000)).toBe(false)
-    expect(needsRenewal(t, now + 25 * 86_400_000)).toBe(true)
+    expect(needsRenewal(t, now + 3_600_000)).toBe(false)
+    expect(needsRenewal(t, now + 86_399_000)).toBe(false)
+    expect(needsRenewal(t, now + 86_400_000)).toBe(true)
+    const later = now + 10 * 86_400_000
+    const renewed = (await readSession(await issueSession({ cid: t.cid, did: t.did, v: t.v }, later, S), "d", later, S))!
+    expect(renewed.exp - renewed.iat).toBe(SESSION_SECONDS)
+    expect(needsRenewal(renewed, later + 3_600_000)).toBe(false)
   })
   it("cannot be forged from a login ticket (separate keys per kind)", async () => {
     const asTicket = await signToken("login-ticket", { cid: "c", did: "d", v: 1, iat: 0, exp: Math.floor(now / 1000) + 100 }, S)

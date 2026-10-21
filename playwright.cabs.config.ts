@@ -9,7 +9,7 @@ const PORT = Number(process.env.E2E_CABS_PORT ?? 3101)
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: /cabs-.*\.spec\.ts/,
+  testMatch: /cabs-operator\.spec\.ts/,
   timeout: 120_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,

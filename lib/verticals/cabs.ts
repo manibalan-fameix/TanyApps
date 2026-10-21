@@ -25,9 +25,7 @@ export const cabs: Vertical = {
   offeredPlans: ["starter", "growth", "pro"],
   // The owner's cab prices, set 2026-10-21: Starter 3,999, Growth 7,999, Pro 14,999 a month.
   planPrices: { starter: 3_999, growth: 7_999, pro: 14_999 },
-  // The owner asked for "yearly = 10x monthly". Cars and restaurants pay 11 months for 12 (see YEARLY_PAID_MONTHS), so this differs
-  // from them; it is one number to change if the intent was to match.
-  yearlyPaidMonths: 10,
+  // Yearly is 11 months for 12, as for cars and restaurants (the owner confirmed 2026-10-21): no override here.
   // Vehicles and drivers are hard limits (adding more is blocked with an upgrade prompt). Bookings are a soft limit: a
   // customer booking is never refused; the operator sees a banner at 80% and 100% of the month's allowance.
   cabLimits: {

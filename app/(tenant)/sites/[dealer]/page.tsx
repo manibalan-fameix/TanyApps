@@ -46,7 +46,7 @@ export default async function DealerHome({
   const dealer = await getDealerBySlug((await params).dealer)
   if (!dealer) notFound()
   if (dealer.industry === "restaurants") return <StoreHome dealer={dealer} store={await loadStorefront(dealer)} />
-  if (dealer.industry === "cabs") return <CabsHome dealer={dealer} />
+  if (dealer.industry === "cabs") return <CabsHome dealer={dealer} search={await searchParams} />
   const rawSearchParams = await searchParams
   const db = scopedDb(dealer.id)
 

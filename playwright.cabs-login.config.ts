@@ -1,14 +1,16 @@
 import { defineConfig, devices } from "@playwright/test"
 
-// The customer phone login across a subdomain and a custom domain, against the Firebase Auth EMULATOR (no real SMS).
+// The customer phone login across a subdomain and a custom domain, and the booking journey (customer books, operator accepts),
+// against the Firebase Auth EMULATOR (no real SMS) and a fake map service (GEO_FIXTURE).
 //   npx firebase-tools emulators:start --only auth --project demo-tany      (port 9099)
 //   DATABASE_URL=... ENCRYPTION_KEY=... BLIND_INDEX_KEY=... pnpm exec playwright test -c playwright.cabs-login.config.ts
-// The database needs e2e/cabs-seed.sql (it adds `kaveri-cabs` with the verified domain cabs.example.test).
+// The database needs e2e/cabs-seed.sql (it adds `kaveri-cabs` with the verified domain cabs.example.test) and then
+// e2e/cabs-booking-seed.sql (fares for the demo business). Use its own database: the operator spec expects an empty business.
 const PORT = Number(process.env.E2E_LOGIN_PORT ?? 3102)
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: /cabs-login\.spec\.ts/,
+  testMatch: /cabs-(login|booking)\.spec\.ts/,
   timeout: 120_000,
   expect: { timeout: 20_000 },
   workers: 1,
@@ -27,6 +29,8 @@ export default defineConfig({
     reuseExistingServer: false,
     env: {
       NEXT_DIST_DIR: ".next-e2e-login",
+      E2E: "1",
+      GEO_FIXTURE: "1",
       ROOT_DOMAIN: `localhost:${PORT}`,
       DATABASE_URL: process.env.DATABASE_URL ?? "",
       ENCRYPTION_KEY: process.env.ENCRYPTION_KEY ?? "",
