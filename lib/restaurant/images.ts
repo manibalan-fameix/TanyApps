@@ -1,6 +1,6 @@
 import type { StorageAdapter } from "../storage/types.ts"
 
-export const IMAGE_KINDS = ["menu", "banner"] as const
+export const IMAGE_KINDS = ["menu", "banner", "cab-class"] as const
 export type ImageKind = (typeof IMAGE_KINDS)[number]
 
 /** Where a restaurant's uploads live. Always under the restaurant's own prefix, like car photos. */

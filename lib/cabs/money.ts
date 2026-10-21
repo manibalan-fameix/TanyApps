@@ -29,3 +29,20 @@ export function formatPaise(paise: number | null | undefined): string {
   const grouped = whole.toLocaleString("en-IN")
   return frac === 0 ? `₹${grouped}` : `₹${grouped}.${String(frac).padStart(2, "0")}`
 }
+
+/** "5" -> 500, "2.5" -> 250, "12.75" -> 1275 basis points. Null for anything else or more than 100%. */
+export function percentToBps(input: string | number | null | undefined): number | null {
+  if (input === null || input === undefined) return null
+  const m = /^(\d{1,3})(?:\.(\d{1,2}))?$/.exec(String(input).replace(/[%\s]/g, ""))
+  if (!m) return null
+  const bps = Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0"))
+  return bps <= 10_000 ? bps : null
+}
+
+/** 500 -> "5"; 250 -> "2.5"; 1275 -> "12.75". For filling a form field. */
+export function bpsToPercentText(bps: number | null | undefined): string {
+  if (bps === null || bps === undefined) return ""
+  const whole = Math.trunc(bps / 100)
+  const frac = bps % 100
+  return frac === 0 ? String(whole) : `${whole}.${String(frac).padStart(2, "0").replace(/0$/, "")}`
+}
