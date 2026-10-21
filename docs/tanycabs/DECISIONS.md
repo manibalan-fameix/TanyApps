@@ -102,6 +102,10 @@ Newest phase last. Each entry says what was decided, why, and what would reverse
 - **Holds:** a `requested` booking waits `min(30 min, minutes to pickup − 60)`, never under 10 minutes; the operator is nudged at half the window; at the end it becomes `expired`, the customer is told (with a "call the operator" button) and a `trip_events` row is written. An accepted booking with an unpaid advance waits 20 minutes. Both numbers (30 and 20) are columns in `cab_settings`.
 - Sessions slide for 30 days, renewed at most once a day; a customer can end every session from their account page.
 
+### Rules for later phases (owner, 2026-10-21)
+
+- **Phase 3 must change "Pending".** Today *Pending* is every `confirmed` booking, because nothing can be assigned yet. Once Phase 3 adds assignment it must mean **`confirmed` AND no driver assigned** (`driver_id is null`), so an assigned booking leaves Pending. The place to change is `where("pending")` in `lib/cabs/booking-admin-data.ts` (it carries a comment saying so), plus its test in `tests/cabs/trips.integration.test.ts`. *Unpaid* stays "accepted, advance not yet paid", whether or not a driver is assigned.
+
 ### Assumptions I made (please confirm or correct)
 
 1. **The 60-minute cut-off and the 10-minute floor are constants**, not settings (you asked for the two main numbers to be settings). They are in `lib/cabs/holds.ts`.

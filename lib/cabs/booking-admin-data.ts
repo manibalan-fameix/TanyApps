@@ -30,6 +30,8 @@ function where(tab: InboxTab, now: Date) {
     case "new":
       return eq(trips.status, "requested")
     case "pending":
+      // PHASE 3: this must become "confirmed AND no driver assigned" (owner's rule, DECISIONS.md "Rules for later phases"). Until trips
+      // can be assigned, every confirmed booking is unassigned, so this is the same thing today.
       return eq(trips.status, "confirmed")
     case "unpaid":
       return and(eq(trips.status, "confirmed"), gt(trips.advanceDuePaise, trips.advancePaidPaise))

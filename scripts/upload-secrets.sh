@@ -62,6 +62,8 @@ for line in open(os.environ["ENV_FILE"]):
     m = re.match(r"^([A-Z0-9_]+)=(.*)$", line.rstrip("\n"))
     if m:
         env[m[1]] = m[2].strip().strip('"').strip("'")
+if os.environ["TARGET"] == "staging":
+    keys.append("CLOUDFLARE_ZONE_ID")  # a var in production (wrangler.jsonc); the staging zone's id is a secret here
 out = {k: env[k] for k in keys if env.get(k)}
 print("app: uploading:", sorted(out), file=sys.stderr)
 print("app: skipped (empty):", [k for k in keys if not env.get(k)], file=sys.stderr)

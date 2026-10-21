@@ -11,7 +11,7 @@ bad() { echo "BLOCKED: $1" >&2; fail=1; }
 MODE="${1:-production}"
 case "$MODE" in
   production) FILE=.env.local; ROOT="tany.in" ;;
-  staging) FILE=.env.staging; ROOT="staging.tany.in" ;;
+  staging) FILE=.env.staging; ROOT="tanystaging.in" ;;
   *) echo "usage: bash scripts/predeploy-check.sh [production|staging]" >&2; exit 2 ;;
 esac
 
@@ -26,14 +26,14 @@ done
 if [ "$MODE" = production ]; then
   grep -q '"ROOT_DOMAIN": "tany.in"' wrangler.jsonc || bad 'ROOT_DOMAIN in wrangler.jsonc is not "tany.in".'
 else
-  grep -q '"ROOT_DOMAIN": "staging.tany.in"' wrangler.jsonc || bad 'env.staging ROOT_DOMAIN in wrangler.jsonc is not "staging.tany.in".'
+  grep -q '"ROOT_DOMAIN": "tanystaging.in"' wrangler.jsonc || bad 'env.staging ROOT_DOMAIN in wrangler.jsonc is not "tanystaging.in".'
 fi
 grep -q '"RC_PROVIDER": "mock"' wrangler.jsonc && echo "warning: RC_PROVIDER is mock, so RC data is fake and nothing is shown as Verified." >&2
 
 [ -f "$FILE" ] || bad "$FILE not found."
 # Secrets the app cannot work without. upload-secrets.sh sends them from the file, so an empty one here means an empty one live.
 core="ENCRYPTION_KEY BLIND_INDEX_KEY CRON_SECRET TRACKER_SECRET"
-[ "$MODE" = staging ] && core="DATABASE_URL AUTH_SECRET $core R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_PRIVATE_BUCKET RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET"
+[ "$MODE" = staging ] && core="DATABASE_URL AUTH_SECRET $core R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_PRIVATE_BUCKET RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET CLOUDFLARE_ZONE_ID"
 for key in $core; do
   [ -n "$(val "$key" "$FILE")" ] || bad "$key is empty or missing in $FILE (scripts/upload-secrets.sh would not set it)."
 done

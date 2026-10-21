@@ -24,6 +24,7 @@
     "deploy:cron": "wrangler deploy -c workers/cron/wrangler.jsonc",
     "build:jarvis": "pnpm --dir workers/jarvis/ui install --ignore-workspace --frozen-lockfile && pnpm --dir workers/jarvis/ui exec --ignore-workspace vite build",
     "deploy:jarvis": "pnpm run build:jarvis && wrangler deploy -c workers/jarvis/wrangler.jsonc",
+    "seed:staging": "node --env-file=.env.staging scripts/seed-staging.ts",
     "db:migrate:staging": "node --env-file=.env.staging node_modules/drizzle-kit/bin.cjs migrate",
     "secrets:staging": "bash scripts/upload-secrets.sh staging",
     "deploy:staging": "bash scripts/predeploy-check.sh staging && wrangler deploy -c workers/tracker/wrangler.jsonc --env staging && opennextjs-cloudflare build && opennextjs-cloudflare deploy --env staging && wrangler deploy -c workers/cron/wrangler.jsonc --env staging",

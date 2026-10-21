@@ -30,8 +30,8 @@
   "env": {
     "staging": {
       "name": "tanyapps-tracker-staging",
-      "routes": [{ "pattern": "track.staging.tany.in", "custom_domain": true }],
-      "vars": { "ALLOWED_ROOT": "staging.tany.in" },
+      "routes": [{ "pattern": "track.tanystaging.in", "custom_domain": true }],
+      "vars": { "ALLOWED_ROOT": "tanystaging.in" },
       "durable_objects": {
         "bindings": [
           { "name": "TRACKER", "class_name": "OrderTracker" },

@@ -18,7 +18,7 @@
     "staging": {
       "name": "tanyapps-cron-staging",
       "triggers": { "crons": ["* * * * *", "*/5 * * * *", "30 2 * * *", "30 0 1 * *"] },
-      "vars": { "CRON_TARGET_URL": "https://app.staging.tany.in" }
+      "vars": { "CRON_TARGET_URL": "https://app.tanystaging.in" }
     }
   }
 }

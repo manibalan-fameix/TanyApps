@@ -45,14 +45,15 @@
   ],
   "observability": { "enabled": true },
 
-  // STAGING: the same code on its own hostnames, database, buckets, secrets and Razorpay test keys. Deploy with `pnpm deploy:staging`
-  // (docs/tanycabs/STAGING.md). Wrangler does not inherit vars, routes or bindings into an environment, so each is repeated here.
+  // STAGING: the same code on its own domain (tanystaging.in, a separate Cloudflare zone), database, buckets, secrets and Razorpay test
+  // keys. Deploy with `pnpm deploy:staging` (docs/tanycabs/STAGING.md). Wrangler does not inherit vars, routes or bindings into an
+  // environment, so each is repeated here. ROOT_DOMAIN is the only thing that makes it "staging": the code has no staging special case.
   "env": {
     "staging": {
       "name": "tanyapps-staging",
       "vars": {
-        "ROOT_DOMAIN": "staging.tany.in",
-        "CLOUDFLARE_ZONE_ID": "aa82f4018aed83289d6805c42dc02e3e",
+        "ROOT_DOMAIN": "tanystaging.in",
+        // CLOUDFLARE_ZONE_ID (the tanystaging.in zone) is a secret on staging: see .env.staging in STAGING.md.
         "AUTH_TRUST_HOST": "true",
         // The same Firebase project as production unless you create a separate one (STAGING.md). The web keys are public values.
         "FIREBASE_API_KEY": "AIzaSyDwdZSWGytJA4jgaefwFK05woapq84MTdI",
@@ -61,9 +62,9 @@
         "FIREBASE_APP_ID": "1:582955315597:web:6c70cfd8b1f84bf4ef8dc4",
         "R2_ACCOUNT_ID": "8b98f4164cf5f4c0400f25a3f66b2ede",
         "R2_BUCKET": "tany-staging",
-        "R2_PUBLIC_URL": "https://cdn.staging.tany.in",
+        "R2_PUBLIC_URL": "https://cdn.tanystaging.in",
         "RC_PROVIDER": "mock",
-        "TRACKER_WS_URL": "wss://track.staging.tany.in/ws"
+        "TRACKER_WS_URL": "wss://track.tanystaging.in/ws"
       },
       "analytics_engine_datasets": [
         { "binding": "ANALYTICS", "dataset": "tany_listing_events_staging" },
@@ -75,12 +76,11 @@
           { "name": "RATE_LIMITER", "class_name": "RateLimiter", "script_name": "tanyapps-tracker-staging" }
         ]
       },
-      // Business sites on staging are <slug>.staging.tany.in. That is TWO labels under tany.in, which the free Universal certificate
-      // does not cover: it needs an Advanced Certificate for *.staging.tany.in (STAGING.md, step 2).
+      // tanystaging.in is its own zone, so the free Universal certificate (apex + one level of wildcard) covers every host here.
       "routes": [
-        { "pattern": "staging.tany.in", "custom_domain": true },
-        { "pattern": "app.staging.tany.in", "custom_domain": true },
-        { "pattern": "*.staging.tany.in/*", "zone_name": "tany.in" }
+        { "pattern": "tanystaging.in", "custom_domain": true },
+        { "pattern": "app.tanystaging.in", "custom_domain": true },
+        { "pattern": "*.tanystaging.in/*", "zone_name": "tanystaging.in" }
       ]
     }
   }

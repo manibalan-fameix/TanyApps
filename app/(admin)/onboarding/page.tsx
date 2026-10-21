@@ -7,13 +7,12 @@ import { getOtherProductForUser, getUserContact } from "@/lib/tenant/user-phone"
 import { EnabledIndustriesProvider } from "@/components/onboarding/enabled-industries"
 import { isIndustryKey, LIVE_INDUSTRY_KEYS, industriesFor, type IndustryKey } from "@/lib/verticals"
 
+import { publicRootDomain } from "@/lib/env"
+
 import { OnboardingWizard } from "./onboarding-wizard"
 
 export const metadata = { title: "Set up your showroom" }
 export const dynamic = "force-dynamic"
-
-// Shown to dealers as the suffix of their web address, regardless of the local ROOT_DOMAIN.
-const PUBLIC_DOMAIN = "tany.in"
 
 // First sign-in: a new user has no dealership yet. Creating one makes them its owner.
 export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ industry?: string }> }) {
@@ -43,7 +42,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
     <main>
       <EnabledIndustriesProvider value={enabledIndustries}>
       <OnboardingWizard
-        rootDomain={PUBLIC_DOMAIN}
+        rootDomain={publicRootDomain()}
         firstName={firstName}
         email={row.email ?? ctx.user.email ?? ""}
         verifiedPhone={verifiedPhone}
