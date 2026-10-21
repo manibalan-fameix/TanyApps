@@ -10,6 +10,7 @@ import {
 
 import { fetchPerformance } from "@/lib/analytics/query"
 import { billingState } from "@/lib/billing/state"
+import { CabsDashboard } from "@/components/cabs/dashboard"
 import { WelcomeDialog } from "@/components/dashboard/welcome-dialog"
 import { DashboardCharts } from "@/components/dashboard/performance-charts"
 import { StatCard, type StatCardProps } from "@/components/dashboard/stat-card"
@@ -51,6 +52,7 @@ export default async function DashboardPage() {
   if (dealer.industry === "restaurants") {
     return <RestaurantDashboard dealer={dealer} role={ctx.role} />
   }
+  if (dealer.industry === "cabs") return <CabsDashboard dealer={dealer} />
   const stats = ctx.dealerInDb ? await loadDashboardStats(dealer.id) : null
   const liveCount =
     stats?.statusCounts.find((s) => s.status === "live")?.count ?? 0

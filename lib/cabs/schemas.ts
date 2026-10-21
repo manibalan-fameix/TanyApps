@@ -121,7 +121,6 @@ export type DriverInput = z.infer<typeof driverSchema>
 // ---------- pricing ----------
 
 const optPaise = (what: string) => rupeesOptional(what)
-const optInt = (min: number, max: number, what: string) => z.union([int(min, max, what), z.null()]).optional().transform((v) => v ?? null)
 
 const rateCardBase = {
   vehicleClassId: z.string().uuid("Choose a vehicle class."),

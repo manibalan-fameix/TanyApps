@@ -42,7 +42,9 @@
     ".next-build-check/types/**/*.ts",
     ".next-build-check/dev/types/**/*.ts",
     ".next-check/types/**/*.ts",
-    ".next-check/dev/types/**/*.ts"
+    ".next-check/dev/types/**/*.ts",
+    ".next-e2e-cabs/types/**/*.ts",
+    ".next-e2e-cabs/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

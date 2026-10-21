@@ -18,6 +18,7 @@
     "db:seed-restaurant": "node --env-file-if-exists=.env.local scripts/seed-restaurant.ts",
     "db:import-variants": "node --env-file-if-exists=.env.local scripts/import-variants.ts",
     "test:e2e": "playwright test",
+    "test:e2e:cabs": "playwright test -c playwright.cabs.config.ts",
     "worker": "node --env-file-if-exists=.env.local workers/index.ts",
     "deploy:tracker": "wrangler deploy -c workers/tracker/wrangler.jsonc",
     "deploy:cron": "wrangler deploy -c workers/cron/wrangler.jsonc",

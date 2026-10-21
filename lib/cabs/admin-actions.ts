@@ -132,7 +132,7 @@ export async function saveVehicleClass(id: string | null, input: unknown): Promi
   const parsed = vehicleClassSchema.safeParse(input)
   if (!parsed.success) return invalid(parsed.error)
   const v = parsed.data
-  if (!isOwnImage(getStorage(), c.dealerId, v.imageUrl)) return { ok: false, error: "Upload the picture again.", fieldErrors: { imageUrl: "Upload the picture again." } }
+  if (v.imageUrl && !isOwnImage(getStorage(), c.dealerId, v.imageUrl)) return { ok: false, error: "Upload the picture again.", fieldErrors: { imageUrl: "Upload the picture again." } }
   const row = { name: v.name, seats: v.seats, bags: v.bags, ac: v.ac, description: v.description, imageUrl: v.imageUrl || null, sortOrder: v.sortOrder, active: v.active }
   try {
     if (id) {
@@ -531,8 +531,7 @@ export async function savePackage(id: string | null, input: unknown): Promise<Re
     if (paise === null) return { ok: false, error: "Enter each price in rupees, like 6500.", fieldErrors: { prices: "Enter each price in rupees, like 6500." } }
     prices[classId] = paise
   }
-  const storage = getStorage()
-  if (!p.imageUrls.every((u) => isOwnImage(storage, c.dealerId, u))) return { ok: false, error: "Upload the pictures again.", fieldErrors: { imageUrls: "Upload the pictures again." } }
+  if (p.imageUrls.length > 0 && !p.imageUrls.every((u) => isOwnImage(getStorage(), c.dealerId, u))) return { ok: false, error: "Upload the pictures again.", fieldErrors: { imageUrls: "Upload the pictures again." } }
 
   const base = {
     name: p.name,

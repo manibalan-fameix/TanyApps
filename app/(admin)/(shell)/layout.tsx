@@ -20,7 +20,9 @@ import { tenantUrl } from "@/lib/env"
 import Link from "next/link"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import type { IndustryKey } from "@/lib/industries"
-import { billingState } from "@/lib/billing/state"
+import { billingState, effectivePlanKey } from "@/lib/billing/state"
+import { bookingsBanner, bookingsUsage } from "@/lib/cabs/limits"
+import { monthlyBookingCount, recordBookingsThreshold } from "@/lib/cabs/usage"
 
 const DEMO_CARS = [
   { id: "demo-1", year: 2017, regPrefix: "tn11", shortCode: "k7x2m" },
@@ -66,6 +68,16 @@ export default async function ShellLayout({ children }: { children: React.ReactN
           ? { title: `${billing.daysLeft} ${billing.daysLeft === 1 ? "day" : "days"} left in your free trial`, body: "Add a payment method to keep your showroom online. You are not charged until the trial ends.", destructive: false }
           : null
 
+  // Cab operators see how much of the month's bookings allowance is used. It is a soft limit: customers are never turned away.
+  let cabsBanner: ReturnType<typeof bookingsBanner> = null
+  if (ctx.status === "ok" && ctx.dealerInDb && ctx.dealer.industry === "cabs") {
+    const now = new Date()
+    const db = scopedDb(ctx.dealer.id)
+    const usage = bookingsUsage(await monthlyBookingCount(db, now), effectivePlanKey(ctx.dealer))
+    cabsBanner = bookingsBanner(usage)
+    await recordBookingsThreshold(db, usage, now).catch(() => false)
+  }
+
   const restaurant = ctx.status === "ok" && ctx.dealer.industry === "restaurants"
   const shell = (
     <SidebarProvider>
@@ -92,6 +104,17 @@ export default async function ShellLayout({ children }: { children: React.ReactN
                   {banner.body}{" "}
                   <Link href="/settings/billing" className="font-medium underline">
                     Open billing
+                  </Link>
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {cabsBanner ? (
+              <Alert variant={cabsBanner.tone === "destructive" ? "destructive" : "default"}>
+                <AlertTitle>{cabsBanner.title}</AlertTitle>
+                <AlertDescription>
+                  {cabsBanner.body}{" "}
+                  <Link href="/settings/billing" className="font-medium underline">
+                    See plans
                   </Link>
                 </AlertDescription>
               </Alert>
