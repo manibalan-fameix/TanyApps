@@ -1,4 +1,4 @@
-export type Geocoded = { pincode: string; area: string; city: string; address: string }
+export type Geocoded = { pincode: string; area: string; city: string; address: string; /** The state's name, e.g. "Tamil Nadu"; empty when unknown. */ state: string }
 
 type NominatimAddress = Record<string, string | undefined>
 
@@ -15,5 +15,5 @@ export function parseNominatim(json: unknown): Geocoded | null {
   const city = a.city ?? a.town ?? a.county ?? a.state_district ?? ""
   const street = [a.house_number, a.road ?? a.pedestrian].filter(Boolean).join(", ")
   const address = [street, area, city, /^[1-9]\d{5}$/.test(pin) ? pin : ""].filter(Boolean).join(", ")
-  return { pincode: /^[1-9]\d{5}$/.test(pin) ? pin : "", area, city, address: address || (j?.display_name ?? "") }
+  return { pincode: /^[1-9]\d{5}$/.test(pin) ? pin : "", area, city, address: address || (j?.display_name ?? ""), state: a.state ?? "" }
 }
