@@ -59,7 +59,7 @@ Things the tests caught while building, worth knowing:
 ## Known gaps and things to watch
 
 1. **Pre-existing failing test:** `tests/cars.integration.test.ts` "enforces the plan's live-car cap" fails on a migrated DB (also on the commit before this phase's changes touched anything it covers). It looks like a stale cap assumption (`DECISIONS.md` Phase 1 says starter is 20 cars; `lib/plans.ts` says 25). Not changed.
-2. **Existing bug, left as is:** `refundBookingPayment` for car bookings does not reverse the Route transfer to the dealer (`reverse_all`), unlike food refunds. The platform would be out of pocket on a refund. Noted in the code.
+2. **Existing bug, left as is:** `refundBookingPayment` for car bookings does not reverse the Route transfer to the dealer (`reverse_all`), unlike food refunds. The platform would be out of pocket on a refund. Noted in the code. **Fixed after this report** on `fix/motors-refund-route-reversal` and merged to `main` (the refund now reverses the transfer and throws instead of silently returning); the merge of this branch kept that fix.
 3. **Razorpay `notes` on `payment.captured` is unverified.** If Razorpay does not copy order notes onto the payment entity, every payment takes the counted fallback path. That is safe but means the counter never reaches zero. Check in test mode (below).
 4. **Not run on real Cloudflare:** the `RateLimiter` Durable Object, the cron triggers, and `claimRun`'s upsert on Neon's HTTP driver (tested on the `pg` driver). The window algorithm and the lock are tested in Node.
 5. **Fail-open/closed is by call site.** Anything not marked `failClosed` fails open. Auth paths are marked and a test pins them, but a new auth path must remember to opt in.
