@@ -213,6 +213,8 @@ export type SurchargeScope = {
   /** Vehicle classes it applies to. Empty or missing means all. */
   vehicleClassIds?: string[]
   tripTypes?: (typeof tripType.enumValues)[number][]
+  /** Festival surcharges: inclusive IST date ranges, "2026-11-08" to "2026-11-10". */
+  dateRanges?: { from: string; to: string }[]
 }
 
 /** Extra charges: night, hill/ghat, state permit, airport entry, festival. Exactly one of a flat amount or a percentage. */

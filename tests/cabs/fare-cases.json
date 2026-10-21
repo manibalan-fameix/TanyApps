@@ -1,0 +1,1106 @@
+{
+ "_note": "PLACEHOLDER numbers. Every rate, charge and expected total below is illustrative and was made up to exercise the rules. Replace them with the pilot operator's real rate sheet, priced by hand. Expected values were produced by an independent exact-fraction reference, not by lib/cabs/fare.ts.",
+ "cases": [
+  {
+   "id": "airport-sedan-day",
+   "placeholder": true,
+   "description": "Chennai city to Chennai airport, sedan, 10:00 (placeholder rates)",
+   "input": {
+    "tripType": "airport",
+    "rateCard": {
+     "tripType": "airport",
+     "basePaise": 20000,
+     "perKmPaise": 1400,
+     "minKmPerDay": null,
+     "perHourPaise": null,
+     "packageHours": null,
+     "packageKm": null,
+     "extraKmPaise": null,
+     "extraHourPaise": null,
+     "bataPerDayPaise": null
+    },
+    "distanceM": 18400,
+    "startAt": "2026-11-02T10:00:00+05:30",
+    "places": [
+     "T Nagar",
+     "Chennai Airport"
+    ],
+    "settings": {
+     "nightStart": "22:00",
+     "nightEnd": "06:00",
+     "gstRateBps": 500,
+     "stateCode": "33",
+     "advanceBps": null
+    },
+    "surcharges": [],
+    "placeOfSupplyStateCode": "33",
+    "vehicleClassId": "sedan"
+   },
+   "expect": {
+    "ok": true,
+    "totalPaise": 48000,
+    "taxablePaise": 45760,
+    "gst": {
+     "cgstPaise": 1144,
+     "sgstPaise": 1144,
+     "igstPaise": 0
+    },
+    "advanceDuePaise": null,
+    "days": 1,
+    "lines": [
+     {
+      "key": "base",
+      "paise": 20000
+     },
+     {
+      "key": "distance",
+      "paise": 25760
+     },
+     {
+      "key": "cgst",
+      "paise": 1144
+     },
+     {
+      "key": "sgst",
+      "paise": 1144
+     },
+     {
+      "key": "rounding",
+      "paise": -48
+     }
+    ]
+   }
+  },
+  {
+   "id": "airport-suv-entry-fee",
+   "placeholder": true,
+   "description": "Chennai airport drop in an SUV with an airport entry fee",
+   "input": {
+    "vehicleClassId": "suv",
+    "tripType": "airport",
+    "rateCard": {
+     "tripType": "airport",
+     "basePaise": 30000,
+     "perKmPaise": 1900,
+     "minKmPerDay": null,
+     "perHourPaise": null,
+     "packageHours": null,
+     "packageKm": null,
+     "extraKmPaise": null,
+     "extraHourPaise": null,
+     "bataPerDayPaise": null
+    },
+    "distanceM": 31250,
+    "startAt": "2026-11-02T14:15:00+05:30",
+    "surcharges": [
+     {
+      "id": "ap1",
+      "kind": "airport",
+      "label": "Airport entry",
+      "scope": {},
+      "amountPaise": 10000,
+      "bps": null
+     }
+    ],
+    "settings": {
+     "nightStart": "22:00",
+     "nightEnd": "06:00",
+     "gstRateBps": 500,
+     "stateCode": "33",
+     "advanceBps": null
+    },
+    "placeOfSupplyStateCode": "33"
+   },
+   "expect": {
+    "ok": true,
+    "totalPaise": 104300,
+    "taxablePaise": 99375,
+    "gst": {
+     "cgstPaise": 2484,
+     "sgstPaise": 2484,
+     "igstPaise": 0
+    },
+    "advanceDuePaise": null,
+    "days": 1,
+    "lines": [
+     {
+      "key": "base",
+      "paise": 30000
+     },
+     {
+      "key": "distance",
+      "paise": 59375
+     },
+     {
+      "key": "surcharge:ap1",
+      "paise": 10000
+     },
+     {
+      "key": "cgst",
+      "paise": 2484
+     },
+     {
+      "key": "sgst",
+      "paise": 2484
+     },
+     {
+      "key": "rounding",
+      "paise": -43
+     }
+    ]
+   }
+  },
+  {
+   "id": "airport-night-pickup",
+   "placeholder": true,
+   "description": "Airport pickup at 23:30 with a flat night charge",
+   "input": {
+    "tripType": "airport",
+    "rateCard": {
+     "tripType": "airport",
+     "basePaise": 20000,
+     "perKmPaise": 1400,
+     "minKmPerDay": null,
+     "perHourPaise": null,
+     "packageHours": null,
+     "packageKm": null,
+     "extraKmPaise": null,
+     "extraHourPaise": null,
+     "bataPerDayPaise": null
+    },
+    "distanceM": 22000,
+    "startAt": "2026-11-02T23:30:00+05:30",
+    "surcharges": [
+     {
+      "id": "n1",
+      "kind": "night",
+      "label": "Night charge",
+      "scope": {},
+      "amountPaise": 15000,
+      "bps": null
+     },
+     {
+      "id": "ap1",
+      "kind": "airport",
+      "label": "Airport entry",
+      "scope": {},
+      "amountPaise": 10000,
+      "bps": null
+     }
+    ],
+    "settings": {
+     "nightStart": "22:00",
+     "nightEnd": "06:00",
+     "gstRateBps": 500,
+     "stateCode": "33",
+     "advanceBps": null
+    },
+    "placeOfSupplyStateCode": "33",
+    "vehicleClassId": "sedan"
+   },
+   "expect": {
+    "ok": true,
+    "totalPaise": 79600,
+    "taxablePaise": 75800,
+    "gst": {
+     "cgstPaise": 1895,
+     "sgstPaise": 1895,
+     "igstPaise": 0
+    },
+    "advanceDuePaise": null,
+    "days": 1,
+    "lines": [
+     {
+      "key": "base",
+      "paise": 20000
+     },
+     {
+      "key": "distance",
+      "paise": 30800
+     },
+     {
+      "key": "surcharge:n1",
+      "paise": 15000
+     },
+     {
+      "key": "surcharge:ap1",
+      "paise": 10000
+     },
+     {
+      "key": "cgst",
+      "paise": 1895
+     },
+     {
+      "key": "sgst",
+      "paise": 1895
+     },
+     {
+      "key": "rounding",
+      "paise": 10
+     }
+    ]
+   }
+  },
+  {
+   "id": "pondicherry-one-way",
+   "placeholder": true,
+   "description": "Chennai to Pondicherry one-way, sedan, one day",
+   "input": {
+    "tripType": "outstation_one_way",
+    "rateCard": {
+     "tripType": "outstation_one_way",
+     "basePaise": null,
+     "perKmPaise": 1200,
+     "minKmPerDay": 130,
+     "perHourPaise": null,
+     "packageHours": null,
+     "packageKm": null,
+     "extraKmPaise": null,
+     "extraHourPaise": null,
+     "bataPerDayPaise": 30000
+    },
+    "distanceM": 152300,
+    "startAt": "2026-11-03T07:00:00+05:30",
+    "settings": {
+     "nightStart": "22:00",
+     "nightEnd": "06:00",
+     "gstRateBps": 500,
+     "stateCode": "33",
+     "advanceBps": null
+    },
+    "surcharges": [],
+    "placeOfSupplyStateCode": "33",
+    "vehicleClassId": "sedan"
+   },
+   "expect": {
+    "ok": true,
+    "totalPaise": 223400,
+    "taxablePaise": 212760,
+    "gst": {
+     "cgstPaise": 5319,
+     "sgstPaise": 5319,
+     "igstPaise": 0
+    },
+    "advanceDuePaise": null,
+    "days": 1,
+    "lines": [
+     {
+      "key": "distance",
+      "paise": 182760
+     },
+     {
+      "key": "bata",
+      "paise": 30000
+     },
+     {
+      "key": "cgst",
+      "paise": 5319
+     },
+     {
+      "key": "sgst",
+      "paise": 5319
+     },
+     {
+      "key": "rounding",
+      "paise": 2
+     }
+    ]
+   }
+  },
+  {
+   "id": "one-way-minimum-km",
+   "placeholder": true,
+   "description": "Short one-way hop where the 130 km daily minimum applies",
+   "input": {
+    "tripType": "outstation_one_way",
+    "rateCard": {
+     "tripType": "outstation_one_way",
+     "basePaise": null,
+     "perKmPaise": 1200,
+     "minKmPerDay": 130,
+     "perHourPaise": null,
+     "packageHours": null,
+     "packageKm": null,
+     "extraKmPaise": null,
+     "extraHourPaise": null,
+     "bataPerDayPaise": 30000
+    },
+    "distanceM": 84000,
+    "startAt": "2026-11-03T09:00:00+05:30",
+    "settings": {
+     "nightStart": "22:00",
+     "nightEnd": "06:00",
+     "gstRateBps": 500,
+     "stateCode": "33",
+     "advanceBps": null
+    },
+    "surcharges": [],
+    "placeOfSupplyStateCode": "33",
+    "vehicleClassId": "sedan"
+   },
+   "expect": {
+    "ok": true,
+    "totalPaise": 195300,
+    "taxablePaise": 186000,
+    "gst": {
+     "cgstPaise": 4650,
+     "sgstPaise": 4650,
+     "igstPaise": 0
+    },
+    "advanceDuePaise": null,
+    "days": 1,
+    "lines": [
+     {
+      "key": "distance",
+      "paise": 156000
+     },
+     {
+      "key": "bata",
+      "paise": 30000
+     },
+     {
+      "key": "cgst",
+      "paise": 4650
+     },
+     {
+      "key": "sgst",
+      "paise": 4650
+     }
+    ]
+   }
+  },
+  {
+   "id": "one-way-night-start-4am",
+   "placeholder": true,
+   "description": "One-way starting at 04:00, inside a night window that wraps midnight, with a festival-week 5% uplift",
+   "input": {
+    "tripType": "outstation_one_way",
+    "rateCard": {
+     "tripType": "outstation_one_way",
+     "basePaise": null,
+     "perKmPaise": 1200,
+     "minKmPerDay": 130,
+     "perHourPaise": null,
+     "packageHours": null,
+     "packageKm": null,
+     "extraKmPaise": null,
+     "extraHourPaise": null,
+     "bataPerDayPaise": 30000
+    },
+    "distanceM": 210000,
+    "startAt": "2026-11-09T04:00:00+05:30",
+    "surcharges": [
+     {
+      "id": "n1",
+      "kind": "night",
+      "label": "Night charge",
+      "scope": {},
+      "amountPaise": 20000,
+      "bps": null
+     },
+     {
+      "id": "f1",
+      "kind": "festival",
+      "label": "Festival season",
+      "scope": {
+       "dateRanges": [
+        {
+         "from": "2026-11-08",
+         "to": "2026-11-10"
+        }
+       ]
+      },
+      "amountPaise": null,
+      "bps": 500
+     }
+    ],
+    "settings": {
+     "nightStart": "22:00",
+     "nightEnd": "06:00",
+     "gstRateBps": 500,
+     "stateCode": "33",
+     "advanceBps": null
+    },
+    "placeOfSupplyStateCode": "33",
+    "vehicleClassId": "sedan"
+   },
+   "expect": {
+    "ok": true,
+    "totalPaise": 330300,
+    "taxablePaise": 314600,
+    "gst": {
+     "cgstPaise": 7865,
+     "sgstPaise": 7865,
+     "igstPaise": 0
+    },
+    "advanceDuePaise": null,
+    "days": 1,
+    "lines": [
+     {
+      "key": "distance",
+      "paise": 252000
+     },
+     {
+      "key": "bata",
+      "paise": 30000
+     },
+     {
+      "key": "surcharge:n1",
+      "paise": 20000
+     },
+     {
+      "key": "surcharge:f1",
+      "paise": 12600
+     },
+     {
+      "key": "cgst",
+      "paise": 7865
+     },
+     {
+      "key": "sgst",
+      "paise": 7865
+     },
+     {
+      "key": "rounding",
+      "paise": -30
+     }
+    ]
+   }
+  },
+  {
+   "id": "madurai-round-2-days",
+   "placeholder": true,
+   "description": "Chennai to Madurai and back over 2 days: the real distance beats the minimum",
+   "input": {
+    "tripType": "outstation_round",
+    "rateCard": {
+     "tripType": "outstation_round",
+     "basePaise": null,
+     "perKmPaise": 1100,
+     "minKmPerDay": 250,
+     "perHourPaise": null,
+     "packageHours": null,
+     "packageKm": null,
+     "extraKmPaise": null,
+     "extraHourPaise": null,
+     "bataPerDayPaise": 40000
+    },
+    "distanceM": 924000,
+    "startAt": "2026-11-05T05:30:00+05:30",
+    "returnAt": "2026-11-06T21:00:00+05:30",
+    "settings": {
+     "nightStart": "22:00",
+     "nightEnd": "06:00",
+     "gstRateBps": 500,
+     "stateCode": "33",
+     "advanceBps": null
+    },
+    "surcharges": [],
+    "placeOfSupplyStateCode": "33",
+    "vehicleClassId": "sedan"
+   },
+   "expect": {
+    "ok": true,
+    "totalPaise": 1151200,
+    "taxablePaise": 1096400,
+    "gst": {
+     "cgstPaise": 27410,
+     "sgstPaise": 27410,
+     "igstPaise": 0
+    },
+    "advanceDuePaise": null,
+    "days": 2,
+    "lines": [
+     {
+      "key": "distance",
+      "paise": 1016400
+     },
+     {
+      "key": "bata",
+      "paise": 80000
+     },
+     {
+      "key": "cgst",
+      "paise": 27410
+     },
+     {
+      "key": "sgst",
+      "paise": 27410
+     },
+     {
+      "key": "rounding",
+      "paise": -20
+     }
+    ]
+   }
+  },
+  {
+   "id": "pondicherry-round-minimum",
+   "placeholder": true,
+   "description": "Round trip to Pondicherry over 2 days where the 250 km/day minimum applies",
+   "input": {
+    "tripType": "outstation_round",
+    "rateCard": {
+     "tripType": "outstation_round",
+     "basePaise": null,
+     "perKmPaise": 1100,
+     "minKmPerDay": 250,
+     "perHourPaise": null,
+     "packageHours": null,
+     "packageKm": null,
+     "extraKmPaise": null,
+     "extraHourPaise": null,
+     "bataPerDayPaise": 40000
+    },
+    "distanceM": 304000,
+    "startAt": "2026-11-07T08:00:00+05:30",
+    "returnAt": "2026-11-08T19:00:00+05:30",
+    "settings": {
+     "nightStart": "22:00",
+     "nightEnd": "06:00",
+     "gstRateBps": 500,
+     "stateCode": "33",
+     "advanceBps": null
+    },
+    "surcharges": [],
+    "placeOfSupplyStateCode": "33",
+    "vehicleClassId": "sedan"
+   },
+   "expect": {
+    "ok": true,
+    "totalPaise": 661500,
+    "taxablePaise": 630000,
+    "gst": {
+     "cgstPaise": 15750,
+     "sgstPaise": 15750,
+     "igstPaise": 0
+    },
+    "advanceDuePaise": null,
+    "days": 2,
+    "lines": [
+     {
+      "key": "distance",
+      "paise": 550000
+     },
+     {
+      "key": "bata",
+      "paise": 80000
+     },
+     {
+      "key": "cgst",
+      "paise": 15750
+     },
+     {
+      "key": "sgst",
+      "paise": 15750
+     }
+    ]
+   }
+  },
+  {
+   "id": "kodaikanal-hill",
+   "placeholder": true,
+   "description": "Chennai to Kodaikanal round trip, 3 days, with a hill charge",
+   "input": {
+    "vehicleClassId": "suv",
+    "tripType": "outstation_round",
+    "rateCard": {
+     "tripType": "outstation_round",
+     "basePaise": null,
+     "perKmPaise": 1500,
+     "minKmPerDay": 250,
+     "perHourPaise": null,
+     "packageHours": null,
+     "packageKm": null,
+     "extraKmPaise": null,
+     "extraHourPaise": null,
+     "bataPerDayPaise": 50000
+    },
+    "distanceM": 1040000,
+    "startAt": "2026-11-12T05:00:00+05:30",
+    "returnAt": "2026-11-14T22:00:00+05:30",
+    "places": [
+     "Chennai",
+     "Kodaikanal"
+    ],
+    "surcharges": [
+     {
+      "id": "h1",
+      "kind": "hill",
+      "label": "Hill / ghat charge",
+      "scope": {
+       "places": [
+        "Kodaikanal"
+       ]
+      },
+      "amountPaise": 50000,
+      "bps": null
+     }
+    ],
+    "settings": {
+     "nightStart": "22:00",
+     "nightEnd": "06:00",
+     "gstRateBps": 500,
+     "stateCode": "33",
+     "advanceBps": null
+    },
+    "placeOfSupplyStateCode": "33"
+   },
+   "expect": {
+    "ok": true,
+    "totalPaise": 1848000,
+    "taxablePaise": 1760000,
+    "gst": {
+     "cgstPaise": 44000,
+     "sgstPaise": 44000,
+     "igstPaise": 0
+    },
+    "advanceDuePaise": null,
+    "days": 3,
+    "lines": [
+     {
+      "key": "distance",
+      "paise": 1560000
+     },
+     {
+      "key": "bata",
+      "paise": 150000
+     },
+     {
+      "key": "surcharge:h1",
+      "paise": 50000
+     },
+     {
+      "key": "cgst",
+      "paise": 44000
+     },
+     {
+      "key": "sgst",
+      "paise": 44000
+     }
+    ]
+   }
+  },
+  {
+   "id": "tirupati-ap-permit",
+   "placeholder": true,
+   "description": "Chennai to Tirupati and back in a day, entering Andhra Pradesh: one permit charge",
+   "input": {
+    "tripType": "outstation_round",
+    "rateCard": {
+     "tripType": "outstation_round",
+     "basePaise": null,
+     "perKmPaise": 1100,
+     "minKmPerDay": 250,
+     "perHourPaise": null,
+     "packageHours": null,
+     "packageKm": null,
+     "extraKmPaise": null,
+     "extraHourPaise": null,
+     "bataPerDayPaise": 40000
+    },
+    "distanceM": 270000,
+    "startAt": "2026-11-15T04:30:00+05:30",
+    "returnAt": "2026-11-15T23:00:00+05:30",
+    "statesEntered": [
+     "AP"
+    ],
+    "surcharges": [
+     {
+      "id": "p1",
+      "kind": "permit",
+      "label": "State permit",
+      "scope": {
+       "states": [
+        "AP"
+       ]
+      },
+      "amountPaise": 100000,
+      "bps": null
+     }
+    ],
+    "tollEstimatePaise": 60000,
+    "settings": {
+     "nightStart": "22:00",
+     "nightEnd": "06:00",
+     "gstRateBps": 500,
+     "stateCode": "33",
+     "advanceBps": null
+    },
+    "placeOfSupplyStateCode": "33",
+    "vehicleClassId": "sedan"
+   },
+   "expect": {
+    "ok": true,
+    "totalPaise": 458900,
+    "taxablePaise": 437000,
+    "gst": {
+     "cgstPaise": 10925,
+     "sgstPaise": 10925,
+     "igstPaise": 0
+    },
+    "advanceDuePaise": null,
+    "days": 1,
+    "lines": [
+     {
+      "key": "distance",
+      "paise": 297000
+     },
+     {
+      "key": "bata",
+      "paise": 40000
+     },
+     {
+      "key": "surcharge:p1:AP",
+      "paise": 100000
+     },
+     {
+      "key": "cgst",
+      "paise": 10925
+     },
+     {
+      "key": "sgst",
+      "paise": 10925
+     },
+     {
+      "key": "rounding",
+      "paise": 50
+     }
+    ]
+   }
+  },
+  {
+   "id": "local-4h-40km",
+   "placeholder": true,
+   "description": "Local 4 hour / 40 km package, sedan",
+   "input": {
+    "tripType": "local_hourly",
+    "rateCard": {
+     "tripType": "local_hourly",
+     "basePaise": 80000,
+     "perKmPaise": null,
+     "minKmPerDay": null,
+     "perHourPaise": null,
+     "packageHours": 4,
+     "packageKm": 40,
+     "extraKmPaise": 1200,
+     "extraHourPaise": 20000,
+     "bataPerDayPaise": null
+    },
+    "distanceM": 0,
+    "startAt": "2026-11-02T09:00:00+05:30",
+    "settings": {
+     "nightStart": "22:00",
+     "nightEnd": "06:00",
+     "gstRateBps": 500,
+     "stateCode": "33",
+     "advanceBps": null
+    },
+    "surcharges": [],
+    "placeOfSupplyStateCode": "33",
+    "vehicleClassId": "sedan"
+   },
+   "expect": {
+    "ok": true,
+    "totalPaise": 84000,
+    "taxablePaise": 80000,
+    "gst": {
+     "cgstPaise": 2000,
+     "sgstPaise": 2000,
+     "igstPaise": 0
+    },
+    "advanceDuePaise": null,
+    "days": 1,
+    "lines": [
+     {
+      "key": "package",
+      "paise": 80000
+     },
+     {
+      "key": "cgst",
+      "paise": 2000
+     },
+     {
+      "key": "sgst",
+      "paise": 2000
+     }
+    ]
+   }
+  },
+  {
+   "id": "local-8h-80km-overage",
+   "placeholder": true,
+   "description": "Local 8 hour / 80 km SUV package, expected to run 95 km and 9 h 20 min",
+   "input": {
+    "vehicleClassId": "suv",
+    "tripType": "local_hourly",
+    "rateCard": {
+     "tripType": "local_hourly",
+     "basePaise": 220000,
+     "perKmPaise": null,
+     "minKmPerDay": null,
+     "perHourPaise": null,
+     "packageHours": 8,
+     "packageKm": 80,
+     "extraKmPaise": 1800,
+     "extraHourPaise": 30000,
+     "bataPerDayPaise": null
+    },
+    "distanceM": 0,
+    "startAt": "2026-11-02T08:00:00+05:30",
+    "expectedM": 95000,
+    "expectedMinutes": 560,
+    "settings": {
+     "nightStart": "22:00",
+     "nightEnd": "06:00",
+     "gstRateBps": 500,
+     "stateCode": "33",
+     "advanceBps": null
+    },
+    "surcharges": [],
+    "placeOfSupplyStateCode": "33"
+   },
+   "expect": {
+    "ok": true,
+    "totalPaise": 322400,
+    "taxablePaise": 307000,
+    "gst": {
+     "cgstPaise": 7675,
+     "sgstPaise": 7675,
+     "igstPaise": 0
+    },
+    "advanceDuePaise": null,
+    "days": 1,
+    "lines": [
+     {
+      "key": "package",
+      "paise": 220000
+     },
+     {
+      "key": "extra_km",
+      "paise": 27000
+     },
+     {
+      "key": "extra_hours",
+      "paise": 60000
+     },
+     {
+      "key": "cgst",
+      "paise": 7675
+     },
+     {
+      "key": "sgst",
+      "paise": 7675
+     },
+     {
+      "key": "rounding",
+      "paise": 50
+     }
+    ]
+   }
+  },
+  {
+   "id": "local-night-start-percent",
+   "placeholder": true,
+   "description": "Local 8h/80km starting 22:30 with a 10% night uplift",
+   "input": {
+    "tripType": "local_hourly",
+    "rateCard": {
+     "tripType": "local_hourly",
+     "basePaise": 140000,
+     "perKmPaise": null,
+     "minKmPerDay": null,
+     "perHourPaise": null,
+     "packageHours": 8,
+     "packageKm": 80,
+     "extraKmPaise": 1200,
+     "extraHourPaise": 20000,
+     "bataPerDayPaise": null
+    },
+    "distanceM": 0,
+    "startAt": "2026-11-02T22:30:00+05:30",
+    "surcharges": [
+     {
+      "id": "n2",
+      "kind": "night",
+      "label": "Night uplift",
+      "scope": {},
+      "amountPaise": null,
+      "bps": 1000
+     }
+    ],
+    "settings": {
+     "nightStart": "22:00",
+     "nightEnd": "06:00",
+     "gstRateBps": 500,
+     "stateCode": "33",
+     "advanceBps": null
+    },
+    "placeOfSupplyStateCode": "33",
+    "vehicleClassId": "sedan"
+   },
+   "expect": {
+    "ok": true,
+    "totalPaise": 161700,
+    "taxablePaise": 154000,
+    "gst": {
+     "cgstPaise": 3850,
+     "sgstPaise": 3850,
+     "igstPaise": 0
+    },
+    "advanceDuePaise": null,
+    "days": 1,
+    "lines": [
+     {
+      "key": "package",
+      "paise": 140000
+     },
+     {
+      "key": "surcharge:n2",
+      "paise": 14000
+     },
+     {
+      "key": "cgst",
+      "paise": 3850
+     },
+     {
+      "key": "sgst",
+      "paise": 3850
+     }
+    ]
+   }
+  },
+  {
+   "id": "tour-package-with-coupon",
+   "placeholder": true,
+   "description": "3-day Chennai-Pondicherry-Mahabalipuram tour package, SUV, 10% coupon capped at 500",
+   "input": {
+    "vehicleClassId": "suv",
+    "tripType": "package_tour",
+    "rateCard": null,
+    "packagePricePaise": 1200000,
+    "distanceM": 0,
+    "startAt": "2026-11-20T06:00:00+05:30",
+    "coupon": {
+     "code": "WELCOME10",
+     "kind": "percent",
+     "value": 1000,
+     "maxDiscountPaise": 50000,
+     "minSubtotalPaise": null
+    },
+    "settings": {
+     "nightStart": "22:00",
+     "nightEnd": "06:00",
+     "gstRateBps": 500,
+     "stateCode": "33",
+     "advanceBps": null
+    },
+    "surcharges": [],
+    "placeOfSupplyStateCode": "33"
+   },
+   "expect": {
+    "ok": true,
+    "totalPaise": 1207500,
+    "taxablePaise": 1150000,
+    "gst": {
+     "cgstPaise": 28750,
+     "sgstPaise": 28750,
+     "igstPaise": 0
+    },
+    "advanceDuePaise": null,
+    "days": 1,
+    "lines": [
+     {
+      "key": "package",
+      "paise": 1200000
+     },
+     {
+      "key": "discount",
+      "paise": -50000
+     },
+     {
+      "key": "cgst",
+      "paise": 28750
+     },
+     {
+      "key": "sgst",
+      "paise": 28750
+     }
+    ]
+   }
+  },
+  {
+   "id": "airport-igst-bengaluru",
+   "placeholder": true,
+   "description": "Pickup in Bengaluru (Karnataka, state 29) by a Tamil Nadu operator: IGST, flat coupon, advance 20%",
+   "input": {
+    "tripType": "airport",
+    "rateCard": {
+     "tripType": "airport",
+     "basePaise": 25000,
+     "perKmPaise": 1500,
+     "minKmPerDay": null,
+     "perHourPaise": null,
+     "packageHours": null,
+     "packageKm": null,
+     "extraKmPaise": null,
+     "extraHourPaise": null,
+     "bataPerDayPaise": null
+    },
+    "distanceM": 38600,
+    "startAt": "2026-11-02T13:00:00+05:30",
+    "placeOfSupplyStateCode": "29",
+    "coupon": {
+     "code": "FLAT100",
+     "kind": "flat",
+     "value": 10000,
+     "maxDiscountPaise": null,
+     "minSubtotalPaise": null
+    },
+    "settings": {
+     "nightStart": "22:00",
+     "nightEnd": "06:00",
+     "gstRateBps": 500,
+     "stateCode": "33",
+     "advanceBps": 2000
+    },
+    "surcharges": [],
+    "vehicleClassId": "sedan"
+   },
+   "expect": {
+    "ok": true,
+    "totalPaise": 76500,
+    "taxablePaise": 72900,
+    "gst": {
+     "cgstPaise": 0,
+     "sgstPaise": 0,
+     "igstPaise": 3645
+    },
+    "advanceDuePaise": 15300,
+    "days": 1,
+    "lines": [
+     {
+      "key": "base",
+      "paise": 25000
+     },
+     {
+      "key": "distance",
+      "paise": 57900
+     },
+     {
+      "key": "discount",
+      "paise": -10000
+     },
+     {
+      "key": "igst",
+      "paise": 3645
+     },
+     {
+      "key": "rounding",
+      "paise": -45
+     }
+    ]
+   }
+  }
+ ]
+}
