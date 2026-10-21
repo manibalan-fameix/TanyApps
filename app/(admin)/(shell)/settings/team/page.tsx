@@ -1,12 +1,10 @@
-import { eq } from "drizzle-orm"
 import { redirect } from "next/navigation"
 
 import { SettingsPage } from "@/components/settings/settings-page"
 import { AddTeammate, RemoveTeammate, ResetPassword } from "@/components/settings/team-actions"
 import { Badge } from "@/components/ui/badge"
 import { getDealerContext } from "@/lib/auth/context"
-import { unscopedDb } from "@/lib/db/client"
-import { dealerUsers, users } from "@/lib/db/schema"
+import { listTeamMembers } from "@/lib/tenant/team"
 
 export const metadata = { title: "Team" }
 
@@ -14,11 +12,7 @@ export default async function TeamPage() {
   const ctx = await getDealerContext()
   if (ctx.status !== "ok") redirect("/login")
   const members = ctx.dealerInDb
-    ? await unscopedDb
-        .select({ id: users.id, name: users.name, email: users.email, phone: users.phone, role: dealerUsers.role })
-        .from(dealerUsers)
-        .innerJoin(users, eq(users.id, dealerUsers.userId))
-        .where(eq(dealerUsers.dealerId, ctx.dealer.id))
+    ? await listTeamMembers(ctx.dealer.id)
     : [{ id: ctx.user.id, name: ctx.user.name ?? null, email: ctx.user.email ?? null, phone: null, role: ctx.role }]
 
   const canManage = ctx.role === "owner" && ctx.dealerInDb

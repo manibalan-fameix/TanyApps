@@ -1,6 +1,10 @@
 import { z } from "zod"
 
+import { distanceKm, type Point } from "../core/geo/distance"
 import { validCoords } from "./location"
+
+// Distance helpers moved to lib/core/geo; re-exported so existing imports keep working.
+export { distanceKm, formatKm } from "../core/geo/distance"
 
 export const MIN_RADIUS_KM = 0.5
 export const MAX_RADIUS_KM = 100
@@ -22,18 +26,6 @@ export function readServiceArea(stored: unknown): ServiceArea | null {
   return parsed.success && validCoords(parsed.data.lat, parsed.data.lng) ? parsed.data : null
 }
 
-type Point = { lat: number; lng: number }
-
-/** Straight-line distance over the Earth's surface, in kilometres (haversine). Roads are longer, which is why owners set a radius. */
-export function distanceKm(a: Point, b: Point): number {
-  const R = 6371
-  const rad = (d: number) => (d * Math.PI) / 180
-  const dLat = rad(b.lat - a.lat)
-  const dLng = rad(b.lng - a.lng)
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
-}
-
 export type RadiusCheck = { distanceKm: number; radiusKm: number; within: boolean }
 
 /** Whether a guest's point is inside the radius. Null when no radius is set, so nothing is limited. */
@@ -51,5 +43,3 @@ export function osmEmbedUrl(lat: number, lng: number, radiusKm: number | null): 
   const bbox = [lng - dLng, lat - dLat, lng + dLng, lat + dLat].map((n) => n.toFixed(5)).join("%2C")
   return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`
 }
-
-export const formatKm = (km: number) => (km < 10 ? km.toFixed(1) : String(Math.round(km))).replace(/\.0$/, "")

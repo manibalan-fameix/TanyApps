@@ -9,7 +9,7 @@ import { applyListingToCar, videoSearchText } from "@/lib/cars/from-video"
 import { cleanVoiceValues, readVoiceDraft, voiceToListing } from "@/lib/cars/from-voice"
 import { cars } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
-import { allow } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/core/rate-limit"
 import { getAllVariants } from "@/lib/variants/repo"
 
 /** The signed-in dealer, only when their plan includes adding a car by voice (Growth and above). */
@@ -40,7 +40,7 @@ export async function saveVoiceDraftAction(input: { carId?: string; values: Reco
   const parsedId = carIdInput.safeParse(input?.carId)
   const values = cleanVoiceValues(input?.values)
   if (!parsedLang.success || !parsedId.success || Object.keys(values).length === 0) return { ok: false as const, error: "invalid" as const }
-  if (!allow(`voice-draft:${d.id}`, 600, 3_600_000)) return { ok: false as const, error: "rate_limited" as const }
+  if (!(await rateLimit(`voice-draft:${d.id}`, 600, 3_600_000))) return { ok: false as const, error: "rate_limited" as const }
 
   let carId = parsedId.data
   if (carId) {
@@ -65,7 +65,7 @@ export async function createCarFromVoiceAction(input: Record<string, unknown>, o
   const values = cleanVoiceValues(input)
   const parsedId = carIdInput.safeParse(options?.carId)
   if (Object.keys(values).length === 0 || !parsedId.success) return { ok: false as const, error: "invalid" as const }
-  if (!allow(`voice-listing:${d.id}`, 30, 3_600_000)) return { ok: false as const, error: "rate_limited" as const }
+  if (!(await rateLimit(`voice-listing:${d.id}`, 30, 3_600_000))) return { ok: false as const, error: "rate_limited" as const }
 
   let carId = parsedId.data
   if (carId) {

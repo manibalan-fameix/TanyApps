@@ -1,7 +1,7 @@
 import { z } from "zod"
 
 import type { BusinessHours, DayKey } from "../hours"
-import { INDUSTRY_KEYS } from "../industries"
+import { LIVE_INDUSTRY_KEYS } from "../verticals"
 import { BILLING_CYCLES, SIGNUP_PLAN_KEYS, TRIAL_DAYS, isFreePlan } from "../plans"
 import { isValidSlug } from "../tenant/host"
 import { RADIUS_OPTIONS, type RadiusKey, dealerThemeSchema, readableOn } from "../theme/tokens"
@@ -53,7 +53,7 @@ export const slugSchema = z
   .refine(isValidSlug, "Use letters, numbers and hyphens only. This name is not available.")
 
 export const onboardSchema = z.object({
-  industry: z.enum(INDUSTRY_KEYS).default("motors"),
+  industry: z.enum(LIVE_INDUSTRY_KEYS).default("motors"),
   displayName: z.string().trim().min(2, "Enter your business name.").max(80),
   slug: slugSchema,
   city: z.string().trim().min(2, "Enter your city.").max(60),

@@ -47,7 +47,12 @@ function EditInput({
   "value" | "defaultValue" | "onChange"
 >) {
   const [draft, setDraft] = useState(text)
-  useEffect(() => setDraft(text), [text])
+  // Follow a changed blank by resetting during render (React's "adjust state on prop change" pattern), not in an effect.
+  const [seen, setSeen] = useState(text)
+  if (seen !== text) {
+    setSeen(text)
+    setDraft(text)
+  }
   return (
     <Input
       {...props}

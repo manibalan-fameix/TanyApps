@@ -1,14 +1,13 @@
 "use server"
 
 import { and, asc, eq, inArray, sql } from "drizzle-orm"
-import { headers } from "next/headers"
 import { z } from "zod"
 
 import { razorpayCredentials } from "@/lib/billing/razorpay"
 import { billingState } from "@/lib/billing/state"
 import { coupons, deliveryZones, menuItems, orders, reviews } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
-import { allow } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/core/rate-limit"
 import { createFoodOrder, verifyBookingPaymentSignature } from "@/lib/route/razorpay"
 import { applyOrderPayment, expireUnpaidOrders, onlinePaymentsAvailable, payoutAccountFor } from "@/lib/restaurant/payments"
 import { checkoutSchema, coordsToStore, couponDiscount, newOrderCode, priceOrder } from "@/lib/restaurant/orders"
@@ -18,19 +17,12 @@ import { type Place, pincodeCentre, reverseGeocode, searchPlaces } from "@/lib/r
 import { validCoords } from "@/lib/restaurant/location"
 import { checkRadius, formatKm, readServiceArea } from "@/lib/restaurant/service-area"
 import { logReserved, releaseOrderStock, releaseStock, reserveStock } from "@/lib/restaurant/stock-server"
-import { type DealerProfile, getDealerBySlug } from "@/lib/tenant/dealer"
-import { TENANT_HEADER } from "@/lib/tenant/host"
+import { tenantContext } from "@/lib/core/guards"
+import type { DealerProfile } from "@/lib/tenant/dealer"
 
 type Fail = { ok: false; error: string; field?: string }
 
-async function context() {
-  const h = await headers()
-  const slug = h.get(TENANT_HEADER)
-  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "unknown"
-  const dealer = slug ? await getDealerBySlug(slug) : null
-  if (!dealer || dealer.industry !== "restaurants" || dealer.suspended) return null
-  return { dealer, ip }
-}
+const context = () => tenantContext("restaurants")
 
 const unavailable: Fail = { ok: false, error: "This restaurant is not taking requests right now." }
 
@@ -38,7 +30,7 @@ const unavailable: Fail = { ok: false, error: "This restaurant is not taking req
 export async function previewCoupon(code: string, subtotal: number): Promise<{ ok: true; discount: number } | Fail> {
   const ctx = await context()
   if (!ctx) return unavailable
-  if (!allow(`coupon:${ctx.dealer.id}:${ctx.ip}`, 30, 10 * 60_000)) return { ok: false, error: "Too many tries. Please wait a moment." }
+  if (!(await rateLimit(`coupon:${ctx.dealer.id}:${ctx.ip}`, 30, 10 * 60_000))) return { ok: false, error: "Too many tries. Please wait a moment." }
   const clean = code.trim().toUpperCase()
   if (!clean || !Number.isFinite(subtotal) || subtotal < 0) return { ok: false, error: "Enter a coupon code." }
   const [row] = await scopedDb(ctx.dealer.id).coupons.select(eq(coupons.code, clean), { limit: 1 })
@@ -52,7 +44,7 @@ export type DeliveryQuote = { zoneName: string; fee: number; minOrder: number | 
 export async function previewDelivery(pincode: string, lat: number | null = null, lng: number | null = null): Promise<{ ok: true; quote: DeliveryQuote | null } | Fail> {
   const ctx = await context()
   if (!ctx) return unavailable
-  if (!allow(`quote:${ctx.dealer.id}:${ctx.ip}`, 60, 10 * 60_000)) return { ok: false, error: "Too many tries. Please wait a moment." }
+  if (!(await rateLimit(`quote:${ctx.dealer.id}:${ctx.ip}`, 60, 10 * 60_000))) return { ok: false, error: "Too many tries. Please wait a moment." }
   const check = await areaCheck(ctx.dealer, pincode.trim(), lat !== null && lng !== null && validCoords(lat, lng) ? { lat, lng } : null)
   if (!check.deliverable) return { ok: false, error: notDeliverable(check), field: "pincode" }
   if (!check.zonesEnabled || check.zone === null || check.fee === null) return { ok: true, quote: null }
@@ -71,7 +63,7 @@ export async function placeOrder(input: unknown): Promise<{ ok: true; code: stri
   if (!ctx) return unavailable
   const { dealer, ip } = ctx
   if (!billingState(dealer).hasAccess) return unavailable
-  if (!allow(`order:${dealer.id}:${ip}`, 8, 10 * 60_000)) return { ok: false, error: "Too many orders from this device. Please wait a few minutes." }
+  if (!(await rateLimit(`order:${dealer.id}:${ip}`, 8, 10 * 60_000))) return { ok: false, error: "Too many orders from this device. Please wait a few minutes." }
 
   const parsed = checkoutSchema.safeParse(input)
   if (!parsed.success) {
@@ -176,10 +168,10 @@ export async function placeOrder(input: unknown): Promise<{ ok: true; code: stri
 export async function confirmOrderPayment(input: { orderId: string; paymentId: string; signature: string }): Promise<{ ok: true; code: string } | Fail> {
   const ctx = await context()
   if (!ctx) return unavailable
-  if (!allow(`confirm:${ctx.ip}`, 30, 10 * 60_000)) return { ok: false, error: "Too many tries. Please wait a moment." }
+  if (!(await rateLimit(`confirm:${ctx.ip}`, 30, 10 * 60_000))) return { ok: false, error: "Too many tries. Please wait a moment." }
   if (!(await verifyBookingPaymentSignature(input))) return { ok: false, error: "We could not verify that payment." }
   try {
-    const r = await applyOrderPayment(input.orderId, input.paymentId)
+    const r = await applyOrderPayment(input.orderId, input.paymentId, new Date(), ctx.dealer.id)
     if (!r.found || !r.code) return { ok: false, error: "We could not find that order." }
     if (r.refunded) return { ok: false, error: "This order expired before your payment arrived, so it has been refunded." }
     return { ok: true, code: r.code }
@@ -193,7 +185,7 @@ export async function confirmOrderPayment(input: { orderId: string; paymentId: s
 export async function getPaymentCheckout(code: string): Promise<{ ok: true; checkout: PaymentCheckout } | Fail> {
   const ctx = await context()
   if (!ctx) return unavailable
-  if (!allow(`paynow:${ctx.ip}`, 20, 10 * 60_000)) return { ok: false, error: "Too many tries. Please wait a moment." }
+  if (!(await rateLimit(`paynow:${ctx.ip}`, 20, 10 * 60_000))) return { ok: false, error: "Too many tries. Please wait a moment." }
   if (!/^[A-Za-z0-9]{6}$/.test(code)) return { ok: false, error: "Order not found." }
   await expireUnpaidOrders(ctx.dealer.id)
   const [order] = await scopedDb(ctx.dealer.id).orders.select(eq(orders.code, code.toUpperCase()), { limit: 1 })
@@ -206,7 +198,7 @@ export async function getPaymentCheckout(code: string): Promise<{ ok: true; chec
 export async function cancelPendingOrder(code: string): Promise<{ ok: true } | Fail> {
   const ctx = await context()
   if (!ctx) return unavailable
-  if (!allow(`cancel-pending:${ctx.ip}`, 20, 10 * 60_000)) return { ok: false, error: "Too many tries. Please wait a moment." }
+  if (!(await rateLimit(`cancel-pending:${ctx.ip}`, 20, 10 * 60_000))) return { ok: false, error: "Too many tries. Please wait a moment." }
   if (!/^[A-Za-z0-9]{6}$/.test(code)) return { ok: false, error: "Order not found." }
   const db = scopedDb(ctx.dealer.id)
   const rows = await db.orders
@@ -226,7 +218,7 @@ const enquirySchema = z.object({
 export async function sendEnquiry(input: unknown): Promise<{ ok: true } | Fail> {
   const ctx = await context()
   if (!ctx) return unavailable
-  if (!allow(`enquiry:${ctx.dealer.id}:${ctx.ip}`, 5, 60 * 60_000)) return { ok: false, error: "Too many messages. Please try again later." }
+  if (!(await rateLimit(`enquiry:${ctx.dealer.id}:${ctx.ip}`, 5, 60 * 60_000))) return { ok: false, error: "Too many messages. Please try again later." }
   const parsed = enquirySchema.safeParse(input)
   if (!parsed.success) {
     const issue = parsed.error.issues[0]
@@ -246,7 +238,7 @@ const reviewSchema = z.object({
 export async function submitReview(input: unknown): Promise<{ ok: true } | Fail> {
   const ctx = await context()
   if (!ctx) return unavailable
-  if (!allow(`review:${ctx.dealer.id}:${ctx.ip}`, 10, 60 * 60_000)) return { ok: false, error: "Too many tries. Please try again later." }
+  if (!(await rateLimit(`review:${ctx.dealer.id}:${ctx.ip}`, 10, 60 * 60_000))) return { ok: false, error: "Too many tries. Please try again later." }
   const parsed = reviewSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: "Choose a rating from 1 to 5." }
   const db = scopedDb(ctx.dealer.id)
@@ -338,7 +330,7 @@ export type LocateResult = ({ ok: true; pincode: string; area: string; city: str
 export async function locateGuest(lat: number, lng: number): Promise<LocateResult> {
   const ctx = await context()
   if (!ctx) return unavailable
-  if (!allow(`locate:${ctx.ip}`, 40, 10 * 60_000)) return { ok: false, error: "Too many tries. Please wait a moment." }
+  if (!(await rateLimit(`locate:${ctx.ip}`, 40, 10 * 60_000))) return { ok: false, error: "Too many tries. Please wait a moment." }
   if (!validCoords(lat, lng)) return { ok: false, error: "We can only deliver within India." }
   const found = await reverseGeocode(lat, lng)
   if (!found) return { ok: false, error: "We could not find an address for that spot. Enter your pincode instead.", field: "geocode" }
@@ -351,7 +343,7 @@ export async function locateGuest(lat: number, lng: number): Promise<LocateResul
 export async function searchGuestPlaces(query: string): Promise<{ ok: true; places: Place[] } | Fail> {
   const ctx = await context()
   if (!ctx) return unavailable
-  if (!allow(`place-search:${ctx.ip}`, 40, 10 * 60_000)) return { ok: false, error: "Too many searches. Please wait a moment." }
+  if (!(await rateLimit(`place-search:${ctx.ip}`, 40, 10 * 60_000))) return { ok: false, error: "Too many searches. Please wait a moment." }
   return { ok: true, places: await searchPlaces(String(query).slice(0, 120)) }
 }
 
@@ -359,7 +351,7 @@ export async function searchGuestPlaces(query: string): Promise<{ ok: true; plac
 export async function checkPincode(pincode: string): Promise<LocateResult> {
   const ctx = await context()
   if (!ctx) return unavailable
-  if (!allow(`pincode:${ctx.ip}`, 60, 10 * 60_000)) return { ok: false, error: "Too many tries. Please wait a moment." }
+  if (!(await rateLimit(`pincode:${ctx.ip}`, 60, 10 * 60_000))) return { ok: false, error: "Too many tries. Please wait a moment." }
   const clean = pincode.trim()
   if (!/^[1-9]\d{5}$/.test(clean)) return { ok: false, error: "Enter a 6-digit pincode.", field: "pincode" }
   const check = await areaCheck(ctx.dealer, clean, null)

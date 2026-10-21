@@ -1,3 +1,4 @@
+import { tenantFrom } from "@/lib/core/guards"
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
@@ -5,9 +6,7 @@ import { roadRoute } from "@/lib/restaurant/route"
 import { saveFix } from "@/lib/restaurant/live-location"
 import { TOKEN_RE, fixInputSchema, hashRiderToken, sharingAllowed, toFix } from "@/lib/restaurant/tracking"
 import { orderByRiderToken } from "@/lib/restaurant/trip"
-import { allow } from "@/lib/rate-limit"
-import { getDealerBySlug } from "@/lib/tenant/dealer"
-import { TENANT_HEADER } from "@/lib/tenant/host"
+import { rateLimit } from "@/lib/core/rate-limit"
 
 const body = z.object({ token: z.string().regex(TOKEN_RE) }).and(fixInputSchema)
 const json = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } })
@@ -15,14 +14,14 @@ const json = (data: unknown, status = 200) => NextResponse.json(data, { status, 
 // A rider's phone posts its position here every few seconds while the delivery link is open. The private link
 // itself is the credential, and it only ever reaches the one order it was made for.
 export async function POST(req: Request) {
-  const slug = req.headers.get(TENANT_HEADER)
-  const dealer = slug ? await getDealerBySlug(slug) : null
-  if (!dealer || dealer.industry !== "restaurants" || dealer.suspended) return json({ ok: false }, 404)
+  const tenant = await tenantFrom(req.headers, "restaurants")
+  if (!tenant) return json({ ok: false }, 404)
+  const { dealer } = tenant
 
   const parsed = body.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return json({ ok: false, error: "invalid" }, 400)
   // Per link, so one rider cannot flood the store: a phone sends about 15 a minute, this allows 40.
-  if (!allow(`rider-loc:${(await hashRiderToken(parsed.data.token)).slice(0, 16)}`, 40, 60_000)) return json({ ok: false, error: "slow_down" }, 429)
+  if (!(await rateLimit(`rider-loc:${(await hashRiderToken(parsed.data.token)).slice(0, 16)}`, 40, 60_000))) return json({ ok: false, error: "slow_down" }, 429)
 
   const order = await orderByRiderToken(dealer.id, parsed.data.token)
   if (!order) return json({ ok: false, error: "link_closed" }, 404)

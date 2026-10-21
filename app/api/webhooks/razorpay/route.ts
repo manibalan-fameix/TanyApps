@@ -3,7 +3,17 @@ import { NextResponse } from "next/server"
 import { verifyWebhookSignature, type RazorpaySubscription } from "@/lib/billing/razorpay"
 import { applySubscription } from "@/lib/billing/service"
 import { applyAccountStatus, applyBookingPayment } from "@/lib/bookings/service"
+import { dispatchCapturedPayment, type PaymentHandlers } from "@/lib/core/payments/webhook"
 import { applyOrderPayment } from "@/lib/restaurant/payments"
+
+const paymentHandlers: PaymentHandlers = {
+  eats_order: async (orderId, paymentId) => applyOrderPayment(orderId, paymentId),
+  // applyBookingPayment is idempotent and reports only whether it changed anything, so a miss is not an error here.
+  motors_booking: async (orderId, paymentId) => {
+    await applyBookingPayment(orderId, paymentId)
+    return { found: true }
+  },
+}
 
 // Razorpay sends events for every subscription, booking payment and Route account state change. Set the
 // same secret in the Razorpay dashboard (Settings > Webhooks) and as RAZORPAY_WEBHOOK_SECRET.
@@ -22,7 +32,7 @@ export async function POST(req: Request) {
     event?: string
     payload?: {
       subscription?: { entity?: RazorpaySubscription }
-      payment?: { entity?: { id: string; order_id: string } }
+      payment?: { entity?: { id: string; order_id: string; notes?: Record<string, unknown> | [] } }
       account?: { entity?: { id: string; status: string } }
     }
   }
@@ -39,11 +49,9 @@ export async function POST(req: Request) {
     if (event.event?.startsWith("subscription.") && sub?.id) {
       await applySubscription(sub)
     } else if (event.event === "payment.captured" && payment?.order_id) {
-      // A food order if one has this Razorpay order id, otherwise a car booking.
-      const food = await applyOrderPayment(payment.order_id, payment.id)
-      // A late payment whose refund failed must not be acknowledged: Razorpay retries until the refund goes through.
-      if (food.refundFailed) throw new Error("refund of a late payment failed")
-      if (!food.found) await applyBookingPayment(payment.order_id, payment.id)
+      // Dispatch on notes.kind (set when the order was created). Orders from before kinds existed take the fallback path.
+      const notes = Array.isArray(payment.notes) ? null : payment.notes // Razorpay sends [] when there are no notes
+      await dispatchCapturedPayment({ orderId: payment.order_id, paymentId: payment.id, notes }, paymentHandlers)
     } else if (event.event?.startsWith("account.") && account?.id) {
       await applyAccountStatus(account.id, account.status)
     } else {

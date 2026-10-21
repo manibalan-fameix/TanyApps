@@ -6,7 +6,7 @@ import { classifySource, deviceOf, isBot } from "@/lib/analytics/events"
 import { recordEvent } from "@/lib/analytics/track"
 import { cars } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
-import { allow } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/core/rate-limit"
 import { getDealerBySlug } from "@/lib/tenant/dealer"
 import { TENANT_HEADER } from "@/lib/tenant/host"
 
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   if (!parsed.success) return new NextResponse(null, { status: 204 })
 
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("cf-connecting-ip") || "unknown"
-  if (!allow(`track:${ip}:${slug}`, 60, 60_000)) return new NextResponse(null, { status: 204 })
+  if (!(await rateLimit(`track:${ip}:${slug}`, 60, 60_000))) return new NextResponse(null, { status: 204 })
 
   const dealer = await getDealerBySlug(slug)
   if (!dealer || dealer.suspended) return new NextResponse(null, { status: 204 })

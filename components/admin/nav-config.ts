@@ -25,6 +25,7 @@ import {
 } from "@hugeicons/core-free-icons"
 
 import { copy } from "@/lib/copy"
+import type { IndustryKey } from "@/lib/verticals"
 
 const n = copy.admin.nav
 
@@ -141,6 +142,60 @@ export const navRestaurantGroups: NavGroup[] = [
 
 /** Every restaurant page, flat. Used for page titles and the phone "More" sheet. */
 export const navRestaurant: NavMainItem[] = navRestaurantGroups.flatMap((g) => g.items)
+
+export type NavTab = { href: string; icon: IconSvgElement; label: string; isActive: (pathname: string) => boolean }
+
+const under = (pathname: string, url: string) => pathname === url || pathname.startsWith(`${url}/`)
+
+/**
+ * How the admin shell looks per industry. A `Record<IndustryKey, ...>`, so adding an industry to the registry fails to
+ * compile until its navigation is described here.
+ */
+export type AdminNavSpec = {
+  /** Sidebar groups; null means the flat `items` list. */
+  groups: NavGroup[] | null
+  items: NavMainItem[]
+  /** The "recent cars" block under the main nav. */
+  showRecentCars: boolean
+  /** The prominent "add" button in the sidebar and on the phone tab bar. */
+  addItem: { href: string; label: string }
+  /** Phone tab bar: the second tab (the catalogue) and the fourth (the inbox). */
+  catalogueTab: NavTab
+  inboxTab: NavTab
+  /** Pages with their own tab, so "More" lists everything else. */
+  tabUrls: string[]
+}
+
+export const ADMIN_NAV: Record<IndustryKey, AdminNavSpec> = {
+  motors: {
+    groups: null,
+    items: navMain,
+    showRecentCars: true,
+    addItem: { href: "/cars/new", label: n.addCar },
+    catalogueTab: { href: "/cars", icon: Car01Icon, label: n.cars, isActive: (p) => under(p, "/cars") && p !== "/cars/new" },
+    inboxTab: { href: "/leads", icon: UserMultiple02Icon, label: n.leads, isActive: (p) => under(p, "/leads") },
+    tabUrls: ["/dashboard", "/cars", "/leads"],
+  },
+  restaurants: {
+    groups: navRestaurantGroups,
+    items: navRestaurant,
+    showRecentCars: false,
+    addItem: { href: "/menu/new", label: "Add dish" },
+    catalogueTab: { href: "/menu", icon: Restaurant01Icon, label: "Menu", isActive: (p) => under(p, "/menu") && p !== "/menu/new" },
+    inboxTab: { href: "/orders", icon: ShoppingBag01Icon, label: "Orders", isActive: (p) => under(p, "/orders") },
+    tabUrls: ["/dashboard", "/menu", "/orders"],
+  },
+  // Not selectable yet (Vertical.adminReady is false). Phase 1 replaces this with the real cab navigation.
+  cabs: {
+    groups: null,
+    items: navMain,
+    showRecentCars: false,
+    addItem: { href: "/cabs/fleet", label: "Add vehicle" },
+    catalogueTab: { href: "/cabs/fleet", icon: Car01Icon, label: "Fleet", isActive: (p) => under(p, "/cabs/fleet") },
+    inboxTab: { href: "/cabs/bookings", icon: UserMultiple02Icon, label: "Bookings", isActive: (p) => under(p, "/cabs/bookings") },
+    tabUrls: ["/dashboard", "/cabs/fleet", "/cabs/bookings"],
+  },
+}
 
 export const navSecondary = {
   help: { title: n.help, url: "/help", icon: HelpCircleIcon },

@@ -1,22 +1,21 @@
+import { requireRestaurant } from "@/lib/restaurant/guard"
 import { eq } from "drizzle-orm"
-import { notFound, redirect } from "next/navigation"
+import { notFound } from "next/navigation"
 import { asc } from "drizzle-orm"
 import { z } from "zod"
 
 import { MenuItemForm } from "@/components/restaurant/menu-item-form"
 import { SettingsPage } from "@/components/settings/settings-page"
-import { getDealerContext } from "@/lib/auth/context"
 import { menuCategories, menuItems } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
 
 export const metadata = { title: "Edit dish" }
 
 export default async function EditDishPage({ params }: { params: Promise<{ id: string }> }) {
-  const ctx = await getDealerContext()
-  if (ctx.status !== "ok" || ctx.dealer.industry !== "restaurants") redirect("/dashboard")
+  const { dealer } = await requireRestaurant()
   const { id } = await params
   if (!z.string().uuid().safeParse(id).success) notFound()
-  const db = scopedDb(ctx.dealer.id)
+  const db = scopedDb(dealer.id)
   const [[item], categories] = await Promise.all([
     db.menuItems.select(eq(menuItems.id, id), { limit: 1 }),
     db.menuCategories.select(undefined, { orderBy: [asc(menuCategories.sortOrder)] }),

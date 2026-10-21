@@ -38,7 +38,7 @@ The reuse audit is at `docs/audits/tanycabs-reuse-audit.md`. **Read it fully bef
     - Assert that the trip's `dealer_id` matches the host tenant.
 12. **Share and tracking links use 128-bit random tokens**, hashed at rest, and expire at trip end + 2 h. Never use the 6-char booking code as an auth secret.
 13. **Background work** runs through Cloudflare Cron Triggers calling an authenticated internal route. Do not add long-running Node processes.
-14. **Rate limiting** uses the shared limiter from Phase 0 (Workers Rate Limiting binding or a Durable Object), never the in-memory one.
+14. **Rate limiting** uses `rateLimit()` from `lib/core/rate-limit` (Durable Object, async, always `await`ed), never the in-memory one. Authentication paths (PIN, OTP, login, passwords) pass `{ failClosed: true }`.
 15. **Language:** all customer- and driver-facing copy goes through the copy system, in English and Tamil (`lib/copy.ts`, `lib/copy-ta.ts`).
 16. **Quality gate per phase:** `pnpm typecheck`, `pnpm lint` and `pnpm test` all pass, new logic has unit tests, and each customer flow has one Playwright spec.
 17. **Git:**
@@ -217,18 +217,18 @@ The difference against the advance becomes the balance due.
 - Invoices: GST-compliant PDF generation (Workers-compatible), stored in R2.
 - Super-admin: cabs tenants, trips, GMV, health; CSV export.
 - Analytics events: quote_viewed, booking_started, booking_paid, trip_completed, route_page_view.
-- Audit log on fare edits, refunds, reassignments and cancellations.
+- Audit log (table and `audit()` helper built in Phase 0) written on fare edits, refunds, reassignments, overrides and cancellations. Phases 2 and 3 call it for inbox decisions and dispatch overrides.
 
 ## 5. Phases
 
 | # | Phase | Exit criteria |
 |---|---|---|
-| 0 | Foundation refactor | Vertical registry, generic guards, composable scopedDb, `lib/core` extraction (tracking, payments + `notes.kind` webhook, geo, status graph), shared rate limiter, cron route, notifications outbox skeleton. Eats + Motors tests green. |
+| 0 | Foundation refactor | Vertical registry, generic guards, composable scopedDb, `lib/core` extraction (tracking, payments + `notes.kind` webhook, geo, status graph), shared rate limiter, cron route + trigger worker with run locks, notifications outbox skeleton, **`audit_log` (append-only) + `audit()` helper**, blind-index helper. Eats + Motors tests green. |
 | 1 | Cabs skeleton + fleet + pricing | `cabs` industry end to end in onboarding/nav/shell; schema for fleet, drivers, pricing, settings; operator CRUD; fare engine + tests; Places/Routes adapter with cache. |
 | 2 | Customer identity + booking | Central OTP login, customers, addresses; customer booking flow up to `requested`; operator inbox + manual booking; trips + events + status graph; unpaid-hold expiry. |
 | 3 | Dispatch + driver PWA + tracking | Dispatch board with conflict checks; driver login + full trip flow; driver upload endpoint; tracking for trips + breadcrumbs; share link; SOS. |
 | 4 | Payments + notifications | Advance/balance/cash/refunds/cancellation fees; final bill; WhatsApp + wa.me adapters; all templates wired; tenant real-time inbox channel. |
-| 5 | Corporate + invoices + roles | Corporate accounts, employee booking, approvals, credit; GST invoices + monthly run + PDF; roles/permissions; audit log. **Pilot-ready.** |
+| 5 | Corporate + invoices + roles | Corporate accounts, employee booking, approvals, credit; GST invoices + monthly run + PDF; roles/permissions (audit log itself already exists from Phase 0). **Pilot-ready.** |
 | 6 | Hardening + pilot | Leak tests for all tables, payment replay/idempotency tests, Playwright E2E book→assign→trip→pay→invoice, per-tenant manifest + service worker, prod config check, seed script for pilot operator. |
 | 7 | Operations depth | Payouts, expenses, cash reconciliation, per-vehicle profit reports, documents expiry digest UI, blocked periods, `tstzrange` exclusion constraint, packages/tours. |
 | 8 | Growth | SEO route pages + sitemap/robots/JSON-LD, reviews, coupons upgrades, SMS + push channels, super-admin cabs views, analytics. |

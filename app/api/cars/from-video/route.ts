@@ -5,7 +5,7 @@ import { extractListingFromVideo } from "@/lib/ai/video-listing"
 import { getVisionClient, type VisionAudio, type VisionImage } from "@/lib/ai/vision"
 import { getDealerContext } from "@/lib/auth/context"
 import { createCarFromVideo, videoSearchText } from "@/lib/cars/from-video"
-import { allow } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/core/rate-limit"
 import { getAllVariants } from "@/lib/variants/repo"
 
 const MAX_FRAMES = 16
@@ -24,7 +24,7 @@ const toBase64 = async (blob: Blob) => Buffer.from(await blob.arrayBuffer()).toS
 export async function POST(req: Request) {
   const ctx = await getDealerContext()
   if (ctx.status !== "ok" || !ctx.dealerInDb) return NextResponse.json({ error: "unauthorised" }, { status: 401 })
-  if (!allow(`video-listing:${ctx.dealer.id}`, 15, 3_600_000)) return NextResponse.json({ error: "rate_limited" }, { status: 429 })
+  if (!(await rateLimit(`video-listing:${ctx.dealer.id}`, 15, 3_600_000))) return NextResponse.json({ error: "rate_limited" }, { status: 429 })
 
   const vision = getVisionClient()
   if (!vision) return NextResponse.json({ error: "no_ai" }, { status: 503 })

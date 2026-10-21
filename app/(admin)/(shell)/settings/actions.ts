@@ -1,12 +1,10 @@
 "use server"
 
-import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDealerContext } from "@/lib/auth/context"
-import { unscopedDb } from "@/lib/db/client"
-import { dealers } from "@/lib/db/schema"
 import { hoursSchema } from "@/lib/dealers/onboard"
+import { setDealerHours, setDealerTheme } from "@/lib/tenant/settings"
 import { validateTheme } from "@/lib/theme/tokens"
 
 export type SaveResult = { ok: true; note?: string } | { ok: false; error: string }
@@ -25,7 +23,7 @@ export async function saveHours(input: unknown): Promise<SaveResult> {
   if ("error" in who) return { ok: false, error: who.error }
   const parsed = hoursSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check your hours." }
-  await unscopedDb.update(dealers).set({ businessHours: parsed.data }).where(eq(dealers.id, who.id))
+  await setDealerHours(who.id, parsed.data)
   revalidatePath("/settings/hours")
   return { ok: true }
 }
@@ -35,7 +33,7 @@ export async function saveTheme(input: unknown): Promise<SaveResult> {
   if ("error" in who) return { ok: false, error: who.error }
   const result = validateTheme(input)
   if (!result.ok) return { ok: false, error: result.errors[0] ?? "Check your colours." }
-  await unscopedDb.update(dealers).set({ theme: result.theme }).where(eq(dealers.id, who.id))
+  await setDealerTheme(who.id, result.theme)
   revalidatePath("/settings/theme")
   revalidatePath("/", "layout")
   return { ok: true, note: result.adjustments[0] }

@@ -2,12 +2,8 @@ import { eq, getTableColumns, is, type SQL } from "drizzle-orm"
 import { PgTable } from "drizzle-orm/pg-core"
 import { describe, expect, it } from "vitest"
 
-import {
-  CHILD_TENANT_TABLES,
-  DIRECT_TENANT_TABLES,
-  TenantViolationError,
-  scopedDb,
-} from "../lib/db/scoped"
+import { TenantViolationError, scopedDb } from "../lib/db/scoped"
+import { CHILD_TENANT_TABLES, DIRECT_TENANT_TABLES, GLOBAL_TABLES } from "../lib/db/tenant-tables"
 import * as schema from "../lib/db/schema"
 import type { Db } from "../lib/db/client"
 
@@ -17,9 +13,15 @@ const SOME_ID = "33333333-3333-4333-8333-333333333333"
 
 const a = scopedDb(A)
 
-const UPDATE_PAYLOAD = {
+// One harmless column to update per scoped table. A table in the registry without an entry here fails the test below, so
+// nobody can register a table and skip proving that its update is scoped.
+const UPDATE_PAYLOAD: Record<string, object> = {
   cars: { colour: "red" },
   leads: { name: "x" },
+  bookings: { buyerName: "x" },
+  notifications: { template: "x" },
+  notificationOptins: { source: "x" },
+  auditLog: { action: "x" },
   dealerUsers: { role: "staff" },
   menuCategories: { name: "x" },
   menuItems: { name: "x" },
@@ -38,7 +40,7 @@ const UPDATE_PAYLOAD = {
   carViews: { referrer: "r" },
   rcTransfers: { notes: "n" },
   priceEvents: { price: 1 },
-} as const
+}
 
 type Buildable = { toSQL(): { sql: string; params: unknown[] } }
 
@@ -50,8 +52,12 @@ function assertScopedTo(query: { toSQL(): { sql: string; params: unknown[] } }, 
 }
 
 describe("scopedDb: every operation carries the dealer scope", () => {
-  const direct = ["cars", "leads", "dealerUsers", "dealerDomains", "menuCategories", "menuItems", "orders", "coupons", "reviews", "enquiries", "banners", "deliveryPartners", "deliveryZones", "stockAdjustments", "orderLocations"] as const
-  const child = ["carMedia", "rcLookups", "carViews", "rcTransfers", "priceEvents"] as const
+  const direct = Object.keys(DIRECT_TENANT_TABLES) as (keyof typeof DIRECT_TENANT_TABLES)[]
+  const child = Object.keys(CHILD_TENANT_TABLES) as (keyof typeof CHILD_TENANT_TABLES)[]
+
+  it("has an update payload for every registered table", () => {
+    for (const name of [...direct, ...child]) expect(UPDATE_PAYLOAD, `missing UPDATE_PAYLOAD.${name}`).toHaveProperty(name)
+  })
 
   for (const name of [...direct, ...child]) {
     const repo = a[name]
@@ -130,6 +136,7 @@ describe("registry: no tenant table can be added without being scoped", () => {
   const tables = Object.values(schema).filter((v) => is(v, PgTable)) as unknown as PgTable[]
   const directSet = new Set<unknown>(Object.values(DIRECT_TENANT_TABLES))
   const childSet = new Set<unknown>(Object.values(CHILD_TENANT_TABLES))
+  const globalSet = new Set<unknown>(Object.values(GLOBAL_TABLES))
 
   it("finds the schema tables", () => {
     expect(tables.length).toBeGreaterThan(10)
@@ -145,6 +152,10 @@ describe("registry: no tenant table can be added without being scoped", () => {
     } else if (cols.includes("carId")) {
       it(`${label} has car_id, so it must be a child tenant table`, () => {
         expect(childSet.has(table)).toBe(true)
+      })
+    } else {
+      it(`${label} has no dealer_id or car_id, so it must be declared global`, () => {
+        expect(globalSet.has(table), `${label} is neither tenant-scoped nor in GLOBAL_TABLES`).toBe(true)
       })
     }
   }

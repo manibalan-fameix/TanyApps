@@ -12,7 +12,8 @@
 // WebSocket Hibernation is used: an idle connection costs nothing, and the object only wakes for a message.
 import { DurableObject } from "cloudflare:workers"
 
-import { verifyTicket } from "../../lib/restaurant/ws-ticket"
+import { slideWindow } from "../../lib/core/rate-window"
+import { verifyTicket } from "../../lib/core/tracking/ws-ticket"
 
 type RouteKept = { points: [number, number][]; km: number; minutes: number; at: number; to: { lat: number; lng: number } }
 type Fix = { lat: number; lng: number; accuracy: number | null; heading: number | null; at: number }
@@ -146,6 +147,27 @@ export class OrderTracker extends DurableObject {
         // The viewer went away; the runtime cleans the connection up.
       }
     }
+  }
+}
+
+/**
+ * One sliding-window rate limit per object (the app names the object after a hash of the limit's key). The timestamps of
+ * recent hits are persisted, so the count survives the object being evicted from memory. At most `limit` timestamps are
+ * ever stored, and an alarm clears the object once its window has passed.
+ */
+export class RateLimiter extends DurableObject {
+  /** Records a hit and answers whether it is within `limit` hits per `windowMs`. */
+  async hit(limit: number, windowMs: number): Promise<boolean> {
+    if (!finite(limit) || !finite(windowMs) || limit < 1 || windowMs < 1 || windowMs > 24 * 3_600_000) throw new Error("invalid limit")
+    const now = Date.now()
+    const { allowed, hits } = slideWindow((await this.ctx.storage.get<number[]>("hits")) ?? [], now, limit, windowMs)
+    await this.ctx.storage.put("hits", hits)
+    await this.ctx.storage.setAlarm(now + windowMs)
+    return allowed
+  }
+
+  async alarm(): Promise<void> {
+    await this.ctx.storage.deleteAll()
   }
 }
 

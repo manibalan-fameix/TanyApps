@@ -144,6 +144,7 @@ export function DealerLoginForm({
     try {
       sessionStorage.removeItem(REDIRECT_MODE_KEY)
     } catch {}
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sessionStorage only exists in the browser, so reading it during render would mismatch the server HTML; this is the post-mount read of an external store.
     setMode(pending as "signin" | "signup")
     void run(async () => {
       const result = await getRedirectResult(getFirebaseAuth(config))

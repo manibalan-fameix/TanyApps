@@ -10,7 +10,7 @@ import { unscopedDb } from "../db/client"
 import { dealerUsers } from "../db/schema"
 
 import { signIn, signOut } from "./index"
-import { allow } from "../rate-limit"
+import { rateLimit } from "../core/rate-limit"
 import { verifyFirebaseIdToken } from "./firebase"
 import { findFirebaseUser } from "./firebase-user"
 import { DEV_BYPASS_COOKIE, isDevBypassEnabled } from "./dev-bypass"
@@ -63,7 +63,7 @@ export async function signInWithFirebaseToken(idToken: string): Promise<Firebase
 export async function signInTeammate(email: string, password: string): Promise<boolean> {
   const parsed = emailPasswordSchema.safeParse({ email, password })
   if (!parsed.success) return false
-  if (!allow(`teammate-login:${parsed.data.email}`, 10, 10 * 60_000)) return false
+  if (!(await rateLimit(`teammate-login:${parsed.data.email}`, 10, 10 * 60_000, { failClosed: true }))) return false
   try {
     await signIn("teammate", { email: parsed.data.email, password: parsed.data.password, redirect: false })
     return true

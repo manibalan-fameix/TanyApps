@@ -10,7 +10,7 @@ import { emptyMarketplaceDetails, marketplaceDetailsSchema } from "@/lib/cars/ma
 import { encrypt } from "@/lib/crypto"
 import { cars } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
-import { allow } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/core/rate-limit"
 import { createBookingOrder, verifyBookingPaymentSignature } from "@/lib/route/razorpay"
 import { getDealerBySlug } from "@/lib/tenant/dealer"
 
@@ -34,7 +34,7 @@ export async function createBooking(input: unknown): Promise<{ ok: true; checkou
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the details." }
   const { dealerSlug, carSlug, buyerName, buyerPhone } = parsed.data
 
-  if (!allow(`booking:${buyerPhone}`, 5, 10 * 60_000)) return { ok: false, error: "Too many attempts. Try again in a few minutes." }
+  if (!(await rateLimit(`booking:${buyerPhone}`, 5, 10 * 60_000))) return { ok: false, error: "Too many attempts. Try again in a few minutes." }
 
   const dealer = await getDealerBySlug(dealerSlug)
   if (!dealer) return { ok: false, error: "Dealer not found." }

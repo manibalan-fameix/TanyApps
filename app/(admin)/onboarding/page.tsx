@@ -1,10 +1,8 @@
-import { eq } from "drizzle-orm"
 import { redirect } from "next/navigation"
 
 import { getFirebaseWebConfig } from "@/lib/auth/firebase"
 import { getDealerContext } from "@/lib/auth/context"
-import { unscopedDb } from "@/lib/db/client"
-import { users } from "@/lib/db/schema"
+import { getUserContact } from "@/lib/tenant/user-phone"
 
 import { OnboardingWizard } from "./onboarding-wizard"
 
@@ -29,19 +27,15 @@ export default async function OnboardingPage() {
       : []
   const firstName = ctx.user.name?.trim().split(/\s+/)[0] ?? ""
   // A phone number on the user row came from an OTP sign-in, so it is already verified.
-  const [row] = await unscopedDb
-    .select({ phone: users.phone, email: users.email })
-    .from(users)
-    .where(eq(users.id, ctx.user.id))
-    .limit(1)
-  const digits = row?.phone?.replace(/\D/g, "") ?? ""
+  const row = await getUserContact(ctx.user.id)
+  const digits = row.phone?.replace(/\D/g, "") ?? ""
   const verifiedPhone = digits.length >= 10 ? digits.slice(-10) : ""
   return (
     <main>
       <OnboardingWizard
         rootDomain={PUBLIC_DOMAIN}
         firstName={firstName}
-        email={row?.email ?? ctx.user.email ?? ""}
+        email={row.email ?? ctx.user.email ?? ""}
         verifiedPhone={verifiedPhone}
         firebaseConfig={getFirebaseWebConfig()}
         testPhones={testPhones}

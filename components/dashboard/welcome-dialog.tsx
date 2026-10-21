@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
+import { type IndustryKey, getVertical } from "@/lib/verticals"
 
 const subscribe = () => () => {}
 const seenKey = (dealerId: string) => `tany:welcome-seen:${dealerId}`
@@ -42,12 +43,17 @@ export function WelcomeDialog({
   dealerId: string
   /** The showroom was created recently. */
   isNew: boolean
-  industry?: "motors" | "restaurants"
+  industry?: IndustryKey
   /** Restaurants: dishes allowed on the plan (null is unlimited). */
   menuLimit?: number | null
 }) {
-  const restaurant = industry === "restaurants"
-  const capText = restaurant ? (menuLimit == null ? "unlimited dishes" : `up to ${menuLimit} dishes`) : `up to ${maxLiveCars} cars live`
+  const vertical = getVertical(industry)
+  const capText =
+    vertical.planLimit === "menu_items"
+      ? menuLimit == null
+        ? "unlimited dishes"
+        : `up to ${menuLimit} dishes`
+      : `up to ${maxLiveCars} cars live`
   // Hidden on the server and until the browser says this dealer has not seen it, so there is no flash or mismatch.
   const seen = useSyncExternalStore(
     subscribe,
@@ -66,17 +72,7 @@ export function WelcomeDialog({
     }
   }
 
-  const steps = restaurant
-    ? [
-        "Add your dishes and group them into categories.",
-        "Share your menu link on WhatsApp and Instagram, or print it as a QR code.",
-        "Watch orders and guest messages arrive here.",
-      ]
-    : [
-        "Add your first car from a plate photo, a video or by voice.",
-        "Share its link on WhatsApp and Instagram.",
-        "Watch leads and test-drive bookings arrive here.",
-      ]
+  const steps = vertical.welcomeSteps
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -84,7 +80,7 @@ export function WelcomeDialog({
         <DialogHeader>
           <DialogTitle>Welcome to TanyApps, {name}!</DialogTitle>
           <DialogDescription>
-            Your {restaurant ? "menu page" : "showroom"} is live on the {planLabel} plan
+            Your {vertical.pageNoun} is live on the {planLabel} plan
             {free
               ? `, free for as long as you like with ${capText}. Upgrade any time.`
               : `, with ${capText}.`}
@@ -102,11 +98,11 @@ export function WelcomeDialog({
         </ol>
         <DialogFooter>
           <Link
-            href={restaurant ? "/menu/new" : "/cars/new"}
+            href={vertical.firstItemHref}
             onClick={() => setOpen(false)}
             className={cn(buttonVariants({ size: "lg" }))}
           >
-            {restaurant ? "Add my first dish" : "Add my first car"}
+            {vertical.welcomeCta}
           </Link>
           <button
             type="button"

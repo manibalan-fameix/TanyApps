@@ -17,7 +17,7 @@ import { cars } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
 import { deviceOf, isBot } from "@/lib/analytics/events"
 import { recordEvent } from "@/lib/analytics/track"
-import { allow } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/core/rate-limit"
 import { TENANT_HEADER } from "@/lib/tenant/host"
 import { getDealerBySlug } from "@/lib/tenant/dealer"
 import { getAllVariants, getVariantById } from "@/lib/variants/repo"
@@ -110,10 +110,10 @@ export async function POST(req: Request) {
   if (dealer.suspended) return NextResponse.json({ error: "chat_unavailable" }, { status: 503 })
 
   const ip = clientIp(req)
-  if (!allow(`chat:ip:${ip}`, PER_IP_LIMIT, WINDOW_MS)) {
+  if (!(await rateLimit(`chat:ip:${ip}`, PER_IP_LIMIT, WINDOW_MS))) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 })
   }
-  if (!allow(`chat:dealer:${dealer.id}`, PER_DEALER_LIMIT, WINDOW_MS)) {
+  if (!(await rateLimit(`chat:dealer:${dealer.id}`, PER_DEALER_LIMIT, WINDOW_MS))) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 })
   }
 

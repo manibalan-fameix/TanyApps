@@ -1,3 +1,5 @@
+import { getVertical } from "./verticals"
+
 export const PLAN_KEYS = ["free", "starter", "growth", "pro", "scale"] as const
 export type PlanKey = (typeof PLAN_KEYS)[number]
 
@@ -55,11 +57,29 @@ export const RESTAURANT_MENU_LIMITS: Record<PlanKey, number | null> = {
 
 /** The headline limit of a plan, worded for the industry: "Up to 50 menu items" or "Up to 25 cars live at once". */
 export function planLimitLabel(industry: string, key: PlanKey): string {
-  if (industry === "restaurants") {
-    const max = RESTAURANT_MENU_LIMITS[key]
-    return max === null ? "Unlimited menu items" : `Up to ${max} menu items`
+  switch (getVertical(industry).planLimit) {
+    case "menu_items": {
+      const max = RESTAURANT_MENU_LIMITS[key]
+      return max === null ? "Unlimited menu items" : `Up to ${max} menu items`
+    }
+    case "vehicles":
+      // Cab plan limits are decided with the cab pricing in Phase 1; cabs cannot be chosen in onboarding before that.
+      return "Plan limits are set when TanyCabs launches"
+    case "live_cars":
+      return `Up to ${PLANS[key].maxLiveCars} cars live at once`
   }
-  return `Up to ${PLANS[key].maxLiveCars} cars live at once`
+}
+
+/** What the free plan allows, finishing "Start free with ...": "up to 5 cars" or "up to 50 menu items". */
+export function freeTierPhrase(industry: string): string {
+  switch (getVertical(industry).planLimit) {
+    case "menu_items":
+      return `up to ${RESTAURANT_MENU_LIMITS.free} menu items`
+    case "vehicles":
+      return "a starter fleet"
+    case "live_cars":
+      return `up to ${PLANS.free.maxLiveCars} cars`
+  }
 }
 
 export function getPlan(key: string): PlanConfig {

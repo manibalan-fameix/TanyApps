@@ -2,7 +2,7 @@ import { index, jsonb, pgTable, primaryKey, text, timestamp, uuid } from "drizzl
 
 import type { BusinessHours } from "../../hours"
 import type { DealerTheme } from "../../theme/tokens"
-import { dealerRole } from "./enums.ts"
+import { dealerRole, industry } from "./enums.ts"
 import { users } from "./auth.ts"
 
 export const dealers = pgTable("dealers", {
@@ -10,7 +10,7 @@ export const dealers = pgTable("dealers", {
   slug: text("slug").notNull().unique(),
   displayName: text("display_name").notNull(),
   /** Kind of business (see lib/industries.ts). Every row created before industries existed is a motors dealer. */
-  industry: text("industry").notNull().default("motors"),
+  industry: industry("industry").notNull().default("motors"),
   /** Restaurant ordering rules (see lib/restaurant/settings.ts). Null until the owner changes the defaults. */
   /** Public storefront text: tagline, story, address, email (see lib/restaurant/profile.ts). */
   profile: jsonb("profile").$type<Record<string, unknown>>(),

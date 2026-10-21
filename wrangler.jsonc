@@ -21,10 +21,20 @@
     "TRACKER_WS_URL": "wss://track.tany.in/ws"
   },
   // Per-listing views, shared-link clicks and chats, read back by the dashboard through the Analytics Engine SQL API.
-  "analytics_engine_datasets": [{ "binding": "ANALYTICS", "dataset": "tany_listing_events" }],
+  "analytics_engine_datasets": [
+    { "binding": "ANALYTICS", "dataset": "tany_listing_events" },
+    // Operational counters (webhook fallback hits, rate-limiter failures). See lib/core/metrics.ts.
+    { "binding": "METRICS", "dataset": "tany_platform_metrics" }
+  ],
   // Each delivery's latest rider position lives in a Durable Object defined by workers/tracker. Deploy that worker first
   // (`pnpm deploy:tracker`, which `pnpm run deploy` does for you), then this one.
-  "durable_objects": { "bindings": [{ "name": "TRACKER", "class_name": "OrderTracker", "script_name": "tanyapps-tracker" }] },
+  "durable_objects": {
+    "bindings": [
+      { "name": "TRACKER", "class_name": "OrderTracker", "script_name": "tanyapps-tracker" },
+      // Shared rate limiter, hosted by the same worker (lib/core/rate-limit.ts). Deploy the tracker first.
+      { "name": "RATE_LIMITER", "class_name": "RateLimiter", "script_name": "tanyapps-tracker" }
+    ]
+  },
   // Production hostnames. `custom_domain` makes Cloudflare create the DNS record and certificate (the tany.in zone must be active
   // on this account, with no existing record on these names). Dealer showrooms (<slug>.tany.in) are served by the wildcard route,
   // which needs one proxied wildcard DNS record: bash scripts/setup-wildcard-dns.sh

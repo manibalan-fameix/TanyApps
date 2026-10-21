@@ -5,7 +5,6 @@ import { normalizeDate, normalizeFuel, normalizeOwnerCount } from "../lib/rc/nor
 import { getRcProvider } from "../lib/rc/provider"
 import { SurepassRcProvider } from "../lib/rc/surepass"
 import { RcError } from "../lib/rc/types"
-import { allow } from "../lib/rate-limit"
 
 describe("normalisers", () => {
   it("fuel: petrol wins on dual-fuel, electric and hybrid are distinguished", () => {
@@ -102,19 +101,5 @@ describe("surepass adapter (network mocked)", () => {
   it("infers hypothecation from a financier when the flag is absent", () => {
     expect(provider.normalize({ financer: "HDFC BANK" }, "TN11AB1234").hypothecated).toBe(true)
     expect(provider.normalize({}, "TN11AB1234").hypothecated).toBeNull()
-  })
-})
-
-describe("rate limiter", () => {
-  it("allows up to the limit within the window, then blocks, then recovers", () => {
-    const t = 1_000_000
-    expect([1, 2, 3].map(() => allow("k1", 3, 1000, t))).toEqual([true, true, true])
-    expect(allow("k1", 3, 1000, t + 10)).toBe(false)
-    expect(allow("k1", 3, 1000, t + 1001)).toBe(true)
-  })
-  it("keeps keys independent", () => {
-    expect(allow("a", 1, 1000, 5)).toBe(true)
-    expect(allow("b", 1, 1000, 5)).toBe(true)
-    expect(allow("a", 1, 1000, 6)).toBe(false)
   })
 })

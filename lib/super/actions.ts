@@ -13,7 +13,7 @@ import {
   localLoginCookieValue,
   localLoginPassword,
 } from "../auth/local-login"
-import { allow } from "../rate-limit"
+import { rateLimit } from "../core/rate-limit"
 import { superAdminEmails } from "./guard"
 
 export type SuperSignInResult = { ok: true } | { ok: false; error: string }
@@ -59,7 +59,7 @@ export async function signInSuperAdminLocal(
     password: formData.get("password"),
   })
   if (!parsed.success) return { error: "Enter a valid email and password." }
-  if (!allow(`super-local:${parsed.data.email}`, 10, 10 * 60_000))
+  if (!(await rateLimit(`super-local:${parsed.data.email}`, 10, 10 * 60_000, { failClosed: true })))
     return { error: "Too many attempts. Wait a few minutes." }
   if (
     !superAdminEmails().has(parsed.data.email) ||

@@ -9,7 +9,7 @@ import { getDealerContext } from "@/lib/auth/context"
 import { onboardSchema, slugSchema } from "@/lib/dealers/onboard"
 import { tenantUrl } from "@/lib/env"
 import { getStorage } from "@/lib/storage"
-import { allow } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/core/rate-limit"
 import { BrokenLinkError, recommendProduct } from "@/lib/ai/recommend-product"
 import type { ProductKey } from "@/lib/products"
 import { createDealerForOwner, isSlugTaken } from "@/lib/tenant/create-dealer"
@@ -20,7 +20,7 @@ export type SlugStatus = "available" | "taken" | "invalid" | "limited"
 export async function checkSlug(raw: string): Promise<SlugStatus> {
   const ctx = await getDealerContext()
   if (ctx.status !== "no-dealer") return "invalid"
-  if (!allow(`slug:${ctx.user.id}`, 60, 60_000)) return "limited"
+  if (!(await rateLimit(`slug:${ctx.user.id}`, 60, 60_000))) return "limited"
   const parsed = slugSchema.safeParse(raw)
   if (!parsed.success) return "invalid"
   return (await isSlugTaken(parsed.data)) ? "taken" : "available"
@@ -36,7 +36,7 @@ export async function verifyDealerPhone(
   const ctx = await getDealerContext()
   if (ctx.status !== "no-dealer")
     return { ok: false, error: "Please sign in again." }
-  if (!allow(`verify-phone:${ctx.user.id}`, 10, 10 * 60_000))
+  if (!(await rateLimit(`verify-phone:${ctx.user.id}`, 10, 10 * 60_000, { failClosed: true })))
     return {
       ok: false,
       error: "Too many attempts. Try again in a few minutes.",
@@ -91,7 +91,7 @@ export async function createDealership(
   const ctx = await getDealerContext()
   if (ctx.status !== "no-dealer")
     return { ok: false, error: "Please sign in again." }
-  if (!allow(`onboard:${ctx.user.id}`, 5, 10 * 60_000))
+  if (!(await rateLimit(`onboard:${ctx.user.id}`, 5, 10 * 60_000)))
     return {
       ok: false,
       error: "Too many attempts. Try again in a few minutes.",
@@ -185,7 +185,7 @@ export async function findMyProduct(
   if (ctx.status !== "no-dealer") return { ok: false, error: "Please sign in again." }
   const text = description.trim().slice(0, 300)
   if (text.length < 3) return { ok: false, error: "Tell us a little about your business." }
-  if (!allow(`recommend:${ctx.user.id}`, 15, 10 * 60_000))
+  if (!(await rateLimit(`recommend:${ctx.user.id}`, 15, 10 * 60_000)))
     return { ok: false, error: "Too many tries. Please wait a few minutes." }
   let rec
   try {

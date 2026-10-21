@@ -1,5 +1,6 @@
 import { z } from "zod"
 
+import { type StatusGraph, defineStatusGraph } from "../core/status-graph"
 import type { OrderLine } from "../db/schema/restaurant.ts"
 import { type ZoneRow, findZone, PINCODE_RE } from "./delivery"
 import { validCoords } from "./location"
@@ -39,15 +40,25 @@ export function timelineFor(fulfilment: Fulfilment): OrderStatus[] {
     : ["new", "confirmed", "preparing", "ready", "completed"]
 }
 
+/**
+ * The order lifecycle for one kind of fulfilment: each step moves to the next one on its timeline, any unfinished order
+ * can be cancelled, and an unpaid online order (`pending_payment`) can only be dropped until payment arrives.
+ */
+export function orderGraph(fulfilment: Fulfilment): StatusGraph<OrderStatus> {
+  const line = timelineFor(fulfilment)
+  // Any unfinished order can be cancelled, including a status that is not a step on this fulfilment's timeline.
+  const transitions = Object.fromEntries(ORDER_STATUSES.map((s) => [s, ["cancelled"] as OrderStatus[]])) as Record<OrderStatus, OrderStatus[]>
+  transitions.completed = []
+  transitions.cancelled = []
+  line.forEach((status, i) => {
+    if (status !== "completed") transitions[status] = [line[i + 1], "cancelled"]
+  })
+  return defineStatusGraph(transitions)
+}
+
 /** Statuses an order may move to next. Cancelling is allowed until it is done. */
 export function nextStatuses(status: OrderStatus, fulfilment: Fulfilment): OrderStatus[] {
-  if (status === "completed" || status === "cancelled") return []
-  // An unpaid online order is not on the kitchen's list yet. It can only be dropped, until payment arrives.
-  if (status === "pending_payment") return ["cancelled"]
-  const line = timelineFor(fulfilment)
-  const i = line.indexOf(status)
-  const forward = i >= 0 && i < line.length - 1 ? [line[i + 1]] : []
-  return [...forward, "cancelled"]
+  return [...orderGraph(fulfilment).next(status)]
 }
 
 const CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"

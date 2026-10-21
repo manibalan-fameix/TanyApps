@@ -1,3 +1,4 @@
+import { getVertical } from "@/lib/verticals"
 import { redirect } from "next/navigation"
 
 import { PaymentsPanel } from "@/components/settings/payments-panel"
@@ -11,8 +12,7 @@ export default async function PaymentsSettingsPage() {
   const ctx = await getDealerContext()
   if (ctx.status !== "ok") redirect("/login")
 
-  const food = ctx.dealer.industry === "restaurants"
-  const what = food ? "guests can pay for their orders online" : "buyers can pay a booking amount online"
+  const what = getVertical(ctx.dealer.industry).paymentsPurpose
   if (!ctx.dealerInDb) {
     return (
       <SettingsPage title="Payments" description={`Connect your bank account so ${what}.`}>
@@ -39,7 +39,7 @@ export default async function PaymentsSettingsPage() {
         email={ctx.user.email ?? ""}
         phone={ctx.dealer.phone ?? ""}
         city={ctx.dealer.city}
-        purpose={food ? "guests can pay for their orders online" : "buyers can pay a booking amount online"}
+        purpose={what}
       />
     </SettingsPage>
   )

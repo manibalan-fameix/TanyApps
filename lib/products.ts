@@ -1,4 +1,4 @@
-import type { IndustryKey } from "@/lib/industries"
+import { type IndustryKey, VERTICALS, verticalList } from "@/lib/verticals"
 
 /** Every TanyApps product. Brand files live in /public/brand as `<key>-icon.svg` and `<key>-wordmark.svg`. */
 export const PRODUCTS = [
@@ -23,11 +23,11 @@ export const PRODUCTS = [
 
 export type ProductKey = (typeof PRODUCTS)[number]["key"]
 
-/** Product behind each live industry. */
-export const INDUSTRY_PRODUCT: Record<IndustryKey, ProductKey> = {
-  motors: "tanymotos",
-  restaurants: "tanyeats",
-}
+/** Product behind each industry, derived from the vertical registry. */
+export const INDUSTRY_PRODUCT = Object.fromEntries(verticalList.map((v) => [v.key, v.product])) as Record<IndustryKey, ProductKey>
+
+/** Products a business can be created for today. The rest are shown as coming soon. */
+export const LIVE_PRODUCTS: readonly ProductKey[] = verticalList.filter((v) => VERTICALS[v.key].adminReady).map((v) => v.product)
 
 /** Captions for the explore step's side panel, shown in order for products without an animated story. */
 export const PRODUCT_STORY: Record<ProductKey, readonly string[]> = {

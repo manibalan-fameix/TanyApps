@@ -11,7 +11,9 @@ import { endsSentence, sentenceRanges, wordAt, wordsOf } from "../workers/jarvis
 import { bandRatio, judge, level, nextBaseline, variation } from "../workers/jarvis/ui/src/lib/vad"
 import { detectAlerts, intentView, mentioned, parseShow, groupsFor, statusLine } from "../workers/jarvis/ui/src/lib/cards"
 
+type GhBody = { body?: string; query?: string; assignees?: string[]; labels?: string[]; variables?: Record<string, unknown> }
 const env = { JARVIS_PASSPHRASE: "correct-horse-battery", JARVIS_TOKEN: "ghp_fake", GEMINI_API_KEY: "AIzaFake", ASSETS: { fetch: async () => new Response("<html>page</html>") } }
+type JarvisEnv = typeof env & { JARVIS_WRITE_TOKEN?: string }
 
 const board = {
   data: {
@@ -716,11 +718,11 @@ describe("the create route", () => {
   const post = (body: unknown, e = writeEnv) => worker.fetch(new Request("https://x/api/task/create", { method: "POST", headers: { authorization: "Bearer correct-horse-battery", "content-type": "application/json" }, body: JSON.stringify(body) }), e)
 
   function github({ assignOk = true, existing = 0 } = {}) {
-    const calls: { method: string; url: string; body?: any }[] = []
+    const calls: { method: string; url: string; body: GhBody }[] = []
     vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit = {}) => {
       const u = String(url), method = init.method ?? "GET"
       const body = init.body && typeof init.body === "string" ? JSON.parse(init.body) : undefined
-      calls.push({ method, url: u, body })
+      calls.push({ method, url: u, body: body ?? {} })
       if (u.includes("generativelanguage") || u.includes("aiplatform")) return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "## Why this matters\nBuyers message on WhatsApp.\n\n## Goal\nA button." }] } }] }))
       if (u.includes("/issues?labels=created-by-jarvis")) return new Response(JSON.stringify(Array.from({ length: existing }, (_, i) => ({ number: i }))))
       if (u.endsWith("/labels")) return new Response("{}", { status: 422 })
@@ -744,7 +746,7 @@ describe("the create route", () => {
     vi.resetModules(); const fresh = (await import("../workers/jarvis/index.mjs")).default
     const calls = github()
     const res = await fresh.fetch(new Request("https://x/api/task/create", { method: "POST", headers: { authorization: "Bearer correct-horse-battery", "content-type": "application/json" }, body: JSON.stringify({ draft, by: "sir" }) }), writeEnv)
-    const json = await res.json() as any
+    const json = await res.json() as { line?: string }
     expect(res.status).toBe(200)
     expect(json).toMatchObject({ ok: true, number: 79, assigned: true, onBoard: true, card: { n: 79, team: ["Pavi"], priority: "High", project: "TanyCars" } })
     expect(json.line).toBe("Done, sir. Task 79 has been created. It is with Pavi.")
@@ -754,17 +756,17 @@ describe("the create route", () => {
     expect(issue.body.labels).toEqual(["TanyCars", "E3", "created-by-jarvis"])
     expect(issue.body.body).toContain("## Why this matters") // the longer write-up from the model
     expect(issue.body.body).toContain("jarvis-card")
-    const mutation = calls.find((c) => String(c.body?.query ?? "").includes("updateProjectV2ItemFieldValue"))!
+    const mutation = calls.find((c) => String(c.body.query ?? "").includes("updateProjectV2ItemFieldValue"))!
     const q = String(mutation.body.query)
     expect(q.match(/updateProjectV2ItemFieldValue/g)).toHaveLength(7) // points, priority, epic, sprint, owner, team, summary
-    expect(Object.values(mutation.body.variables)).toEqual(expect.arrayContaining(["O1", "O2", "O3", "O4", "Pavi", 3]))
+    expect(Object.values(mutation.body.variables ?? {})).toEqual(expect.arrayContaining(["O1", "O2", "O3", "O4", "Pavi", 3]))
   })
 
   it("still creates the task when GitHub will not assign the person yet", async () => {
     vi.resetModules(); const fresh = (await import("../workers/jarvis/index.mjs")).default
     const calls = github({ assignOk: false })
     const res = await fresh.fetch(new Request("https://x/api/task/create", { method: "POST", headers: { authorization: "Bearer correct-horse-battery", "content-type": "application/json" }, body: JSON.stringify({ draft }) }), writeEnv)
-    const json = await res.json() as any
+    const json = await res.json() as { line?: string }
     expect(json).toMatchObject({ ok: true, assigned: false, onBoard: true })
     expect(json.line).toContain("could not assign them yet")
     expect(calls.filter((c) => c.method === "POST" && c.url.endsWith("/issues"))).toHaveLength(2) // retried without the assignee
@@ -773,7 +775,7 @@ describe("the create route", () => {
   it("refuses without the write token, with a bad draft, after the daily limit, and without the passphrase", async () => {
     vi.resetModules(); const fresh = (await import("../workers/jarvis/index.mjs")).default
     github()
-    const send = (body: unknown, e: any = writeEnv, pass = "correct-horse-battery") => fresh.fetch(new Request("https://x/api/task/create", { method: "POST", headers: { authorization: `Bearer ${pass}`, "content-type": "application/json" }, body: JSON.stringify(body) }), e)
+    const send = (body: unknown, e: JarvisEnv = writeEnv, pass = "correct-horse-battery") => fresh.fetch(new Request("https://x/api/task/create", { method: "POST", headers: { authorization: `Bearer ${pass}`, "content-type": "application/json" }, body: JSON.stringify(body) }), e)
     expect((await send({ draft }, env)).status).toBe(503)
     expect((await send({ draft: { ...draft, assignee: "Mallory" } })).status).toBe(400)
     expect((await send({ draft }, writeEnv, "wrong")).status).toBe(401)
@@ -790,7 +792,7 @@ describe("the create route", () => {
       const sse = ["Q: create a task for Pavi\n\n", reply].map((t) => `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: t }] } }] })}\n\n`).join("")
       return new Response(sse, { headers: { "content-type": "text/event-stream" } })
     }))
-    const hear = async (headers: Record<string, string>, e: any) => (await (await fresh.fetch(new Request("https://x/api/hear", { method: "POST", headers: { authorization: "Bearer correct-horse-battery", ...headers }, body: new Uint8Array([1, 2, 3]) }), e)).text())
+    const hear = async (headers: Record<string, string>, e: JarvisEnv) => (await (await fresh.fetch(new Request("https://x/api/hear", { method: "POST", headers: { authorization: "Bearer correct-horse-battery", ...headers }, body: new Uint8Array([1, 2, 3]) }), e)).text())
     model()
     const on = await hear({ "x-create": "1" }, writeEnv)
     expect(on).toContain('"draft"')

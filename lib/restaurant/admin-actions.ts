@@ -1,10 +1,10 @@
 "use server"
 
+import { industrySession } from "@/lib/core/guards"
 import { and, asc, desc, eq, gt, inArray, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
-import { getDealerContext } from "@/lib/auth/context"
 import { banners, coupons, deliveryPartners, deliveryZones, enquiries, menuItems, orders, reviews } from "@/lib/db/schema"
 import { hashPassword } from "@/lib/auth/password"
 import { nextPartnerCode, parsePincodes, partnerSchema, pinSchema, zoneSchema } from "@/lib/restaurant/delivery"
@@ -17,7 +17,7 @@ import { type Fulfilment, orderSettingsSchema } from "@/lib/restaurant/settings"
 import { profileSchema } from "@/lib/restaurant/profile"
 import { type Place, reverseGeocode, searchPlaces } from "@/lib/restaurant/geocode"
 import { validCoords } from "@/lib/restaurant/location"
-import { allow } from "@/lib/rate-limit"
+import { rateLimit } from "../core/rate-limit"
 import { dropFix, readFixes, storeKind } from "@/lib/restaurant/live-location"
 import { customerMessage, etaMinutes, isFresh, riderMessage, shareOnWhatsApp } from "@/lib/restaurant/tracking"
 import { forgetRiderLink, issueRiderToken } from "@/lib/restaurant/trip"
@@ -35,11 +35,7 @@ const denied: Result = { ok: false, error: "Please sign in again." }
 const ownerOnly: Result = { ok: false, error: "Only the owner can change this." }
 
 /** The signed-in restaurant. The dealer id comes from the session, never from the request. */
-async function session() {
-  const ctx = await getDealerContext()
-  if (ctx.status !== "ok" || !ctx.dealerInDb || ctx.dealer.industry !== "restaurants") return null
-  return { dealer: ctx.dealer, owner: ctx.role === "owner" }
-}
+const session = () => industrySession("restaurants")
 
 function refresh(...paths: string[]) {
   for (const p of paths) revalidatePath(p)
@@ -514,7 +510,7 @@ export async function fetchOrderAlerts(since: string | null): Promise<{ ok: true
 export async function findPlaces(query: string): Promise<{ ok: true; places: Place[] } | { ok: false; error: string }> {
   const s = await session()
   if (!s) return { ok: false, error: "Please sign in again." }
-  if (!allow(`places:${s.dealer.id}`, 30, 10 * 60_000)) return { ok: false, error: "Too many searches. Try again in a few minutes." }
+  if (!(await rateLimit(`places:${s.dealer.id}`, 30, 10 * 60_000))) return { ok: false, error: "Too many searches. Try again in a few minutes." }
   return { ok: true, places: await searchPlaces(query) }
 }
 
@@ -523,7 +519,7 @@ export async function describeSpot(lat: number, lng: number): Promise<{ ok: true
   const s = await session()
   if (!s) return { ok: false, error: "Please sign in again." }
   if (!validCoords(lat, lng)) return { ok: false, error: "That location is outside India." }
-  if (!allow(`spot:${s.dealer.id}`, 30, 10 * 60_000)) return { ok: false, error: "Too many tries. Try again in a few minutes." }
+  if (!(await rateLimit(`spot:${s.dealer.id}`, 30, 10 * 60_000))) return { ok: false, error: "Too many tries. Try again in a few minutes." }
   const found = await reverseGeocode(lat, lng)
   return { ok: true, address: found?.address ?? "" }
 }
