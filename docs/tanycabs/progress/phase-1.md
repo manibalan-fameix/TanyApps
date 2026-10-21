@@ -31,7 +31,7 @@ A separate branch, `fix/motors-refund-route-reversal` (from `main`, 2 commits), 
 
 | # | Item | Where |
 |---|---|---|
-| 1 | **Allow-list.** Cabs selectable only for emails in `CABS_ALLOWED_EMAILS`, enforced in the server action as well as the UI; others see the same "coming soon" card. `tanycabs` mapped to `cabs` in `lib/products.ts`. | `lib/verticals/flags.ts`, `app/(admin)/onboarding/*`, `components/onboarding/enabled-industries.tsx` |
+| 1 | **Live rollout.** Cabs are selectable by every signed-in operator, with the server-side vertical check retained for future staged rollouts. `tanycabs` is mapped to `cabs` in `lib/products.ts`. | `lib/verticals/flags.ts`, `app/(admin)/onboarding/*`, `components/onboarding/enabled-industries.tsx` |
 | 2 | **Registry.** Plan limits (your numbers), no free plan, cab nav under `/cabs/*`, tenant shell skeleton, billing table for cabs, downgrade blocked while it would leave more vehicles/drivers than the plan allows. | `lib/verticals/cabs.ts`, `components/admin/nav-config.ts`, `components/cabs/tenant/*`, `components/billing/pricing-table.tsx` |
 | 3 | **Schema** (migration `0026`): 11 tenant tables + `route_distances`. All in the table registry and leak test. Money integer paise, enums for statuses, CHECK constraints, registration/phone/licence encrypted with blind indexes. | `lib/db/schema/cabs.ts`, `lib/db/tenant-tables.ts` |
 | 4 | **Operator CRUD**: vehicle classes, vehicles, documents, blocked times, drivers + documents + duty log (read-only), rate cards, extra charges, tour packages, settings. PDF/photo document scans in a private bucket. Expiry badges. | `lib/cabs/admin-actions.ts`, `components/cabs/*`, `app/(admin)/(shell)/cabs/*` |
@@ -55,7 +55,6 @@ A separate branch, `fix/motors-refund-route-reversal` (from `main`, 2 commits), 
 3. **Secrets and bindings** (production values; then `bash scripts/upload-secrets.sh`, which now sends all of these):
    - `BLIND_INDEX_KEY` (32 bytes base64): missing from the script until this phase, see DECISIONS "Mistakes".
    - `GOOGLE_MAPS_SERVER_KEY`: in Google Cloud enable **Places API (New)** and **Routes API**, create a key restricted to those two APIs (Workers have no fixed IP, so restrict by API, not address). Without it production has no place search.
-   - `CABS_ALLOWED_EMAILS`: the emails that may create a cab business. Empty means nobody.
    - `R2_PRIVATE_BUCKET`: create a **second R2 bucket with no public access and no custom domain**, give the existing R2 API token access to it, then set its name. Until then document uploads are refused in production (record numbers and dates still work).
 4. **Migrations on Neon:** `pnpm db:migrate` applies `0026` (and Phase 0's `0023`–`0025` if not yet applied).
 5. **Decisions for you** (details in DECISIONS.md): cab plan **prices** (I reused Starter ₹2,999 / Growth ₹4,999 / Pro ₹8,999); whether a "day" for round trips is a calendar day or a 24-hour block; whether **Google distances may be cached** (default: not stored); whether to turn on **tolls** (unconfirmed for India).
@@ -71,7 +70,7 @@ A separate branch, `fix/motors-refund-route-reversal` (from `main`, 2 commits), 
 
 ## Known gaps
 
-- **Nothing is bookable yet**: no trips, customers or payments for cabs (Phase 2 onward). The public page shows the vehicles and says "Online booking is coming soon".
+- **Online self-serve booking is not implemented yet**: no trips, customers or payments for cabs (Phase 2 onward). The public page accepts booking requests by phone or WhatsApp and shows the operator's vehicles.
 - **Duty log is read-only**; the driver app (Phase 3) writes it. Document-expiry **emails/WhatsApp** do not exist yet (Phase 4 notifications + the `daily` cron job, currently a placeholder); expiry is shown on screen only.
 - **Staff vs owner is coarse** until Phase 5 roles.
 - **Place search needs a Google key in production**; in development it uses OpenStreetMap, which is rough for Indian landmarks.

@@ -1,7 +1,7 @@
 import type { Vertical } from "./types"
 
 /**
- * TanyCabs. Selectable in onboarding only for people on the CABS_ALLOWED_EMAILS allow-list (see ./flags.ts).
+ * TanyCabs. Live and selectable by every signed-in operator.
  * Razorpay: `transport` / `cab_hailing` is the only taxi entry in Razorpay's Route category list (checked 2026-10-21).
  * Plan limits are the owner's, set 2026-10-21. There is no free plan; the trial is the standard 30 days.
  */

@@ -11,6 +11,7 @@ import {
 import { useEffect, useRef, useState } from "react"
 
 import { verifyDealerPhone } from "@/app/(admin)/onboarding/actions"
+import type { IndustryKey } from "@/lib/verticals/keys"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -38,6 +39,8 @@ export function PhoneVerify({
   verified,
   onVerified,
   error,
+  industry,
+  notice,
 }: {
   config: FirebaseWebConfig | null
   testPhones: string[]
@@ -47,6 +50,8 @@ export function PhoneVerify({
   verified: string
   onVerified: (phone: string) => void
   error?: string
+  industry: IndustryKey
+  notice?: string
 }) {
   const [editing, setEditing] = useState(false)
   const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(
@@ -55,7 +60,7 @@ export function PhoneVerify({
   const [code, setCode] = useState("")
   const [cooldown, setCooldown] = useState(0)
   const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(notice ?? null)
   const [problem, setProblem] = useState<string | null>(null)
   const verifier = useRef<RecaptchaVerifier | null>(null)
   const running = useRef(false)
@@ -120,14 +125,14 @@ export function PhoneVerify({
     run(async () => {
       if (!confirmation || !config || value.length !== 6) return
       const user = (await confirmation.confirm(value)).user
-      const res = await verifyDealerPhone(await user.getIdToken())
+      const res = await verifyDealerPhone(await user.getIdToken(), industry)
       // This Firebase session only existed to prove the number; the app session is separate.
       await signOut(getFirebaseAuth(config))
       if (!res.ok) return setProblem(res.error)
       onVerified(res.phone)
+      setMessage(res.notice ?? null)
       setConfirmation(null)
       setEditing(false)
-      setMessage(null)
     })
 
   if (verified && phone === verified && !editing) {
@@ -143,6 +148,9 @@ export function PhoneVerify({
           <p className="text-xs text-muted-foreground">
             Verified. Buyers will call this number.
           </p>
+          {message ? (
+            <p className="text-xs text-muted-foreground">{message}</p>
+          ) : null}
         </div>
         <Button
           type="button"

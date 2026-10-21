@@ -63,7 +63,7 @@ export function WizardShell({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
-      <header className="flex shrink-0 items-center gap-3 px-4 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-3 sm:px-14 sm:py-5">
+      <header className="flex shrink-0 items-center gap-3 px-4 pt-[calc(0.75rem+var(--safe-area-inset-top))] pb-3 sm:px-14 sm:py-5">
         <div className="flex shrink-0 items-center gap-3 sm:flex-1">
           <DealerMark
             name={dealer.name}

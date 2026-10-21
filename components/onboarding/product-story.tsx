@@ -7,11 +7,13 @@ import {
   PRODUCTS,
   type ProductKey,
 } from "@/lib/products"
+import { liveIndustry, useEnabledIndustries } from "@/components/onboarding/enabled-industries"
 
 /** Side panel for products that do not have an animated how-it-works page yet. */
 export function ProductStory({ product }: { product: ProductKey }) {
   const lines = PRODUCT_STORY[product]
   const name = PRODUCTS.find((p) => p.key === product)?.name ?? "Tany"
+  const live = liveIndustry(PRODUCTS.find((p) => p.key === product)!, useEnabledIndustries()) !== undefined
   const [state, setState] = useState({ product, index: 0 })
   // Restart from the first caption when the product changes.
   const index = state.product === product ? state.index : 0
@@ -47,9 +49,11 @@ export function ProductStory({ product }: { product: ProductKey }) {
           className="size-44 animate-in zoom-in-75 fade-in duration-700"
         />
       </div>
-      <span className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
-        Coming soon
-      </span>
+      {!live ? (
+        <span className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
+          Coming soon
+        </span>
+      ) : null}
       <div className="flex gap-1.5" aria-hidden>
         {lines.map((_, i) => (
           <span

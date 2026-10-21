@@ -11,8 +11,8 @@ import { whatsappLink } from "@/lib/whatsapp"
 import { cn } from "@/lib/utils"
 
 /**
- * The public page of a cab operator for now: who they are, how to reach them, and the vehicles they offer. Online booking arrives
- * with the next release; until then it says so rather than showing a booking form that does nothing. No prices are shown.
+ * The public page of a cab operator: who they are, how to reach them, and the vehicles they offer. Trip requests are currently
+ * handled by phone or WhatsApp; no prices are shown until the operator configures a public fare flow.
  */
 export async function CabsHome({ dealer }: { dealer: DealerProfile }) {
   const db = scopedDb(dealer.id)
@@ -24,7 +24,7 @@ export async function CabsHome({ dealer }: { dealer: DealerProfile }) {
       <section className="flex flex-col gap-3">
         <h1 className="text-3xl font-semibold tracking-tight">{dealer.displayName}</h1>
         <p className="text-muted-foreground">{cities.length > 0 ? `Cabs and tours in ${cities.join(", ")}.` : `Cabs and tours from ${dealer.city}.`}</p>
-        <p className="max-w-prose text-sm">Online booking is coming soon. To book a trip now, call or message us.</p>
+        <p className="max-w-prose text-sm">Book your trip by phone or WhatsApp. We&apos;ll confirm the vehicle, fare and pickup details with you.</p>
         {dealer.phone ? (
           <div className="flex flex-wrap gap-2">
             <a href={`tel:${dealer.phone}`} className={cn(buttonVariants({ size: "lg" }))}>

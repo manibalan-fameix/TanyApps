@@ -1,7 +1,7 @@
 "use server"
 
 import { verifyFirebaseIdToken } from "@/lib/auth/firebase"
-import { claimVerifiedPhone, getUserContact, getUserPhone } from "@/lib/tenant/user-phone"
+import { claimVerifiedPhone, getOtherProductForUser, getUserContact, getUserPhone } from "@/lib/tenant/user-phone"
 import { mapDealerSubdomain } from "@/lib/cloudflare/domains"
 import { isFreePlan } from "@/lib/plans"
 import { createTrialSubscription } from "@/lib/billing/razorpay"
@@ -14,6 +14,7 @@ import { BrokenLinkError, recommendProduct } from "@/lib/ai/recommend-product"
 import type { ProductKey } from "@/lib/products"
 import { createDealerForOwner, isSlugTaken } from "@/lib/tenant/create-dealer"
 import { canCreateVertical } from "@/lib/verticals"
+import type { IndustryKey } from "@/lib/verticals/keys"
 
 export type SlugStatus = "available" | "taken" | "invalid" | "limited"
 
@@ -32,9 +33,10 @@ export async function checkSlug(raw: string): Promise<SlugStatus> {
  * the number comes from the signed token, never from the request. Returns the 10 digits.
  */
 export async function verifyDealerPhone(
-  idToken: string
-): Promise<{ ok: true; phone: string } | { ok: false; error: string }> {
-  const ctx = await getDealerContext()
+  idToken: string,
+  industry: IndustryKey,
+): Promise<{ ok: true; phone: string; notice?: string } | { ok: false; error: string }> {
+  const ctx = await getDealerContext(industry)
   if (ctx.status !== "no-dealer")
     return { ok: false, error: "Please sign in again." }
   if (!(await rateLimit(`verify-phone:${ctx.user.id}`, 10, 10 * 60_000, { failClosed: true })))
@@ -48,12 +50,20 @@ export async function verifyDealerPhone(
       ok: false,
       error: "We could not verify that number. Please try again.",
     }
-  if (!(await claimVerifiedPhone(ctx.user.id, identity.phone)))
+  const claim = await claimVerifiedPhone(ctx.user.id, identity.phone, industry)
+  if (!claim.ok)
     return {
       ok: false,
       error: "That number is already used by another account.",
     }
-  return { ok: true, phone: identity.phone.replace(/\D/g, "").slice(-10) }
+  const product = claim.associatedProduct ?? (await getOtherProductForUser(ctx.user.id, industry))
+  return {
+    ok: true,
+    phone: identity.phone.replace(/\D/g, "").slice(-10),
+    notice: product
+      ? `This number is already associated with ${product}. You can continue setting up your Tany${industry === "cabs" ? "Cabs" : industry === "motors" ? "Motos" : "Eats"} account.`
+      : undefined,
+  }
 }
 
 /** What the browser needs to open Razorpay Checkout for the trial subscription. */
@@ -89,10 +99,9 @@ export async function createDealership(
   draft: unknown,
   logoDataUrl?: string | null
 ): Promise<CreateResult> {
-  const ctx = await getDealerContext()
-  if (ctx.status !== "no-dealer")
-    return { ok: false, error: "Please sign in again." }
-  if (!(await rateLimit(`onboard:${ctx.user.id}`, 5, 10 * 60_000)))
+  const signedIn = await getDealerContext()
+  if (signedIn.status === "anonymous") return { ok: false, error: "Please sign in again." }
+  if (!(await rateLimit(`onboard:${signedIn.user.id}`, 5, 10 * 60_000)))
     return {
       ok: false,
       error: "Too many attempts. Try again in a few minutes.",
@@ -106,14 +115,20 @@ export async function createDealership(
     return { ok: false, fieldErrors }
   }
 
-  // Flagged verticals (cabs) can be created only by people on the allow-list, whatever the form sent.
+  // A user may create one dealer per product. A dealer in another product must
+  // not block this onboarding flow.
+  const ctx = await getDealerContext(parsed.data.industry)
+  if (ctx.status !== "no-dealer")
+    return { ok: false, error: "You already have an account for this product." }
+
+  // Keep the server-side vertical rollout check even when a vertical is live for everyone.
   const { email } = await getUserContact(ctx.user.id)
   if (!canCreateVertical(parsed.data.industry, email ?? ctx.user.email)) {
     return { ok: false, fieldErrors: { industry: "This product is not available to your account yet." } }
   }
 
   // The number buyers call must be one this user proved by OTP (here or at sign-in).
-  if ((await getUserPhone(ctx.user.id)) !== parsed.data.phone) {
+  if ((await getUserPhone(ctx.user.id, parsed.data.industry)) !== parsed.data.phone) {
     return {
       ok: false,
       fieldErrors: {

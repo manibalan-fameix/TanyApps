@@ -2,10 +2,10 @@ import { redirect } from "next/navigation"
 
 import { getFirebaseWebConfig } from "@/lib/auth/firebase"
 import { getDealerContext } from "@/lib/auth/context"
-import { getUserContact } from "@/lib/tenant/user-phone"
+import { getOtherProductForUser, getUserContact } from "@/lib/tenant/user-phone"
 
 import { EnabledIndustriesProvider } from "@/components/onboarding/enabled-industries"
-import { LIVE_INDUSTRY_KEYS, industriesFor } from "@/lib/verticals"
+import { isIndustryKey, LIVE_INDUSTRY_KEYS, industriesFor, type IndustryKey } from "@/lib/verticals"
 
 import { OnboardingWizard } from "./onboarding-wizard"
 
@@ -16,8 +16,10 @@ export const dynamic = "force-dynamic"
 const PUBLIC_DOMAIN = "tany.in"
 
 // First sign-in: a new user has no dealership yet. Creating one makes them its owner.
-export default async function OnboardingPage() {
-  const ctx = await getDealerContext()
+export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ industry?: string }> }) {
+  const requested = (await searchParams).industry
+  const requestedIndustry: IndustryKey | undefined = isIndustryKey(requested) ? requested : undefined
+  const ctx = await getDealerContext(requestedIndustry)
   if (ctx.status === "anonymous") redirect("/login")
   if (ctx.status === "ok") redirect("/dashboard")
 
@@ -33,8 +35,10 @@ export default async function OnboardingPage() {
   const row = await getUserContact(ctx.user.id)
   const digits = row.phone?.replace(/\D/g, "") ?? ""
   const verifiedPhone = digits.length >= 10 ? digits.slice(-10) : ""
-  // A flagged vertical (cabs) is offered only to people on its allow-list, matched on their email.
+  // Only verticals with an active rollout flag are filtered here.
   const enabledIndustries = industriesFor(row.email ?? ctx.user.email, LIVE_INDUSTRY_KEYS)
+  const initialIndustry: IndustryKey | undefined = requestedIndustry
+  const productNotice = initialIndustry ? await getOtherProductForUser(ctx.user.id, initialIndustry) : null
   return (
     <main>
       <EnabledIndustriesProvider value={enabledIndustries}>
@@ -45,6 +49,8 @@ export default async function OnboardingPage() {
         verifiedPhone={verifiedPhone}
         firebaseConfig={getFirebaseWebConfig()}
         testPhones={testPhones}
+        initialIndustry={initialIndustry}
+        phoneNotice={productNotice ? `This number is already associated with ${productNotice}. You can continue setting up your Tany${initialIndustry === "cabs" ? "Cabs" : initialIndustry === "motors" ? "Motos" : "Eats"} account.` : undefined}
       />
       </EnabledIndustriesProvider>
     </main>

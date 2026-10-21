@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { cookies } from "next/headers"
 import { cache } from "react"
 
@@ -9,6 +9,7 @@ import { DEV_BYPASS_COOKIE, DEV_DEALER, DEV_USER, isDevBypassEnabled } from "./d
 import { LOCAL_LOGIN_COOKIE, emailFromLocalLoginCookie, getLocalDealerContext, isLocalPasswordLoginEnabled } from "./local-login"
 import { effectivePlanKey } from "../billing/state"
 import { getPlan } from "../plans"
+import type { IndustryKey } from "../verticals/keys"
 
 export type DealerContext =
   | { status: "anonymous" }
@@ -26,11 +27,13 @@ export type DealerContext =
     }
 
 /**
- * Resolves the signed-in user to their dealer. Everything downstream must use
+ * Resolves the signed-in user to their dealer. When an industry is supplied,
+ * the lookup is scoped to that product so one Tany account can own one dealer
+ * per product. Everything downstream must use
  * `scopedDb(ctx.dealer.id)`; the dealer id never comes from the request.
- * v1: a user belongs to one dealer; if several exist the earliest link wins.
+ * Without an industry, if several memberships exist the earliest link wins.
  */
-export const getDealerContext = cache(async (): Promise<DealerContext> => {
+export const getDealerContext = cache(async (industry?: IndustryKey): Promise<DealerContext> => {
   const cookieStore = await cookies()
   if (isLocalPasswordLoginEnabled()) {
     const email = emailFromLocalLoginCookie(cookieStore.get(LOCAL_LOGIN_COOKIE)?.value)
@@ -65,11 +68,14 @@ export const getDealerContext = cache(async (): Promise<DealerContext> => {
   if (!session?.user || !id) return { status: "anonymous" }
   const user = { id, name: session.user.name, email: session.user.email }
 
+  const membershipWhere = industry
+    ? and(eq(dealerUsers.userId, user.id), eq(dealers.industry, industry))
+    : eq(dealerUsers.userId, user.id)
   const [row] = await unscopedDb
     .select({ dealer: dealers, role: dealerUsers.role })
     .from(dealerUsers)
     .innerJoin(dealers, eq(dealers.id, dealerUsers.dealerId))
-    .where(eq(dealerUsers.userId, user.id))
+    .where(membershipWhere)
     .limit(1)
 
   if (!row) return { status: "no-dealer", user }

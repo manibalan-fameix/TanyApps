@@ -176,7 +176,7 @@ export default async function DealerHome({
             resultCount={results.length}
           />
           <SidebarInset className="min-w-0 overflow-y-auto bg-background">
-            <main className="w-full px-[60px] py-4 max-lg:px-6 max-md:pb-[calc(6rem+env(safe-area-inset-bottom))] sm:py-6 lg:py-8">
+            <main className="w-full px-[60px] py-4 max-lg:px-6 max-md:pb-[calc(6rem+var(--safe-area-inset-bottom))] sm:py-6 lg:py-8">
               <OfferBannerCarousel />
 
               <section className="mt-6">

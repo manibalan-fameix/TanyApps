@@ -64,7 +64,7 @@ export function SuperMobileNav() {
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent
           side="bottom"
-          className="max-h-[85svh] gap-0 rounded-t-3xl pb-[env(safe-area-inset-bottom)]"
+          className="max-h-[85svh] gap-0 rounded-t-3xl pb-[var(--safe-area-inset-bottom)]"
         >
           <SheetHeader>
             <SheetTitle>{copy.admin.nav.more}</SheetTitle>

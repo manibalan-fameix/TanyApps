@@ -66,7 +66,7 @@ Newest phase last. Each entry says what was decided, why, and what would reverse
 
 ### Technical decisions
 
-- **Feature flag:** `CABS_ALLOWED_EMAILS` (comma-separated verified emails), checked in the **server action** that creates a business as well as in the UI. Everyone else sees the same "coming soon" card as before, so the product still looks unreleased. A super-admin toggle would need a table and a write path that super admin does not have yet.
+- **Rollout:** TanyCabs is live for every signed-in operator. The server-side vertical check remains in place so future staged rollouts can be added without trusting the onboarding UI.
 - **Google caching:** Google's Routes API policy says "caching of most Routes API content is restricted" and allows storing place IDs only. I found no allowance for distance or duration. So **Google distances are not stored in `route_distances` unless `GOOGLE_ROUTE_CACHE_DAYS` is set** (capped at 30). Free-router (OSRM) distances are kept 30 days, and an operator's own distance (`manual`) is kept for good. This departs from "cached in route_distances" in your brief on purpose; if counsel confirms caching is allowed, setting one variable turns it on.
 - **Tolls:** Google's toll docs do not say India is supported and toll requests cost more, so `GOOGLE_ROUTES_TOLLS` is off by default and the toll estimate is "unknown" (null), never "free".
 - **No Google key in production means no place search**, not a silent fallback to OpenStreetMap/Nominatim/OSRM, whose usage policies forbid production traffic. Development without a key uses them.

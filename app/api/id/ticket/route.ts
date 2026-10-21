@@ -1,0 +1,38 @@
+import { NextResponse } from "next/server"
+import { z } from "zod"
+
+import { verifiedPhone } from "@/lib/auth/firebase-phone"
+import { clientIp } from "@/lib/core/guards"
+import { resolveLoginHost } from "@/lib/core/login/host"
+import { sameOrigin } from "@/lib/core/login/origin"
+import { issueTicket, safeNext } from "@/lib/core/login/ticket"
+import { rateLimit } from "@/lib/core/rate-limit"
+import { getRootDomain, protocolFor } from "@/lib/env"
+
+const json = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } })
+
+const body = z.object({ idToken: z.string().min(20).max(4096), host: z.string().min(3).max(253), state: z.string().min(16).max(64), next: z.string().max(300).optional() })
+
+/**
+ * Central login, last step: the browser proved a phone number to Firebase and sends the proof here, from the app host.
+ * We check the proof, and hand back a one-minute ticket addressed to ONE business's site.
+ */
+export async function POST(req: Request) {
+  if (!sameOrigin(req)) return json({ ok: false, error: "origin" }, 403)
+  const ip = clientIp(req.headers)
+  // Fail closed: if the limiter is down, nobody signs in rather than everybody signing in unthrottled.
+  if (!(await rateLimit(`id-ticket:ip:${ip}`, 30, 10 * 60_000, { failClosed: true }))) return json({ ok: false, error: "slow_down" }, 429)
+  const parsed = body.safeParse(await req.json().catch(() => null))
+  if (!parsed.success) return json({ ok: false, error: "bad_request" }, 400)
+
+  const target = await resolveLoginHost(parsed.data.host, "cabs")
+  if (!target) return json({ ok: false, error: "unknown_site" }, 404)
+  const phone = await verifiedPhone(parsed.data.idToken)
+  if (!phone) return json({ ok: false, error: "invalid_proof" }, 401)
+  if (!(await rateLimit(`id-ticket:phone:${phone}`, 10, 10 * 60_000, { failClosed: true }))) return json({ ok: false, error: "slow_down" }, 429)
+
+  const next = safeNext(parsed.data.next)
+  const ticket = await issueTicket({ phone, host: target.host, state: parsed.data.state, next })
+  const scheme = protocolFor(getRootDomain() ?? "localhost")
+  return json({ ok: true, url: `${scheme}://${target.host}/api/t/auth/callback?ticket=${encodeURIComponent(ticket)}` })
+}

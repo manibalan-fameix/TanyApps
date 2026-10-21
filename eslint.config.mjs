@@ -12,6 +12,7 @@ const eslintConfig = defineConfig([
     ".next/**",
     ".next-e2e/**",
     ".next-e2e-cabs/**",
+    ".next-e2e-login/**",
     ".open-next/**",
     ".wrangler/**",
     ".local-uploads/**",

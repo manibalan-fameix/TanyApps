@@ -34,7 +34,7 @@ export default async function SuperLayout({
         <SidebarProvider>
           <SuperSidebar user={{ name: "Tany team", email }} />
           <SidebarInset>
-            <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur max-md:border-b max-md:border-border md:static md:h-16 md:bg-transparent md:pt-0 md:backdrop-blur-none">
+            <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 bg-background/90 pt-[var(--safe-area-inset-top)] backdrop-blur max-md:border-b max-md:border-border md:static md:h-16 md:bg-transparent md:pt-0 md:backdrop-blur-none">
               <div className="flex items-center gap-2 px-4 md:px-10">
                 <SidebarTrigger className="-ml-1 max-md:hidden" />
                 <Separator
@@ -48,7 +48,7 @@ export default async function SuperLayout({
                 <ThemeToggle />
               </div>
             </header>
-            <div className="flex flex-1 flex-col gap-4 p-4 pt-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:px-10 md:pt-0 md:pb-8">
+            <div className="flex flex-1 flex-col gap-4 p-4 pt-4 pb-[calc(5.5rem+var(--safe-area-inset-bottom))] md:px-10 md:pt-0 md:pb-8">
               {children}
             </div>
           </SidebarInset>

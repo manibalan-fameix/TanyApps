@@ -3,7 +3,7 @@ export function getRootDomain(): string | undefined {
   return process.env.ROOT_DOMAIN?.trim() || undefined
 }
 
-function protocolFor(root: string) {
+export function protocolFor(root: string) {
   return root.startsWith("localhost") || root.includes(".localhost") ? "http" : "https"
 }
 

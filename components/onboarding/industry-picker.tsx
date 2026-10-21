@@ -18,7 +18,7 @@ import { PRODUCT_AUDIENCE, PRODUCTS, type ProductKey } from "@/lib/products"
 import { liveIndustry, useEnabledIndustries } from "@/components/onboarding/enabled-industries"
 import { cn } from "@/lib/utils"
 
-/** Searchable product cards, three per row. Only products with an industry can be chosen; the rest are marked coming soon. */
+/** Searchable product cards, three per row. Only products with an industry can be chosen. */
 export function IndustryPicker({
   value,
   onChange,

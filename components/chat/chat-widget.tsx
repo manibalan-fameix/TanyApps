@@ -30,7 +30,7 @@ export function ChatWidget({
   return (
     <Sheet>
       <SheetTrigger
-        className="fixed right-4 bottom-24 z-40 flex h-12 items-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground shadow-lg transition-transform hover:scale-105 max-md:bottom-[calc(5rem+env(safe-area-inset-bottom))] sm:right-6"
+        className="fixed right-4 bottom-24 z-40 flex h-12 items-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground shadow-lg transition-transform hover:scale-105 max-md:bottom-[calc(5rem+var(--safe-area-inset-bottom))] sm:right-6"
         aria-label={t.openLabel}
       >
         <HugeiconsIcon

@@ -137,7 +137,7 @@ test("a new cab operator sets up, adds a vehicle with documents, sets rates and 
 test("a cab operator's public site shows the vehicles and no prices", async ({ page }) => {
   await page.goto("http://sri-murugan.localhost:" + (process.env.E2E_CABS_PORT ?? "3101") + "/")
   await expect(page.getByRole("heading", { name: "Anna Travels" })).toBeVisible()
-  await expect(page.getByText("Online booking is coming soon")).toBeVisible()
+  await expect(page.getByText("Book your trip by phone or WhatsApp")).toBeVisible()
   await expect(page.getByText("Sedan")).toBeVisible()
   await expect(page.getByText("₹")).toHaveCount(0)
 })

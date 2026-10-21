@@ -59,6 +59,7 @@ import { IndustryPicker } from "@/components/onboarding/industry-picker"
 import { FindMyTany } from "@/components/onboarding/find-my-tany"
 import { PhoneVerify } from "@/components/onboarding/phone-verify"
 import { RestaurantPreview } from "@/components/onboarding/restaurant-preview"
+import { CabsPreview } from "@/components/onboarding/cabs-preview"
 import { type IndustryKey, getIndustry } from "@/lib/industries"
 import type { FirebaseWebConfig } from "@/lib/firebase/client"
 import { PlanPicker } from "@/components/billing/plan-picker"
@@ -112,6 +113,8 @@ export function OnboardingWizard({
   verifiedPhone,
   firebaseConfig,
   testPhones,
+  initialIndustry,
+  phoneNotice,
 }: {
   rootDomain: string
   firstName: string
@@ -119,14 +122,17 @@ export function OnboardingWizard({
   verifiedPhone: string
   firebaseConfig: FirebaseWebConfig | null
   testPhones: string[]
+  /** Set by a product-specific signup entry, such as /onboarding/cabs. */
+  initialIndustry?: IndustryKey
+  phoneNotice?: string
 }) {
-  const [step, setStep] = useState(0)
+  const [step, setStep] = useState(initialIndustry ? 1 : 0)
   const [done, setDone] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const [errors, setErrors] = useState<Errors>({})
 
   const compact = useIsCompact()
-  const [industry, setIndustry] = useState<IndustryKey | null>(null)
+  const [industry, setIndustry] = useState<IndustryKey | null>(initialIndustry ?? null)
   const ind = getIndustry(industry ?? "motors")
 
   const [displayName, setDisplayName] = useState("")
@@ -218,10 +224,9 @@ export function OnboardingWizard({
     return Object.keys(next).length === 0
   }
 
-  // Product centred in the explore reel; may be one that is not live yet.
+  // Product centred in the explore reel; products without an active vertical remain previews.
   const [pickMode, setPickMode] = useState<"browse" | "find">("find")
   const [exploreProduct, setExploreProduct] = useState<ProductKey | null>(null)
-  // Cabs is open only to people on its allow-list; for everyone else it stays a "coming soon" card.
   const enabledIndustries = useEnabledIndustries()
   const comingSoon =
     exploreProduct !== null &&
@@ -229,7 +234,7 @@ export function OnboardingWizard({
 
   const next = () => {
     if (step === 0 && comingSoon) {
-      setErrors({ form: "This app is coming soon. Choose TanyMotos or TanyEats to continue." })
+      setErrors({ form: "This app is not available yet. Choose a live product to continue." })
       return
     }
     if (step === 0 && !industry) {
@@ -394,7 +399,7 @@ export function OnboardingWizard({
   )
   const exploreKey: ProductKey | null =
     exploreProduct ?? (industry ? INDUSTRY_PRODUCT[industry] : null)
-  // The product in the reel if it is coming soon, else the live product chosen.
+  // Show the preview product while browsing; otherwise show the selected live product.
   const storyProduct: ProductKey | null =
     step === 0 && comingSoon && exploreProduct
       ? exploreProduct
@@ -643,6 +648,8 @@ export function OnboardingWizard({
                     verified={verified}
                     onVerified={setVerified}
                     error={errors.phone}
+                    industry={industry ?? "motors"}
+                    notice={phoneNotice}
                   />
                 </div>
                 {email ? (
@@ -791,7 +798,7 @@ export function OnboardingWizard({
                 <FieldError message={errors.plan ?? errors.billingCycle} />
                 <p className="text-xs text-muted-foreground">
                   {isFreePlan(plan)
-                    ? `You can upgrade to a paid plan any time from Settings, when you have more ${ind.itemNoun === "cars" ? "cars" : "menu items"} to list.`
+                    ? `You can upgrade to a paid plan any time from Settings, when you have more ${ind.itemNoun} to list.`
                     : `Free for ${TRIAL_DAYS} days. You add a payment method now and are charged only when the trial ends. Cancel any time before then.`}
                 </p>
               </>
@@ -879,7 +886,7 @@ function OnboardShell({
               : undefined
           }
           className={cn(
-            "fixed inset-x-0 bottom-0 z-20 px-6 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] transition-colors duration-700 md:px-10",
+            "fixed inset-x-0 bottom-0 z-20 px-6 pt-4 pb-[max(1rem,var(--safe-area-inset-bottom))] transition-colors duration-700 md:px-10",
             (!tinted || plainLeft) && "bg-white"
           )}
         >
@@ -1234,6 +1241,8 @@ function IndustryPreview({
 }) {
   return industry === "restaurants" ? (
     <RestaurantPreview {...props} />
+  ) : industry === "cabs" ? (
+    <CabsPreview {...props} />
   ) : (
     <Preview {...props} />
   )
