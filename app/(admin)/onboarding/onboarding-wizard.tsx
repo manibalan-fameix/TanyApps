@@ -1,11 +1,13 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState, useTransition } from "react"
+import { useEffect, useState, useSyncExternalStore, useTransition } from "react"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Add01Icon,
+  AiMagicIcon,
+  GridViewIcon,
   ArrowRight01Icon,
   Calendar03Icon,
   CancelCircleIcon,
@@ -24,9 +26,18 @@ import {
 } from "@hugeicons/core-free-icons"
 
 import { Logo } from "@/components/logo"
+import { signOutAction } from "@/lib/auth/actions"
+import {
+  HOW_IT_WORKS,
+  INDUSTRY_PRODUCT,
+  PRODUCTS,
+  type ProductKey,
+} from "@/lib/products"
+import { ProductStory } from "@/components/onboarding/product-story"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   HOURS_PRESETS,
   PALETTES,
@@ -44,6 +55,7 @@ import { authorisePayment } from "@/components/billing/razorpay-checkout"
 import { celebrate } from "@/components/onboarding/confetti"
 import { CreatingShowroom } from "@/components/onboarding/creating-showroom"
 import { IndustryPicker } from "@/components/onboarding/industry-picker"
+import { FindMyTany } from "@/components/onboarding/find-my-tany"
 import { PhoneVerify } from "@/components/onboarding/phone-verify"
 import { RestaurantPreview } from "@/components/onboarding/restaurant-preview"
 import { type IndustryKey, getIndustry } from "@/lib/industries"
@@ -61,7 +73,7 @@ import {
 import { type SlugStatus, checkSlug, createDealership } from "./actions"
 
 const STEPS = [
-  "Your industry",
+  "Explore your app",
   "Your business",
   "Contact details",
   "Make it yours",
@@ -111,8 +123,9 @@ export function OnboardingWizard({
   const [pending, startTransition] = useTransition()
   const [errors, setErrors] = useState<Errors>({})
 
-  const [industry, setIndustry] = useState<IndustryKey>("motors")
-  const ind = getIndustry(industry)
+  const compact = useIsCompact()
+  const [industry, setIndustry] = useState<IndustryKey | null>(null)
+  const ind = getIndustry(industry ?? "motors")
 
   const [displayName, setDisplayName] = useState("")
   const [slug, setSlug] = useState("")
@@ -163,7 +176,7 @@ export function OnboardingWizard({
   }, [slug])
 
   const draft: OnboardDraft = {
-    industry,
+    industry: industry ?? "motors",
     displayName,
     slug,
     city,
@@ -200,7 +213,22 @@ export function OnboardingWizard({
     return Object.keys(next).length === 0
   }
 
+  // Product centred in the explore reel; may be one that is not live yet.
+  const [pickMode, setPickMode] = useState<"browse" | "find">("find")
+  const [exploreProduct, setExploreProduct] = useState<ProductKey | null>(null)
+  const comingSoon =
+    exploreProduct !== null &&
+    !Object.values(INDUSTRY_PRODUCT).includes(exploreProduct)
+
   const next = () => {
+    if (step === 0 && comingSoon) {
+      setErrors({ form: "This app is coming soon. Choose TanyMotos or TanyEats to continue." })
+      return
+    }
+    if (step === 0 && !industry) {
+      setErrors({ form: "Choose an app to continue." })
+      return
+    }
     const ok =
       step === 0
         ? true
@@ -208,7 +236,9 @@ export function OnboardingWizard({
           ? validate(["displayName", "slug"])
           : step === 2
             ? validate(["city", "phone"])
-            : validate(["primary", "accent", "radius"])
+            : step === 3
+              ? validate(["primary", "accent", "radius"])
+              : validate(["plan", "billingCycle"])
     if (ok) setStep((s) => s + 1)
   }
 
@@ -252,10 +282,10 @@ export function OnboardingWizard({
         setErrors(result.fieldErrors as Errors)
         setStep(
           result.fieldErrors.slug || result.fieldErrors.displayName
-            ? 1
+            ? 0
             : result.fieldErrors.logo
-              ? 3
-              : 2
+              ? 2
+              : 1
         )
       } else {
         setErrors({ form: result.error })
@@ -268,7 +298,7 @@ export function OnboardingWizard({
       <Success
         url={done}
         billingNote={billingNote}
-        industry={industry}
+        industry={industry ?? "motors"}
         name={displayName}
         city={city}
         primary={primary}
@@ -278,7 +308,7 @@ export function OnboardingWizard({
     )
 
   const footer = (
-    <div className="flex flex-col gap-4">
+    <div className="flex w-full flex-col gap-3">
       <div
         className="flex gap-2"
         role="progressbar"
@@ -292,30 +322,59 @@ export function OnboardingWizard({
             key={name}
             className={cn(
               "h-1 flex-1 rounded-full",
-              i <= step ? "bg-primary" : "bg-muted"
+              i <= step
+                ? "bg-primary"
+                : "bg-muted-foreground/25"
             )}
           />
         ))}
       </div>
-      <div className="flex items-center justify-between">
-        <Button
-          type="button"
-          variant="ghost"
-          size="lg"
-          disabled={step === 0 || pending}
-          onClick={() => {
-            setErrors({})
-            setStep((s) => s - 1)
-          }}
-        >
-          Back
-        </Button>
+      <div className="relative flex items-center justify-between">
+        <p className="absolute left-1/2 hidden -translate-x-1/2 text-sm text-muted-foreground sm:block">
+          Step {step + 1} of {STEPS.length}
+        </p>
+        {step > 0 ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="lg"
+            disabled={pending}
+            onClick={() => {
+              setErrors({})
+              setStep((s) => s - 1)
+            }}
+          >
+            Back
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="lg"
+            disabled={pending}
+            onClick={() => void signOutAction()}
+          >
+            Have an account? Log in
+          </Button>
+        )}
         {step < STEPS.length - 1 ? (
-          <Button type="button" size="lg" onClick={next}>
+          <Button
+            type="button"
+            size="lg"
+            className="ml-auto h-14 px-8"
+            disabled={step === 0 && (!industry || comingSoon)}
+            onClick={next}
+          >
             Continue
           </Button>
         ) : (
-          <Button type="button" size="lg" disabled={pending} onClick={submit}>
+          <Button
+            type="button"
+            size="lg"
+            className="ml-auto h-14 px-8"
+            disabled={pending}
+            onClick={submit}
+          >
             {pending
               ? `Creating your ${ind.pageNoun}...`
               : isFreePlan(plan)
@@ -326,34 +385,79 @@ export function OnboardingWizard({
       </div>
     </div>
   )
+  const exploreKey: ProductKey | null =
+    exploreProduct ?? (industry ? INDUSTRY_PRODUCT[industry] : null)
+  // The product in the reel if it is coming soon, else the live product chosen.
+  const storyProduct: ProductKey | null =
+    step === 0 && comingSoon && exploreProduct
+      ? exploreProduct
+      : industry
+        ? INDUSTRY_PRODUCT[industry]
+        : null
+  const exploreStory = storyProduct ? (
+    HOW_IT_WORKS.includes(storyProduct) ? (
+      <StoryFrame
+        key={storyProduct}
+        product={storyProduct}
+        title={`How ${PRODUCTS.find((p) => p.key === storyProduct)?.name} works`}
+      />
+    ) : (
+      <ProductStory product={storyProduct} />
+    )
+  ) : null
   return (
     <>
       {pending ? <CreatingShowroom /> : null}
       <OnboardShell
+        wide={step === 0}
+        flush={step === 0 && exploreStory !== null}
+        showAside={step > 0 || exploreStory !== null}
+        balanced={step === 0}
+        tinted={step === 0 ? (exploreKey ?? (pickMode === "browse" ? "tanymotos" : null)) : null}
         footer={footer}
         aside={
-          <div className="w-full max-w-sm">
-            <p className="mb-3 text-center text-sm text-muted-foreground">
-              Live preview of your {ind.pageNoun}
-            </p>
-            <IndustryPreview
-              industry={industry}
-              name={displayName || `Your ${ind.key === "motors" ? "Dealership" : "Restaurant"}`}
-              city={city || "Your city"}
-              primary={primary}
-              accent={accent}
-              radius={radius}
-              logo={logo}
-            />
-          </div>
+          step === 0 && exploreStory ? (
+            compact ? null : exploreStory
+          ) : (
+            <div className="w-full max-w-sm">
+              <p className="mb-3 text-center text-sm text-muted-foreground">
+                Live preview of your {ind.pageNoun}
+              </p>
+              <IndustryPreview
+                industry={industry ?? "motors"}
+                name={
+                  displayName ||
+                  `Your ${ind.key === "motors" ? "Dealership" : "Restaurant"}`
+                }
+                city={city || "Your city"}
+                primary={primary}
+                accent={accent}
+                radius={radius}
+                logo={logo}
+              />
+            </div>
+          )
         }
       >
-        <div className="flex flex-col gap-6">
-          <div className="flex flex-col items-center gap-2 text-center">
-            <p className="text-sm text-muted-foreground">
-              Step {step + 1} of {STEPS.length}
-            </p>
-            <h1 className="pt-2 text-3xl font-bold text-balance sm:text-4xl">
+        <div
+          className={cn(
+            "flex min-h-0 flex-col",
+            step === 0 ? "gap-5 max-sm:gap-3.5" : "gap-6",
+            step === 0 ? "h-full pt-8 pb-28 max-sm:pt-0" : "my-auto max-h-full"
+          )}
+        >
+          <div
+            className={cn(
+              "flex shrink-0 flex-col items-center gap-2 text-center"
+            )}
+          >
+            <h1
+              className={cn(
+                "pt-2 text-3xl font-bold text-balance sm:text-4xl",
+                // Phones: a smaller heading leaves more height for the product card.
+                step === 0 && "max-sm:pt-0 max-sm:text-xl max-sm:[-webkit-text-stroke:0.5px_currentColor]"
+              )}
+            >
               {step === 0 ? (
                 firstName ? (
                   <>
@@ -371,9 +475,12 @@ export function OnboardingWizard({
                 STEPS[step]
               )}
             </h1>
-            <p className="mt-2 text-sm text-balance text-muted-foreground">
-              {step === 0 &&
-                "We tailor your page, tools and settings to your industry."}
+            <p
+              className={cn(
+                "mt-2 text-sm text-balance text-muted-foreground",
+                step === 0 && "hidden"
+              )}
+            >
               {step === 1 &&
                 `This is what ${ind.key === "motors" ? "buyers" : "guests"} will see. You can change it any time.`}
               {step === 2 &&
@@ -385,9 +492,70 @@ export function OnboardingWizard({
             </p>
           </div>
 
-          <div className="flex flex-col gap-5">
+          <div
+            className={cn(
+              "flex min-h-0 flex-col",
+              step === 0
+                ? "gap-9 max-lg:gap-8"
+                : "gap-5",
+              step === 0 ? "flex-1" : "overflow-y-auto p-1"
+            )}
+          >
             {step === 0 && (
-              <IndustryPicker value={industry} onChange={setIndustry} />
+              <Tabs
+                value={pickMode}
+                onValueChange={(v) => {
+                  // Each tab starts clean: no product carried over from the other one.
+                  setPickMode(v as "browse" | "find")
+                  setIndustry(null)
+                  setExploreProduct(null)
+                  setErrors({})
+                }}
+                className="shrink-0 items-center"
+              >
+                <TabsList className="h-11 bg-foreground/[0.06] p-1">
+                  <TabsTrigger value="find" className="px-4 text-base max-sm:px-3 max-sm:text-sm text-foreground/70 focus-visible:ring-0 focus-visible:outline-none data-active:bg-background data-active:text-foreground data-active:shadow-sm">
+                    <HugeiconsIcon icon={AiMagicIcon} />
+                    Find My Tany
+                  </TabsTrigger>
+                  <TabsTrigger value="browse" className="px-4 text-base max-sm:px-3 max-sm:text-sm text-foreground/70 focus-visible:ring-0 focus-visible:outline-none data-active:bg-background data-active:text-foreground data-active:shadow-sm">
+                    <HugeiconsIcon icon={GridViewIcon} />
+                    Browse Products
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
+
+            {step === 0 && pickMode === "find" && (
+              <FindMyTany
+                onPick={(nextIndustry, product) => {
+                  // The recommended product tints the page and fills the side panel, live or not.
+                  setIndustry(nextIndustry)
+                  setExploreProduct(product)
+                  setErrors({})
+                }}
+              />
+            )}
+
+            {step === 0 && pickMode === "browse" && (
+              <IndustryPicker
+                value={industry}
+                variant="explore"
+                renderStory={(product) =>
+                  HOW_IT_WORKS.includes(product) ? (
+                    <StoryFrame
+                      key={product}
+                      product={product}
+                      title={`How ${PRODUCTS.find((p) => p.key === product)?.name} works`}
+                    />
+                  ) : null
+                }
+                onProductChange={setExploreProduct}
+                onChange={(nextIndustry) => {
+                  setIndustry(nextIndustry)
+                  setErrors({})
+                }}
+              />
             )}
 
             {step === 1 && (
@@ -607,7 +775,7 @@ export function OnboardingWizard({
             {step === 4 && (
               <>
                 <PlanPicker
-                  industry={industry}
+                  industry={industry ?? "motors"}
                   plan={plan}
                   cycle={billingCycle}
                   onPlan={setPlan}
@@ -639,14 +807,43 @@ function OnboardShell({
   children,
   aside,
   footer,
+  wide,
+  flush,
+  showAside = true,
+  balanced = false,
+  tinted = null,
+  plainLeft = false,
 }: {
+  /** Keep the left column white while the rest of the page is tinted. */
+  plainLeft?: boolean
+  /** Industry whose animation colour tints the whole page. */
+  tinted?: ProductKey | null
+  wide?: boolean
+  flush?: boolean
   children: React.ReactNode
   aside: React.ReactNode
   footer?: React.ReactNode
+  showAside?: boolean
+  balanced?: boolean
 }) {
   return (
-    <div className="grid min-h-svh lg:grid-cols-2">
-      <div className="flex flex-col gap-4 p-6 md:p-10">
+    <div
+      style={tinted ? { backgroundColor: `var(--ground-${tinted})` } : undefined}
+      className={cn(
+        "grid h-svh overflow-hidden transition-colors duration-700",
+        showAside
+          ? balanced
+            ? "lg:grid-cols-2"
+            : "lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]"
+          : "grid-cols-1"
+      )}
+    >
+      <div
+        className={cn(
+          "relative flex min-h-0 flex-col gap-4 px-6 pt-6 md:px-10 md:pt-10",
+          plainLeft && "bg-background"
+        )}
+      >
         <div className="flex justify-center gap-2 md:justify-start">
           <Link
             href="/"
@@ -656,15 +853,78 @@ function OnboardShell({
             <Logo className="h-7" />
           </Link>
         </div>
-        <div className="flex flex-1 items-center justify-center">
-          <div className="w-full max-w-sm">{children}</div>
+        <div
+          className={cn("flex min-h-0 flex-1 justify-center", !wide && "pb-40")}
+        >
+          <div
+            className={cn(
+              "flex min-h-0 w-full min-w-0 flex-col",
+              wide ? "max-w-2xl" : "max-w-sm"
+            )}
+          >
+            {children}
+          </div>
         </div>
-        {footer}
+        <div
+          style={
+            tinted && !plainLeft
+              ? { backgroundColor: `var(--ground-${tinted})` }
+              : undefined
+          }
+          className={cn(
+            "fixed inset-x-0 bottom-0 z-20 px-6 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] transition-colors duration-700 md:px-10",
+            (!tinted || plainLeft) && "bg-white"
+          )}
+        >
+          {footer}
+        </div>
       </div>
-      <div className="relative hidden bg-muted lg:flex lg:items-center lg:justify-center lg:p-10">
+      <div
+        className={cn(
+          "relative hidden lg:flex lg:items-center lg:justify-center",
+          !tinted && "bg-muted",
+          showAside && "animate-in fade-in slide-in-from-right-6 duration-700",
+          !showAside && "lg:hidden",
+          flush ? "overflow-hidden" : "lg:p-10"
+        )}
+      >
         {aside}
       </div>
     </div>
+  )
+}
+
+/** How-it-works page in the side panel. Stays hidden over the product's tint until it has loaded, so no white flashes in while it swaps. */
+function StoryFrame({ product, title }: { product: ProductKey; title: string }) {
+  const [loaded, setLoaded] = useState(false)
+  return (
+    <iframe
+      src={`/brand/${product}-how-it-works.html`}
+      title={title}
+      sandbox="allow-scripts"
+      onLoad={() => setLoaded(true)}
+      style={{ backgroundColor: `var(--ground-${product})` }}
+      // Not interactive, and an iframe swallows scroll events: let them reach the page.
+      className={cn(
+        "pointer-events-none size-full border-0 transition-opacity duration-300",
+        loaded ? "opacity-100" : "opacity-0"
+      )}
+    />
+  )
+}
+
+const PHONE_QUERY = "(max-width: 1023px)"
+
+/** True below lg, where the side panel is hidden and the animation moves above the picker. */
+function useIsCompact() {
+  return useSyncExternalStore(
+    (onChange) => {
+      const mql = window.matchMedia(PHONE_QUERY)
+      mql.addEventListener("change", onChange)
+      return () => mql.removeEventListener("change", onChange)
+    },
+    () => window.matchMedia(PHONE_QUERY).matches,
+    () => false
   )
 }
 

@@ -20,7 +20,7 @@ export const dealerThemeSchema = z.object({
 export type DealerTheme = z.infer<typeof dealerThemeSchema>
 
 export const DEFAULT_THEME: DealerTheme = {
-  primary: "#1d4ed8",
+  primary: "#E5270B",
   primaryForeground: "#ffffff",
   accent: "#f59e0b",
   radius: "md",
