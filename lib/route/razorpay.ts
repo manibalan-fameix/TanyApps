@@ -153,8 +153,12 @@ export async function refundPayment(paymentId: string, amount: number, reverseTr
   return { refundId: refund.id }
 }
 
+/**
+ * Refunds a car booking payment in full. Every booking payment is a Route payment (the order always carries a transfer to
+ * the dealer's linked account), so the refund also reverses that transfer, exactly as food refunds do; without it the money
+ * would leave the platform's balance instead of the dealer's. Throws when payments are not set up or Razorpay refuses, so the
+ * caller never marks a booking refunded when no refund was made.
+ */
 export async function refundBookingPayment(paymentId: string, amount: number): Promise<void> {
-  const creds = razorpayCredentials()
-  if (!creds) return
-  await call(creds, `/v1/payments/${encodeURIComponent(paymentId)}/refund`, { method: "POST", body: { amount: amount * 100 } })
+  await refundPayment(paymentId, amount, true)
 }

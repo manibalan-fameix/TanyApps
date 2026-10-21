@@ -7,6 +7,8 @@ import path from "node:path"
 import { eq } from "drizzle-orm"
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 
+import { getPlan } from "../lib/plans"
+
 const url = process.env.TEST_DATABASE_URL
 
 // The pool is shared by every block in this file, so it is closed once, at the very end.
@@ -288,8 +290,10 @@ describe.skipIf(!url)("add-car server logic (live database)", () => {
 
     it("enforces the plan's live-car cap", async () => {
       const [c] = await m.db.unscopedDb.insert(m.s.dealers).values({ slug: `cap-${tag}`, displayName: "Cap", theme, plan: "starter" }).returning()
+      // Fill the starter plan exactly to its cap, whatever the cap currently is (it was raised from 20 to 25 in a00c318).
+      const cap = getPlan("starter").maxLiveCars
       await m.db.unscopedDb.insert(m.s.cars).values(
-        Array.from({ length: 20 }, (_, i) => ({ dealerId: c.id, year: 2018, status: "live" as const, shortCode: `c${i}${tag}`.slice(0, 6), slug: `cap-${i}-${tag}` })),
+        Array.from({ length: cap }, (_, i) => ({ dealerId: c.id, year: 2018, status: "live" as const, shortCode: `c${i}${tag}`.slice(0, 6), slug: `cap-${i}-${tag}` })),
       )
       const carId = await ready(c.id, "TN77AB1111")
       await landPhoto(c.id, carId, "front_three_quarter")
