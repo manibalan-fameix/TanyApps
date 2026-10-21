@@ -1,10 +1,10 @@
 "use server"
 
+import { industrySession } from "@/lib/core/guards"
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
-import { getDealerContext } from "@/lib/auth/context"
 import { billingState, effectivePlanKey } from "@/lib/billing/state"
 import { menuCategories, menuItems } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
@@ -26,10 +26,7 @@ const uuid = z.string().uuid()
 
 /** The signed-in restaurant. The dealer id comes from the session, never from the request. */
 async function restaurant() {
-  const ctx = await getDealerContext()
-  if (ctx.status !== "ok" || !ctx.dealerInDb) return null
-  if (ctx.dealer.industry !== "restaurants") return null
-  return ctx.dealer
+  return (await industrySession("restaurants"))?.dealer ?? null
 }
 
 const unauthorised = { ok: false as const, error: "Please sign in again." }

@@ -1,3 +1,4 @@
+import { tenantFrom } from "@/lib/core/guards"
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
@@ -6,8 +7,6 @@ import { saveFix } from "@/lib/restaurant/live-location"
 import { TOKEN_RE, fixInputSchema, hashRiderToken, sharingAllowed, toFix } from "@/lib/restaurant/tracking"
 import { orderByRiderToken } from "@/lib/restaurant/trip"
 import { allow } from "@/lib/rate-limit"
-import { getDealerBySlug } from "@/lib/tenant/dealer"
-import { TENANT_HEADER } from "@/lib/tenant/host"
 
 const body = z.object({ token: z.string().regex(TOKEN_RE) }).and(fixInputSchema)
 const json = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } })
@@ -15,9 +14,9 @@ const json = (data: unknown, status = 200) => NextResponse.json(data, { status, 
 // A rider's phone posts its position here every few seconds while the delivery link is open. The private link
 // itself is the credential, and it only ever reaches the one order it was made for.
 export async function POST(req: Request) {
-  const slug = req.headers.get(TENANT_HEADER)
-  const dealer = slug ? await getDealerBySlug(slug) : null
-  if (!dealer || dealer.industry !== "restaurants" || dealer.suspended) return json({ ok: false }, 404)
+  const tenant = await tenantFrom(req.headers, "restaurants")
+  if (!tenant) return json({ ok: false }, 404)
+  const { dealer } = tenant
 
   const parsed = body.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return json({ ok: false, error: "invalid" }, 400)

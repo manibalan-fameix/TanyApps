@@ -1,7 +1,7 @@
 "use server"
 
+import { tenantContext } from "@/lib/core/guards"
 import { eq } from "drizzle-orm"
-import { headers } from "next/headers"
 
 import { orders } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
@@ -9,8 +9,6 @@ import { dropFix } from "@/lib/restaurant/live-location"
 import { hashRiderToken } from "@/lib/restaurant/tracking"
 import { orderByRiderToken } from "@/lib/restaurant/trip"
 import { allow } from "@/lib/rate-limit"
-import { getDealerBySlug } from "@/lib/tenant/dealer"
-import { TENANT_HEADER } from "@/lib/tenant/host"
 
 type Result = { ok: true; status: string } | { ok: false; error: string }
 
@@ -19,9 +17,9 @@ type Result = { ok: true; status: string } | { ok: false; error: string }
  * which order this is, so there is no sign-in. A rider can only move their own order forward, one step at a time.
  */
 export async function tripAct(token: string, kind: "pickup" | "delivered", collectedCash: boolean): Promise<Result> {
-  const slug = (await headers()).get(TENANT_HEADER)
-  const dealer = slug ? await getDealerBySlug(slug) : null
-  if (!dealer || dealer.industry !== "restaurants" || dealer.suspended) return { ok: false, error: "This link is not available." }
+  const tenant = await tenantContext("restaurants")
+  if (!tenant) return { ok: false, error: "This link is not available." }
+  const { dealer } = tenant
   if (!allow(`trip-act:${(await hashRiderToken(token)).slice(0, 16)}`, 20, 10 * 60_000)) return { ok: false, error: "Too many taps. Wait a moment." }
 
   const order = await orderByRiderToken(dealer.id, token)

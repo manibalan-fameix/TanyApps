@@ -1,7 +1,6 @@
 "use server"
 
 import { and, asc, eq, inArray, sql } from "drizzle-orm"
-import { headers } from "next/headers"
 import { z } from "zod"
 
 import { razorpayCredentials } from "@/lib/billing/razorpay"
@@ -18,19 +17,12 @@ import { type Place, pincodeCentre, reverseGeocode, searchPlaces } from "@/lib/r
 import { validCoords } from "@/lib/restaurant/location"
 import { checkRadius, formatKm, readServiceArea } from "@/lib/restaurant/service-area"
 import { logReserved, releaseOrderStock, releaseStock, reserveStock } from "@/lib/restaurant/stock-server"
-import { type DealerProfile, getDealerBySlug } from "@/lib/tenant/dealer"
-import { TENANT_HEADER } from "@/lib/tenant/host"
+import { tenantContext } from "@/lib/core/guards"
+import type { DealerProfile } from "@/lib/tenant/dealer"
 
 type Fail = { ok: false; error: string; field?: string }
 
-async function context() {
-  const h = await headers()
-  const slug = h.get(TENANT_HEADER)
-  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "unknown"
-  const dealer = slug ? await getDealerBySlug(slug) : null
-  if (!dealer || dealer.industry !== "restaurants" || dealer.suspended) return null
-  return { dealer, ip }
-}
+const context = () => tenantContext("restaurants")
 
 const unavailable: Fail = { ok: false, error: "This restaurant is not taking requests right now." }
 

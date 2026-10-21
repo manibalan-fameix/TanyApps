@@ -1,18 +1,16 @@
-import { redirect } from "next/navigation"
 import { asc } from "drizzle-orm"
 
 import { MenuItemForm } from "@/components/restaurant/menu-item-form"
 import { SettingsPage } from "@/components/settings/settings-page"
-import { getDealerContext } from "@/lib/auth/context"
+import { requireRestaurant } from "@/lib/restaurant/guard"
 import { menuCategories } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
 
 export const metadata = { title: "Add a dish" }
 
 export default async function NewDishPage() {
-  const ctx = await getDealerContext()
-  if (ctx.status !== "ok" || ctx.dealer.industry !== "restaurants") redirect("/dashboard")
-  const categories = await scopedDb(ctx.dealer.id).menuCategories.select(undefined, {
+  const { dealer } = await requireRestaurant()
+  const categories = await scopedDb(dealer.id).menuCategories.select(undefined, {
     orderBy: [asc(menuCategories.sortOrder)],
   })
   return (

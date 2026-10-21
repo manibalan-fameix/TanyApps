@@ -1,7 +1,8 @@
 "use server"
 
+import { tenantContext } from "@/lib/core/guards"
 import { and, eq, inArray } from "drizzle-orm"
-import { cookies, headers } from "next/headers"
+import { cookies } from "next/headers"
 import { revalidatePath } from "next/cache"
 
 import { verifyPassword } from "@/lib/auth/password"
@@ -9,19 +10,10 @@ import { deliveryPartners, orders } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
 import { allow } from "@/lib/rate-limit"
 import { RIDER_COOKIE, RIDER_SESSION_SECONDS, readRiderSession, riderNext, signRiderSession } from "@/lib/restaurant/rider-session"
-import { getDealerBySlug } from "@/lib/tenant/dealer"
-import { TENANT_HEADER } from "@/lib/tenant/host"
 
 type Result = { ok: true } | { ok: false; error: string }
 
-async function tenant() {
-  const h = await headers()
-  const slug = h.get(TENANT_HEADER)
-  const dealer = slug ? await getDealerBySlug(slug) : null
-  if (!dealer || dealer.industry !== "restaurants" || dealer.suspended) return null
-  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "unknown"
-  return { dealer, ip }
-}
+const tenant = () => tenantContext("restaurants")
 
 /** The signed-in rider for this restaurant, or null. A token for one restaurant never works on another. */
 export async function currentRider() {

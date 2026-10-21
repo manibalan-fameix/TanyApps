@@ -5,8 +5,8 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { getDealerContext } from "@/lib/auth/context"
-import { unscopedDb } from "@/lib/db/client"
-import { dealerUsers, users } from "@/lib/db/schema"
+import { createUser, fillMissingUserDetails, findMembership, findUsersByContact, setUserPasswordHash } from "@/lib/tenant/team"
+import { dealerUsers } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
 import { hashPassword } from "@/lib/auth/password"
 import { allow } from "@/lib/rate-limit"
@@ -49,27 +49,20 @@ export async function addTeammate(input: unknown): Promise<Result> {
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the details." }
   const { name, email, phone, password } = parsed.data
 
-  const [byEmail] = await unscopedDb.select().from(users).where(eq(users.email, email)).limit(1)
-  const [byPhone] = await unscopedDb.select().from(users).where(eq(users.phone, phone)).limit(1)
+  const { byEmail, byPhone } = await findUsersByContact(email, phone)
   if (byEmail && byPhone && byEmail.id !== byPhone.id) return { ok: false, error: "That email and mobile number belong to different people." }
   const existing = byEmail ?? byPhone
-  const userId = existing?.id ?? (await unscopedDb.insert(users).values({ name, email, phone }).returning())[0].id
-  if (existing) {
-    // Fill in what is missing without overwriting details the person already has.
-    await unscopedDb
-      .update(users)
-      .set({ name: existing.name ?? name, email: existing.email ?? email, phone: existing.phone ?? phone })
-      .where(eq(users.id, userId))
-  }
+  const userId = existing?.id ?? (await createUser({ name, email, phone }))
+  if (existing) await fillMissingUserDetails(existing, { name, email, phone })
 
-  const [membership] = await unscopedDb.select().from(dealerUsers).where(eq(dealerUsers.userId, userId)).limit(1)
+  const membership = await findMembership(userId)
   if (membership) {
     return {
       ok: false,
       error: membership.dealerId === ctx.dealer.id ? "That person is already on your team." : "That person already belongs to another dealership.",
     }
   }
-  await unscopedDb.update(users).set({ passwordHash: await hashPassword(password) }).where(eq(users.id, userId))
+  await setUserPasswordHash(userId, await hashPassword(password))
   await scopedDb(ctx.dealer.id).dealerUsers.insert({ userId, role: "staff" })
   revalidatePath("/settings/team")
   return { ok: true }
@@ -97,6 +90,6 @@ export async function resetTeammatePassword(userId: string, password: unknown): 
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the password." }
   const [target] = await scopedDb(ctx.dealer.id).dealerUsers.select(eq(dealerUsers.userId, userId))
   if (!target || target.role !== "staff") return { ok: false, error: "That person is not on your team." }
-  await unscopedDb.update(users).set({ passwordHash: await hashPassword(parsed.data) }).where(eq(users.id, userId))
+  await setUserPasswordHash(userId, await hashPassword(parsed.data))
   return { ok: true }
 }

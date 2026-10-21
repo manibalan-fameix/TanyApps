@@ -1,10 +1,10 @@
 "use server"
 
+import { industrySession } from "@/lib/core/guards"
 import { and, asc, desc, eq, gt, inArray, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
-import { getDealerContext } from "@/lib/auth/context"
 import { banners, coupons, deliveryPartners, deliveryZones, enquiries, menuItems, orders, reviews } from "@/lib/db/schema"
 import { hashPassword } from "@/lib/auth/password"
 import { nextPartnerCode, parsePincodes, partnerSchema, pinSchema, zoneSchema } from "@/lib/restaurant/delivery"
@@ -35,11 +35,7 @@ const denied: Result = { ok: false, error: "Please sign in again." }
 const ownerOnly: Result = { ok: false, error: "Only the owner can change this." }
 
 /** The signed-in restaurant. The dealer id comes from the session, never from the request. */
-async function session() {
-  const ctx = await getDealerContext()
-  if (ctx.status !== "ok" || !ctx.dealerInDb || ctx.dealer.industry !== "restaurants") return null
-  return { dealer: ctx.dealer, owner: ctx.role === "owner" }
-}
+const session = () => industrySession("restaurants")
 
 function refresh(...paths: string[]) {
   for (const p of paths) revalidatePath(p)

@@ -1,3 +1,4 @@
+import { tenantFrom } from "@/lib/core/guards"
 import { eq } from "drizzle-orm"
 import { NextResponse } from "next/server"
 
@@ -8,21 +9,18 @@ import { roadRoute } from "@/lib/restaurant/route"
 import { readServiceArea, distanceKm } from "@/lib/restaurant/service-area"
 import { etaMinutes, isFresh } from "@/lib/restaurant/tracking"
 import { allow } from "@/lib/rate-limit"
-import { getDealerBySlug } from "@/lib/tenant/dealer"
-import { TENANT_HEADER } from "@/lib/tenant/host"
 
 const json = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } })
 
 // What a guest's order page polls: where the rider is, how far, and roughly when. The 6-character order code is
 // the guest's key, the same one that opens their order page. Only that one order is ever answered.
 export async function GET(req: Request) {
-  const slug = req.headers.get(TENANT_HEADER)
-  const dealer = slug ? await getDealerBySlug(slug) : null
-  if (!dealer || dealer.industry !== "restaurants" || dealer.suspended) return json({ ok: false }, 404)
+  const tenant = await tenantFrom(req.headers, "restaurants")
+  if (!tenant) return json({ ok: false }, 404)
+  const { dealer, ip } = tenant
 
   const code = new URL(req.url).searchParams.get("code")?.toUpperCase() ?? ""
   if (!/^[A-Z0-9]{6}$/.test(code)) return json({ ok: false }, 400)
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("cf-connecting-ip") || "unknown"
   // A page polls about 15 times a minute; this leaves room for a few open tabs but stops guessing at codes.
   if (!allow(`order-loc:${ip}:${code}`, 60, 60_000)) return json({ ok: false, error: "slow_down" }, 429)
 
