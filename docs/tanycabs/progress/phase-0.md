@@ -104,3 +104,7 @@ Things the tests caught while building, worth knowing:
 - `INDUSTRY_KEYS` already includes `cabs`; flipping `adminReady` to true and filling the cab nav in `ADMIN_NAV` is how the vertical goes live.
 - New tenant tables: add to a `DIRECT` group in `lib/db/tenant-tables.ts`, add an `UPDATE_PAYLOAD` line in `tests/tenant-leak.test.ts`; the tests will not let you forget.
 - `requireIndustry("cabs")` / `tenantContext("cabs")` for guards, `rateLimit()` (awaited), `audit()`, `enqueue()`, `defineStatusGraph()`, `createRouteOrder()` (add a `cab_trip` kind to `PaymentKind` and a handler), `getGeoProvider()` (add the Google provider), `JOBS` (add jobs, and their schedule in `workers/cron`).
+
+## Correction added during Phase 1
+
+The deploy steps above tell you to run `bash scripts/upload-secrets.sh` for `BLIND_INDEX_KEY`, but the script's key list did not include it, so the key would never have reached Cloudflare. Fixed on the Phase 1 branch (the script now sends it, and `scripts/predeploy-check.sh` blocks a deploy when `ENCRYPTION_KEY`, `BLIND_INDEX_KEY`, `CRON_SECRET` or `TRACKER_SECRET` is empty in `.env.local`).
