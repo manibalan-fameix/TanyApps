@@ -1,4 +1,6 @@
-import { index, integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core"
+import { index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core"
+
+import { dealers } from "./dealers.ts"
 
 export const cronRunStatus = pgEnum("cron_run_status", ["running", "done", "failed"])
 
@@ -21,4 +23,30 @@ export const cronRuns = pgTable(
     result: text("result"),
   },
   (t) => [uniqueIndex("cron_runs_job_slot_uq").on(t.job, t.slot), index("cron_runs_started_idx").on(t.startedAt)],
+)
+
+export const auditActorType = pgEnum("audit_actor_type", ["user", "customer", "driver", "system", "webhook"])
+
+/**
+ * Who did what to which record, for the things people argue about later: fare edits, refunds, reassignments, cancellations,
+ * overrides. Append-only (a trigger in the migration blocks UPDATE, DELETE and TRUNCATE), and `dealer_id` has no cascade, so a
+ * business with history cannot be hard-deleted by accident. `diff` holds changed field names with before/after values, with
+ * personal data already redacted by lib/core/audit.ts.
+ */
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    dealerId: uuid("dealer_id").notNull().references(() => dealers.id),
+    actorType: auditActorType("actor_type").notNull(),
+    /** The user / customer / driver id, or a short label for system and webhook actors. */
+    actorId: text("actor_id").notNull(),
+    /** Dotted verb, e.g. trip.reassign, fare.adjust, payment.refund. */
+    action: text("action").notNull(),
+    entity: text("entity").notNull(),
+    entityId: text("entity_id").notNull(),
+    diff: jsonb("diff").$type<Record<string, unknown>>().notNull().default({}),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("audit_log_entity_idx").on(t.dealerId, t.entity, t.entityId, t.at), index("audit_log_dealer_at_idx").on(t.dealerId, t.at)],
 )

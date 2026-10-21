@@ -176,6 +176,13 @@
       "when": 1792571107404,
       "tag": "0024_natural_shockwave",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792571294974,
+      "tag": "0025_flawless_mauler",
+      "breakpoints": true
     }
   ]
 }

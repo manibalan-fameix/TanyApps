@@ -1,5 +1,6 @@
 import {
   accounts,
+  auditLog,
   banners,
   bookings,
   carMedia,
@@ -16,6 +17,8 @@ import {
   leads,
   menuCategories,
   menuItems,
+  notificationOptins,
+  notifications,
   orderLocations,
   orders,
   priceEvents,
@@ -36,7 +39,7 @@ import {
  */
 
 /** Tables every industry uses. */
-const PLATFORM_DIRECT = { dealerUsers, dealerDomains, coupons, reviews, enquiries, banners } as const
+const PLATFORM_DIRECT = { dealerUsers, dealerDomains, coupons, reviews, enquiries, banners, notifications, notificationOptins, auditLog } as const
 
 /** TanyMotos. */
 const MOTORS_DIRECT = { cars, leads, bookings } as const
