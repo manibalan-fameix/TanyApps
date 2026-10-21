@@ -24,5 +24,24 @@
     { "tag": "v1", "new_sqlite_classes": ["OrderTracker"] },
     { "tag": "v2", "new_sqlite_classes": ["RateLimiter"] }
   ],
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+
+  // STAGING (docs/tanycabs/STAGING.md): its own worker, hostname and objects, so staging positions and rate limits never touch production.
+  "env": {
+    "staging": {
+      "name": "tanyapps-tracker-staging",
+      "routes": [{ "pattern": "track.staging.tany.in", "custom_domain": true }],
+      "vars": { "ALLOWED_ROOT": "staging.tany.in" },
+      "durable_objects": {
+        "bindings": [
+          { "name": "TRACKER", "class_name": "OrderTracker" },
+          { "name": "RATE_LIMITER", "class_name": "RateLimiter" }
+        ]
+      },
+      "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["OrderTracker"] },
+        { "tag": "v2", "new_sqlite_classes": ["RateLimiter"] }
+      ]
+    }
+  }
 }
