@@ -1,0 +1,30 @@
+import type { Vertical } from "./types"
+
+export const restaurants: Vertical = {
+  key: "restaurants",
+  product: "tanyeats",
+  label: "Restaurants",
+  blurb: "Restaurants, cafes and cloud kitchens. Share your menu and take table or order enquiries.",
+  businessNoun: "restaurant",
+  pageNoun: "menu page",
+  itemNoun: "dishes",
+  customerNoun: "guests",
+  nameLabel: "Restaurant name",
+  namePlaceholder: "Annapoorna Kitchen",
+  previewName: "Your Restaurant",
+  phoneLabel: "Mobile number guests can call",
+  firstItemCta: "Add your first dish",
+  firstItemHref: "/menu/new",
+  adminReady: true,
+  planLimit: "menu_items",
+  razorpay: { category: "food", subcategory: "restaurants" },
+  paymentsPurpose: "guests can pay for their orders online",
+  tenantMobileNav: false,
+  liveMessage: "Your menu page has its own link. Share it on WhatsApp and Instagram, and print it as a QR code for your tables.",
+  welcomeCta: "Add my first dish",
+  welcomeSteps: [
+    "Add your dishes and group them into categories.",
+    "Share your menu link on WhatsApp and Instagram, or print it as a QR code.",
+    "Watch orders and guest messages arrive here.",
+  ],
+}

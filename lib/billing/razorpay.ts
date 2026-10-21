@@ -50,7 +50,7 @@ async function ensurePlan(creds: Credentials, plan: SellablePlanKey, cycle: Bill
         name: `TanyApps ${PLANS[plan].label} (${cycle})`,
         amount,
         currency: "INR",
-        description: `Up to ${PLANS[plan].maxLiveCars} live cars`,
+        description: `${PLANS[plan].label} plan, billed ${cycle}`,
       },
       notes: { key, amount: String(amount) },
     },

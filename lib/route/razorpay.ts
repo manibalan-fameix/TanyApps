@@ -1,4 +1,5 @@
 import { razorpayCredentials } from "../billing/razorpay"
+import { getVertical } from "../verticals"
 
 const API = "https://api.razorpay.com"
 
@@ -48,7 +49,7 @@ export async function createLinkedAccount(input: LinkedAccountInput): Promise<{ 
       business_type: "individual",
       contact_name: input.legalName,
       profile: {
-        ...(input.industry === "restaurants" ? { category: "food", subcategory: "restaurants" } : { category: "automobile", subcategory: "dealer" }),
+        ...getVertical(input.industry).razorpay,
         addresses: { registered: { city: input.city, country: "IN" } },
       },
     },

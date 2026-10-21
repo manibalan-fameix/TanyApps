@@ -5,8 +5,8 @@ import * as React from "react"
 import { AddCircleIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
-import { navMain, navRestaurantGroups } from "@/components/admin/nav-config"
-import type { IndustryKey } from "@/lib/industries"
+import { ADMIN_NAV } from "@/components/admin/nav-config"
+import { DEFAULT_INDUSTRY, type IndustryKey } from "@/lib/verticals"
 import { NavMain } from "@/components/nav-main"
 import { NavProjects, type RecentCar } from "@/components/nav-projects"
 import { NavSecondary } from "@/components/nav-secondary"
@@ -20,7 +20,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { copy } from "@/lib/copy"
 import { DealerMark } from "@/components/dealer-mark"
 
 // shadcn "sidebar-08" block, populated with the signed-in dealer's data.
@@ -42,6 +41,7 @@ export function AppSidebar({
   recentCars: RecentCar[]
   industry?: IndustryKey
 } & React.ComponentProps<typeof Sidebar>) {
+  const nav = ADMIN_NAV[industry ?? DEFAULT_INDUSTRY]
   return (
     <Sidebar variant="inset" {...props}>
       <SidebarHeader>
@@ -60,8 +60,8 @@ export function AppSidebar({
       <SidebarContent>
         <div className="px-2 pt-1">
           <Link
-            href={industry === "restaurants" ? "/menu/new" : "/cars/new"}
-            title={industry === "restaurants" ? "Add dish" : copy.admin.nav.addCar}
+            href={nav.addItem.href}
+            title={nav.addItem.label}
             className="group/add relative flex h-10 items-center justify-center gap-2 overflow-hidden rounded-lg bg-[linear-gradient(135deg,color-mix(in_oklab,var(--primary),white_28%),color-mix(in_oklab,var(--primary),black_28%))] text-sm font-semibold text-primary-foreground shadow-md shadow-primary/30 transition-all group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:px-0 hover:shadow-lg hover:shadow-primary/40 active:scale-[0.98]"
           >
             <span
@@ -74,16 +74,16 @@ export function AppSidebar({
               className="relative size-5 shrink-0 transition-transform group-hover/add:rotate-90"
             />
             <span className="relative truncate group-data-[collapsible=icon]:hidden">
-              {industry === "restaurants" ? "Add dish" : copy.admin.nav.addCar}
+              {nav.addItem.label}
             </span>
           </Link>
         </div>
-        {industry === "restaurants" ? (
-          navRestaurantGroups.map((g) => <NavMain key={g.label} label={g.label} items={g.items} />)
+        {nav.groups ? (
+          nav.groups.map((g) => <NavMain key={g.label} label={g.label} items={g.items} />)
         ) : (
-          <NavMain items={navMain} />
+          <NavMain items={nav.items} />
         )}
-        {industry === "restaurants" ? null : <NavProjects cars={recentCars} />}
+        {nav.showRecentCars ? <NavProjects cars={recentCars} /> : null}
         <NavSecondary publicUrl={publicUrl} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>

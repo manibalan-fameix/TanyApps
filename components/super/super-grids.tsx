@@ -1,5 +1,6 @@
 "use client"
 
+import { INDUSTRY_KEYS, getVertical } from "@/lib/verticals"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMemo } from "react"
@@ -214,7 +215,7 @@ export function BusinessesGrid({ rows }: { rows: BusinessRow[] }) {
         headerClass: h("name"),
         width: 130,
         valueFormatter: labelled,
-        ...options<BusinessRow>(["motors", "restaurants"]),
+        ...options<BusinessRow>([...INDUSTRY_KEYS]),
       },
       {
         field: "planLabel",
@@ -296,7 +297,7 @@ export function BusinessesGrid({ rows }: { rows: BusinessRow[] }) {
         width: 110,
         valueGetter: ({ data }) =>
           data
-            ? data.industry === "restaurants"
+            ? getVertical(data.industry).planLimit === "menu_items"
               ? data.menuItems
               : data.liveCars
             : 0,

@@ -30,6 +30,7 @@ import { signOutAction } from "@/lib/auth/actions"
 import {
   HOW_IT_WORKS,
   INDUSTRY_PRODUCT,
+  LIVE_PRODUCTS,
   PRODUCTS,
   type ProductKey,
 } from "@/lib/products"
@@ -63,7 +64,8 @@ import type { FirebaseWebConfig } from "@/lib/firebase/client"
 import { PlanPicker } from "@/components/billing/plan-picker"
 import {
   PLANS,
-  RESTAURANT_MENU_LIMITS,
+  freeTierPhrase,
+  planLimitLabel,
   TRIAL_DAYS,
   isFreePlan,
   type BillingCycle,
@@ -218,7 +220,7 @@ export function OnboardingWizard({
   const [exploreProduct, setExploreProduct] = useState<ProductKey | null>(null)
   const comingSoon =
     exploreProduct !== null &&
-    !Object.values(INDUSTRY_PRODUCT).includes(exploreProduct)
+    !LIVE_PRODUCTS.includes(exploreProduct)
 
   const next = () => {
     if (step === 0 && comingSoon) {
@@ -427,7 +429,7 @@ export function OnboardingWizard({
                 industry={industry ?? "motors"}
                 name={
                   displayName ||
-                  `Your ${ind.key === "motors" ? "Dealership" : "Restaurant"}`
+                  ind.previewName
                 }
                 city={city || "Your city"}
                 primary={primary}
@@ -482,13 +484,13 @@ export function OnboardingWizard({
               )}
             >
               {step === 1 &&
-                `This is what ${ind.key === "motors" ? "buyers" : "guests"} will see. You can change it any time.`}
+                `This is what ${ind.customerNoun} will see. You can change it any time.`}
               {step === 2 &&
-                `${ind.key === "motors" ? "Buyers" : "Guests"} call this number to reach you. Add your opening hours later in Settings.`}
+                `${ind.customerNoun.charAt(0).toUpperCase()}${ind.customerNoun.slice(1)} call this number to reach you. Add your opening hours later in Settings.`}
               {step === 3 &&
                 `Pick a colour for your ${ind.pageNoun}. The preview updates live.`}
               {step === 4 &&
-                `Start free with ${ind.key === "motors" ? `up to ${PLANS.free.maxLiveCars} cars` : `up to ${RESTAURANT_MENU_LIMITS.free} menu items`}, no card needed. Paid plans include a ${TRIAL_DAYS}-day free trial.`}
+                `Start free with ${freeTierPhrase(ind.key)}, no card needed. Paid plans include a ${TRIAL_DAYS}-day free trial.`}
             </p>
           </div>
 
@@ -1275,15 +1277,11 @@ function Success({
         <div className="flex flex-col items-center gap-1 text-center">
           <h1 className="text-2xl font-bold">{name} is live</h1>
           <p className="text-sm text-balance text-muted-foreground">
-            {ind.key === "motors"
-              ? "Your showroom has its own link. Add a car and share it on WhatsApp and Instagram."
-              : "Your menu page has its own link. Share it on WhatsApp and Instagram, and print it as a QR code for your tables."}
+            {ind.liveMessage}
           </p>
           <p className="text-xs text-balance text-muted-foreground">
             {billingNote === "free"
-              ? ind.key === "motors"
-                ? `You are on the Free plan: up to ${PLANS.free.maxLiveCars} cars live at once. Upgrade any time.`
-                : `You are on the Free plan: up to ${RESTAURANT_MENU_LIMITS.free} menu items. Upgrade any time.`
+              ? `You are on the Free plan: ${planLimitLabel(ind.key, "free").replace(/^Up to /, "up to ")}. Upgrade any time.`
               : billingNote === "authorised"
                 ? `Your ${TRIAL_DAYS}-day free trial has started.`
                 : `Your ${TRIAL_DAYS}-day free trial has started. Add a payment method before it ends to keep your showroom live.`}

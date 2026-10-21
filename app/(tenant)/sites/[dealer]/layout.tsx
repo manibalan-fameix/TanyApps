@@ -4,7 +4,7 @@ import { notFound } from "next/navigation"
 import { StoreShell } from "@/components/restaurant/store/shell"
 import { PullToRefresh } from "@/components/pull-to-refresh"
 import { TenantMobileNav } from "@/components/tenant/mobile-nav"
-import { getIndustry } from "@/lib/industries"
+import { getVertical } from "@/lib/verticals"
 import { getDealerBySlug } from "@/lib/tenant/dealer"
 import { themeToCssVars } from "@/lib/theme/tokens"
 
@@ -35,6 +35,9 @@ export default async function TenantLayout({
 }) {
   const dealer = await getDealerBySlug((await params).dealer)
   if (!dealer) notFound()
+  const vertical = getVertical(dealer.industry)
+  // A vertical whose public pages are not built yet has no site to show.
+  if (!vertical.adminReady) notFound()
   if (dealer.suspended) {
     return (
       <main className="flex min-h-svh flex-col items-center justify-center gap-2 p-6 text-center">
@@ -51,10 +54,10 @@ export default async function TenantLayout({
       className="flex min-h-svh flex-col bg-background text-foreground"
     >
       <div className="flex-1">
-        {dealer.industry === "restaurants" ? <StoreShell dealer={dealer}>{children}</StoreShell> : children}
+        {vertical.key === "restaurants" ? <StoreShell dealer={dealer}>{children}</StoreShell> : children}
       </div>
       <PullToRefresh />
-      {getIndustry(dealer.industry).key === "motors" ? <TenantMobileNav phone={dealer.phone} /> : null}
+      {vertical.tenantMobileNav ? <TenantMobileNav phone={dealer.phone} /> : null}
     </div>
   )
 }

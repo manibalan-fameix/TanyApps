@@ -6,20 +6,16 @@ import * as React from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Add01Icon,
-  Car01Icon,
   HelpCircleIcon,
   Home01Icon,
   LinkSquare02Icon,
   Logout01Icon,
   MoreHorizontalIcon,
-  Restaurant01Icon,
-  ShoppingBag01Icon,
-  UserMultiple02Icon,
 } from "@hugeicons/core-free-icons"
 
 import {
-  navMain,
-  navRestaurant,
+  ADMIN_NAV,
+  type NavMainItem,
   navSecondary,
   userMenuPages,
 } from "@/components/admin/nav-config"
@@ -37,31 +33,31 @@ import {
 } from "@/components/ui/sheet"
 import { signOutAction } from "@/lib/auth/actions"
 import { copy } from "@/lib/copy"
-import type { IndustryKey } from "@/lib/industries"
+import { DEFAULT_INDUSTRY, type IndustryKey } from "@/lib/verticals"
 
 const n = copy.admin.nav
 const isActive = (pathname: string, url: string) =>
   pathname === url || pathname.startsWith(`${url}/`)
 
 // Destinations that live under "More" on a phone: everything the tab bar has no room for.
-const moreFor = (items: typeof navMain, tabUrls: string[]) => [
+const moreFor = (items: NavMainItem[], tabUrls: string[]) => [
   ...items.filter((i) => !tabUrls.includes(i.url)).map((i) => ({ title: i.title, url: i.url, icon: i.icon })),
   { title: n.help, url: navSecondary.help.url, icon: HelpCircleIcon },
 ]
-const motorsMore = moreFor(navMain, ["/dashboard", "/cars", "/leads"])
-const restaurantMore = moreFor(navRestaurant, ["/dashboard", "/menu", "/orders"])
+const moreLinksFor = (industry: IndustryKey) => {
+  const spec = ADMIN_NAV[industry]
+  return moreFor(spec.items, spec.tabUrls)
+}
 
 export function AdminMobileNav({ publicUrl, industry }: { publicUrl: string; industry?: IndustryKey }) {
-  const restaurant = industry === "restaurants"
-  const moreLinks = restaurant ? restaurantMore : motorsMore
+  const spec = ADMIN_NAV[industry ?? DEFAULT_INDUSTRY]
+  const moreLinks = moreLinksFor(industry ?? DEFAULT_INDUSTRY)
   const pathname = usePathname()
   const [open, setOpen] = React.useState(false)
 
   const moreActive =
     moreLinks.some((l) => isActive(pathname, l.url)) ||
     userMenuPages.some((p) => isActive(pathname, p.url))
-  const onCars = isActive(pathname, "/cars") && pathname !== "/cars/new"
-  const onMenu = isActive(pathname, "/menu") && pathname !== "/menu/new"
 
   return (
     <>
@@ -73,22 +69,22 @@ export function AdminMobileNav({ publicUrl, industry }: { publicUrl: string; ind
           active={isActive(pathname, "/dashboard")}
         />
         <MobileTab
-          href={restaurant ? "/menu" : "/cars"}
-          icon={restaurant ? Restaurant01Icon : Car01Icon}
-          label={restaurant ? "Menu" : n.cars}
-          active={restaurant ? onMenu : onCars}
+          href={spec.catalogueTab.href}
+          icon={spec.catalogueTab.icon}
+          label={spec.catalogueTab.label}
+          active={spec.catalogueTab.isActive(pathname)}
         />
         <MobileTab
-          href={restaurant ? "/menu/new" : "/cars/new"}
+          href={spec.addItem.href}
           icon={Add01Icon}
-          label={restaurant ? "Add dish" : n.addCar}
+          label={spec.addItem.label}
           prominent
         />
         <MobileTab
-          href={restaurant ? "/orders" : "/leads"}
-          icon={restaurant ? ShoppingBag01Icon : UserMultiple02Icon}
-          label={restaurant ? "Orders" : n.leads}
-          active={isActive(pathname, restaurant ? "/orders" : "/leads")}
+          href={spec.inboxTab.href}
+          icon={spec.inboxTab.icon}
+          label={spec.inboxTab.label}
+          active={spec.inboxTab.isActive(pathname)}
         />
         <MobileTabButton
           icon={MoreHorizontalIcon}

@@ -1,8 +1,11 @@
 import { pgEnum } from "drizzle-orm/pg-core"
 
 import { CAR_ANGLES } from "../../angles.ts"
+import { INDUSTRY_KEYS } from "../../verticals/keys.ts"
 export { CAR_ANGLES, type CarAngle } from "../../angles.ts"
 
+/** Kind of business a tenant runs. A new vertical adds a value with ALTER TYPE industry ADD VALUE in its own migration. */
+export const industry = pgEnum("industry", INDUSTRY_KEYS)
 export const dealerRole = pgEnum("dealer_role", ["owner", "staff"])
 export const carStatus = pgEnum("car_status", ["draft", "live", "on_hold", "sold", "archived"])
 export const mediaKind = pgEnum("media_kind", ["photo", "video"])
