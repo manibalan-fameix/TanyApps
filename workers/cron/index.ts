@@ -43,7 +43,7 @@ async function callJob(env: Env, job: string, scheduledTime: number): Promise<vo
   throw new Error(`cron job ${job} failed after retries: ${lastError}`)
 }
 
-export default {
+const worker = {
   async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
     const jobs = SCHEDULE[event.cron]
     if (!jobs) {
@@ -57,3 +57,5 @@ export default {
     if (failed.length > 0) throw new Error(`${failed.length} of ${jobs.length} cron job(s) failed`)
   },
 }
+
+export default worker
