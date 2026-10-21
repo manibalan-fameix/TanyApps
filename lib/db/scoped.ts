@@ -3,29 +3,8 @@ import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core"
 import { z } from "zod"
 
 import { unscopedDb, type Db } from "./client.ts"
-import {
-  bookings,
-  carMedia,
-  carViews,
-  cars,
-  dealerDomains,
-  dealerUsers,
-  leads,
-  banners,
-  coupons,
-  deliveryPartners,
-  deliveryZones,
-  enquiries,
-  menuCategories,
-  menuItems,
-  orderLocations,
-  orders,
-  priceEvents,
-  rcLookups,
-  rcTransfers,
-  reviews,
-  stockAdjustments,
-} from "./schema/index.ts"
+import { CHILD_TENANT_TABLES, DIRECT_TENANT_TABLES } from "./tenant-tables.ts"
+import { cars } from "./schema/index.ts"
 
 export class TenantViolationError extends Error {
   constructor(message: string) {
@@ -43,10 +22,7 @@ export type ScopedSelect<T extends PgTable> = PromiseLike<T["$inferSelect"][]> &
 type DirectTable = PgTable & { dealerId: AnyPgColumn }
 type ChildTable = PgTable & { carId: AnyPgColumn }
 
-/** Tables carrying their own dealer_id. */
-export const DIRECT_TENANT_TABLES = { cars, leads, dealerUsers, dealerDomains, bookings, menuCategories, menuItems, orders, coupons, reviews, enquiries, banners, deliveryPartners, deliveryZones, stockAdjustments, orderLocations } as const
-/** Tables owned through a car (car_id). Scoped by an ownership subquery on cars. */
-export const CHILD_TENANT_TABLES = { carMedia, rcLookups, carViews, rcTransfers, priceEvents } as const
+export { CHILD_TENANT_TABLES, DIRECT_TENANT_TABLES }
 
 const uuid = z.string().uuid()
 
@@ -142,30 +118,17 @@ export function scopedDb(dealerId: string, db: Db = unscopedDb) {
     }
   }
 
-  return {
-    dealerId,
-    cars: direct(cars),
-    leads: direct(leads),
-    dealerUsers: direct(dealerUsers),
-    dealerDomains: direct(dealerDomains),
-    bookings: direct(bookings),
-    menuCategories: direct(menuCategories),
-    menuItems: direct(menuItems),
-    orders: direct(orders),
-    coupons: direct(coupons),
-    reviews: direct(reviews),
-    enquiries: direct(enquiries),
-    banners: direct(banners),
-    deliveryPartners: direct(deliveryPartners),
-    deliveryZones: direct(deliveryZones),
-    stockAdjustments: direct(stockAdjustments),
-    orderLocations: direct(orderLocations),
-    carMedia: child(carMedia),
-    rcLookups: child(rcLookups),
-    carViews: child(carViews),
-    rcTransfers: child(rcTransfers),
-    priceEvents: child(priceEvents),
+  type Direct = typeof DIRECT_TENANT_TABLES
+  type Child = typeof CHILD_TENANT_TABLES
+  // One scoped repository per registered table, keyed by the name it has in lib/db/tenant-tables.ts.
+  const directRepos = Object.fromEntries(Object.entries(DIRECT_TENANT_TABLES).map(([name, table]) => [name, direct(table)])) as {
+    [K in keyof Direct]: ReturnType<typeof direct<Direct[K]>>
   }
+  const childRepos = Object.fromEntries(Object.entries(CHILD_TENANT_TABLES).map(([name, table]) => [name, child(table)])) as {
+    [K in keyof Child]: ReturnType<typeof child<Child[K]>>
+  }
+
+  return { dealerId, ...directRepos, ...childRepos }
 }
 
 export type ScopedDb = ReturnType<typeof scopedDb>
