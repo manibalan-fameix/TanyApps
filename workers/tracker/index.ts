@@ -12,7 +12,7 @@
 // WebSocket Hibernation is used: an idle connection costs nothing, and the object only wakes for a message.
 import { DurableObject } from "cloudflare:workers"
 
-import { verifyTicket } from "../../lib/restaurant/ws-ticket"
+import { verifyTicket } from "../../lib/core/tracking/ws-ticket"
 
 type RouteKept = { points: [number, number][]; km: number; minutes: number; at: number; to: { lat: number; lng: number } }
 type Fix = { lat: number; lng: number; accuracy: number | null; heading: number | null; at: number }
