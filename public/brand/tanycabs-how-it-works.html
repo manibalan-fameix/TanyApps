@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TanyCabs Online Story</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: light; --ground: #FCE7F3; --ink: #18191c; --muted: #77787f; --line: #e6e6ea; --accent: #861043; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { color-scheme: dark; --ground: #0c0d0e; --ink: #e4e7ec; --muted: #8a8c95; --line: #26272b; --accent: #FDA5D5; }
+  }
+  :root[data-theme="dark"] { color-scheme: dark; --ground: #0c0d0e; --ink: #e4e7ec; --muted: #8a8c95; --line: #26272b; --accent: #FDA5D5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px;
+    background: var(--ground); color: var(--ink); font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif; }
+  main { width: 100%; max-width: 620px; }
+  /* Narrow frames (phones): start at the top instead of centring in the frame. */
+  @media (max-width: 480px) { body { place-items: start center; padding: 0 8px; } #stage .cap { top: 16px; } #stage canvas { transform: translateY(28px); } }
+  #stage { position: relative; width: 100%; aspect-ratio: 1 / 1; }
+  #stage canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; display: block; }
+  .cap { position: absolute; left: 4px; top: 6px; right: 4px; z-index: 2; pointer-events: none; text-align: center; }
+  .cap .step { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; font-size: 12px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  .cap .line { margin: 6px auto 0; font-size: clamp(16px, 2.4vw, 22px); font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; max-width: 15em; }
+  .cap > div { transition: none; }
+  #fade { position: absolute; inset: 0; background: var(--ground); opacity: 0; pointer-events: none; z-index: 3; }
+</style>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+</head>
+<body>
+<main>
+  <div id="stage" role="img" aria-label="A 3D TanyCabs office builds itself, launches its own booking app, takes ride bookings straight from riders, picks a rider up at the door and keeps the full fare with zero aggregator commission.">
+    <div class="cap"><div class="step" id="capStep"></div><div class="line" id="capLine"></div></div>
+    <div id="fade"></div>
+  </div>
+</main>
+<script type="module">
+import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+const root = document.documentElement, q = new URLSearchParams(location.search);
+if (q.get("video")) root.classList.add("video");
+if (["light", "dark"].includes(q.get("theme"))) root.dataset.theme = q.get("theme");
+const stage = document.getElementById("stage");
+
+// ---------- renderer, camera, light ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.max(2, Math.min(devicePixelRatio, 3)));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+
+const CX = 6.5, CZ = 5.5, VIEW = 9.6;
+const cam = new THREE.OrthographicCamera(-VIEW, VIEW, VIEW, -VIEW, 0.1, 200);
+cam.position.set(CX + 30, 26.8, CZ + 30);
+cam.lookAt(CX, 2.8, CZ);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xe9dccb, 0.8));
+const sun = new THREE.DirectionalLight(0xfff3e4, 2.1);
+sun.position.set(CX - 6, 18, CZ + 12);
+sun.target.position.set(CX, 0, CZ);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+sun.position.set(6, 22, 22); sun.target.position.set(12, 0, 10);
+sun.shadow.camera.left = -24; sun.shadow.camera.right = 24; sun.shadow.camera.top = 24; sun.shadow.camera.bottom = -24; sun.shadow.camera.far = 80;
+sun.shadow.radius = 4; sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.02;
+scene.add(sun, sun.target);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.ShadowMaterial({ opacity: 0.12, color: 0x3a2a55 }));
+ground.rotation.x = -Math.PI / 2; ground.position.y = -0.52; ground.receiveShadow = true;
+scene.add(ground);
+
+// ---------- materials ----------
+const M = (color, rough = 0.7, metal = 0) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
+const plankTex = (() => {
+  const c = document.createElement("canvas"); c.width = 1024; c.height = 1024; const g = c.getContext("2d");
+  const n = 8, sz = 1024 / n;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    g.fillStyle = `hsl(220, 8%, ${90 + ((i * 7 + j * 3) % 5) * 0.8}%)`; g.fillRect(i * sz, j * sz, sz, sz);
+  }
+  g.fillStyle = "rgba(90,95,110,.28)";
+  for (let k = 0; k <= n; k++) { g.fillRect(k * sz - 1, 0, 2, 1024); g.fillRect(0, k * sz - 1, 1024, 2); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+})();
+const mat = {
+  floor: new THREE.MeshStandardMaterial({ map: plankTex, roughness: 0.28, metalness: 0.05 }),
+  floorEdge: M(0xc9ccd2, 0.5),
+  wall: M(0xf6f2ec, 0.9),
+  frame: M(0xffffff, 0.5), glass: M(0xcfe4ec, 0.15, 0.1),
+  green: M(0x861043, 0.5), mint: M(0xfda5d5, 0.5), cream: M(0xfff6e6, 0.7),
+  marble: M(0xf7f5f1, 0.25), wood: M(0xc68c55, 0.6), woodDark: M(0x9a6438, 0.6),
+  steel: M(0xe6e8ea, 0.35, 0.4), ink: M(0x24282c, 0.5), cushion: M(0x6b0c35, 0.8),
+  amber: M(0xe3a14f, 0.5), terra: M(0xc8643b, 0.7), leaf: new THREE.MeshStandardMaterial({ color: 0x4f9a5d, roughness: 0.8, flatShading: true }),
+  food: M(0xf0913a, 0.6), menuLine: M(0xfda5d5, 0.6), signLight: M(0xf2d64b, 0.4), carGlass: M(0x2b3a4a, 0.1, 0.5), tyre: M(0x1b1d20, 0.8), rim: M(0xc9ced4, 0.3, 0.8), light: M(0xfff6d8, 0.3), tail: M(0xd23b2a, 0.4),
+};
+
+// ---------- the TanyCabs sign (drawn once the brand font is in) ----------
+const sign = (() => {
+  const c = document.createElement("canvas"); c.width = 2400; c.height = 400;
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  let done = false;
+  const draw = () => {
+    if (done || typeof drawLogo !== "function") return;
+    const g = c.getContext("2d");
+    g.setTransform(2, 0, 0, 2, 0, 0);
+    g.fillStyle = "#ffffff"; g.fillRect(0, 0, 1200, 200);
+    g.font = `600 118px "Space Grotesk", ui-sans-serif, sans-serif`;
+    const wt = g.measureText("tany").width, we = g.measureText("cabs").width, total = 150 + 30 + wt + we, x0 = (1200 - total) / 2;
+    drawLogo(g, x0, 25, 150);
+    g.textBaseline = "alphabetic";
+    g.lineWidth = 7; g.lineJoin = "round";
+    g.fillStyle = g.strokeStyle = "#E5270B"; g.fillText("tany", x0 + 180, 142); g.strokeText("tany", x0 + 180, 142);
+    g.fillStyle = g.strokeStyle = "#18191c"; g.fillText("cabs", x0 + 180 + wt, 142); g.strokeText("cabs", x0 + 180 + wt, 142);
+    tex.needsUpdate = true; done = fontReady();
+  };
+  return { tex, draw, reset: () => { done = false; } };
+})();
+
+// ---------- helpers (world: x, y on the floor, z up → three: x, z, y) ----------
+const mesh = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, z, y); o.castShadow = true; o.receiveShadow = true; return o; };
+const rbox = (x0, y0, x1, y1, z0, z1, m, r = 0.08) => mesh(new RoundedBoxGeometry(x1 - x0, z1 - z0, y1 - y0, 3, Math.min(r, (Math.min(x1 - x0, y1 - y0, z1 - z0)) / 2 - 0.001)), m, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+const cyl = (cx, cy, r, z0, z1, m, rTop = r) => mesh(new THREE.CylinderGeometry(rTop, r, z1 - z0, 40), m, cx, cy, (z0 + z1) / 2);
+
+const parts = [];
+const part = (t0, kind, build, pivot = [0, 0, 0]) => {
+  const g = new THREE.Group(); g.position.set(pivot[0], pivot[2], pivot[1]);
+  const inner = new THREE.Group(); inner.position.set(-pivot[0], -pivot[2], -pivot[1]);
+  g.add(inner); build(inner); scene.add(g);
+  parts.push({ t0, kind, g });
+};
+
+// 1 · floor slab
+part(0, "floor", (g) => {
+  const slab = rbox(0, 0, 13, 11, -0.5, 0, mat.floorEdge, 0.12);
+  slab.material = [mat.floorEdge, mat.floorEdge, mat.floor, mat.floorEdge, mat.floorEdge, mat.floorEdge];
+  for (const x of [3.05, 6.05, 9.0, 11.85]) g.add(rbox(x - 0.06, 4.3, x + 0.06, 10.4, 0, 0.015, mat.frame, 0.01));
+  g.add(slab);
+}, [6.5, 5.5, 0]);
+
+// 2 · walls with their windows, poster and door
+part(0.45, "wall", (g) => {
+  g.add(rbox(0, 0.4, 0.4, 11, 0, 6.2, mat.wall, 0.06));
+  for (const yc of [2.6, 5.7, 8.8]) {
+    g.add(rbox(0.38, yc - 1.35, 0.5, yc + 1.35, 0.5, 5.3, mat.frame, 0.05));
+    g.add(rbox(0.42, yc - 1.22, 0.54, yc + 1.22, 0.62, 5.18, mat.glass, 0.03));
+    g.add(rbox(0.5, yc - 0.04, 0.58, yc + 0.04, 0.62, 5.18, mat.frame, 0.02));
+  }
+}, [0.2, 5.7, 0]);
+part(0.6, "wall", (g) => {
+  g.add(rbox(0, 0, 13, 0.4, 0, 6.2, mat.wall, 0.06));
+  g.add(rbox(1.2, 0.38, 4.0, 0.5, 2.6, 4.6, mat.green, 0.06));
+  // a car poster: a pink silhouette on the brand maroon
+  g.add(rbox(1.6, 0.48, 3.6, 0.54, 3.1, 3.55, mat.menuLine, 0.12));
+  g.add(rbox(2.0, 0.48, 3.15, 0.54, 3.5, 3.9, mat.menuLine, 0.12));
+  for (const x of [2.0, 3.2]) g.add(cyl(x, 0.52, 0.2, 2.98, 3.06, mat.menuLine));
+  g.add(rbox(11.6, 0.38, 12.8, 0.52, 0, 4.1, mat.woodDark, 0.05));
+  g.add(cyl(11.85, 0.6, 0.07, 2.0, 2.1, mat.steel));
+  // the TanyCabs sign above the awning
+  g.add(rbox(5.3, 0.38, 10.9, 0.5, 5.02, 6.04, mat.frame, 0.08));
+  const sp = new THREE.Mesh(new THREE.PlaneGeometry(5.4, 0.9), new THREE.MeshStandardMaterial({ map: sign.tex, roughness: 0.6 }));
+  sp.position.set(8.1, 5.53, 0.505); g.add(sp);
+}, [6.5, 0.2, 0]);
+
+// ---------- a low-poly car: front toward +x, built at the origin ----------
+function makeCar(color) {
+  const g = new THREE.Group(), paint = M(color, 0.3, 0.2);
+  const add = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; o.receiveShadow = true; g.add(o); return o; };
+  add(new RoundedBoxGeometry(3.5, 0.72, 1.62, 4, 0.28), paint, 0, 0.66, 0);
+  add(new RoundedBoxGeometry(1.95, 0.62, 1.42, 4, 0.26), mat.carGlass, -0.2, 1.24, 0);
+  add(new RoundedBoxGeometry(1.7, 0.12, 1.34, 3, 0.05), paint, -0.25, 1.56, 0);
+  add(new RoundedBoxGeometry(3.42, 0.14, 1.66, 2, 0.06), mat.green, 0, 0.72, 0);            // brand stripe
+  add(new RoundedBoxGeometry(0.42, 0.24, 0.8, 2, 0.08), mat.green, -0.25, 1.74, 0);          // roof light
+  add(new RoundedBoxGeometry(0.44, 0.08, 0.82, 2, 0.03), mat.signLight, -0.25, 1.9, 0);
+  for (const [x, z] of [[1.12, 0.78], [-1.12, 0.78], [1.12, -0.78], [-1.12, -0.78]]) {
+    add(new THREE.CylinderGeometry(0.34, 0.34, 0.26, 24), mat.tyre, x, 0.34, z).rotation.x = Math.PI / 2;
+    add(new THREE.CylinderGeometry(0.17, 0.17, 0.28, 16), mat.rim, x, 0.34, z).rotation.x = Math.PI / 2;
+  }
+  for (const z of [0.5, -0.5]) { add(new RoundedBoxGeometry(0.08, 0.16, 0.36, 2, 0.04), mat.light, 1.74, 0.78, z); add(new RoundedBoxGeometry(0.08, 0.14, 0.34, 2, 0.04), mat.tail, -1.74, 0.8, z); }
+  return g;
+}
+const carPart = (t0, x, y, deg, color) => part(t0, "drop", (g) => {
+  const c = makeCar(color); c.position.set(x, 0, y); c.rotation.y = THREE.MathUtils.degToRad(deg); g.add(c);
+});
+
+// 3 · lounge by the windows: two leather chairs and a coffee table
+part(1.2, "drop", (g) => { for (const y of [7.4, 10.0]) { g.add(rbox(0.6, y - 0.75, 1.85, y + 0.75, 0, 0.9, mat.cushion, 0.18)); g.add(rbox(0.6, y - 0.75, 1.0, y + 0.75, 0, 1.75, mat.cushion, 0.18)); } });
+part(1.35, "drop", (g) => { g.add(cyl(2.9, 8.7, 0.08, 0, 0.75, mat.ink)); g.add(cyl(2.9, 8.7, 0.7, 0.75, 0.86, mat.marble)); });
+
+// 4 · the dispatch desk under the awning, with a screen and cab keys
+part(1.5, "drop", (g) => {
+  g.add(rbox(5.0, 0.4, 11.2, 1.9, 0, 2.05, mat.green, 0.08));
+  g.add(rbox(4.9, 0.4, 11.3, 2.05, 2.05, 2.2, mat.marble, 0.05));
+  for (let x = 5.6; x < 11; x += 0.9) g.add(rbox(x, 1.9, x + 0.08, 1.95, 0.25, 1.85, mat.mint, 0.02));
+});
+part(1.64, "drop", (g) => {
+  g.add(rbox(9.4, 0.8, 10.4, 1.5, 2.2, 2.75, mat.ink, 0.08));
+  const s = rbox(9.55, 0.9, 10.25, 0.98, 2.75, 3.35, mat.ink, 0.03); s.rotation.x = -0.25; g.add(s);
+  for (const x of [6.4, 6.9, 7.4]) { g.add(rbox(x, 1.2, x + 0.28, 1.5, 2.2, 2.26, mat.mint, 0.03)); }
+});
+
+// 5 · two cabs parked in their bays (the third, the one that takes the ride, is its own object)
+carPart(1.85, 4.55, 7.2, 90, 0xf6f6f8);
+carPart(2.05, 7.5, 7.2, 90, 0xf6f6f8);
+
+// 7 · plant in the front corner
+part(2.45, "drop", (g) => {
+  g.add(cyl(12.2, 10.2, 0.38, 0, 0.8, mat.terra, 0.48));
+  const a = mesh(new THREE.IcosahedronGeometry(0.75, 1), mat.leaf, 12.2, 10.2, 1.55); g.add(a);
+  const b = mesh(new THREE.IcosahedronGeometry(0.5, 1), mat.leaf, 12.0, 10.4, 2.2); g.add(b);
+});
+
+// 8 · the striped awning unfolds over the counter (pivot at the hinge on the wall)
+const awning = (() => {
+  const g = new THREE.Group(); g.position.set(0, 4.85, 0.42);
+  const panel = new THREE.Group(); g.add(panel);
+  const x0 = 4.6, x1 = 11.6, n = 8, w = (x1 - x0) / n, L = 2.1;
+  for (let i = 0; i < n; i++) {
+    const m = i % 2 ? mat.cream : mat.green;
+    const s = new THREE.Mesh(new THREE.BoxGeometry(w, 0.07, L), m); s.position.set(x0 + w * (i + 0.5), 0, L / 2); s.castShadow = true; panel.add(s);
+  }
+  const val = new THREE.Group(); val.position.set(0, 0, L); panel.add(val);
+  for (let i = 0; i < n; i++) {
+    const m = i % 2 ? mat.cream : mat.green, cx = x0 + w * (i + 0.5);
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(w, 0.3, 0.07), m); strip.position.set(cx, -0.15, 0); strip.castShadow = true; val.add(strip);
+    const sc = new THREE.Mesh(new THREE.CylinderGeometry(w / 2, w / 2, 0.07, 32, 1, false, 0, Math.PI), m);
+    sc.rotation.x = Math.PI / 2; sc.rotation.y = Math.PI / 2; sc.position.set(cx, -0.3, 0); sc.castShadow = true; val.add(sc);
+  }
+  for (const x of [x0 + 0.1, x1 - 0.1]) { const arm = rbox(x - 0.04, 0, x + 0.04, 2.0, -0.04, 0.04, mat.ink, 0.02); arm.position.set(x, -0.02, 1.0); panel.add(arm); }
+  scene.add(g);
+  return { g, panel, val };
+})();
+parts.push({ t0: 2.9, kind: "awning", g: awning.g });
+
+// 6 · the cab that takes the ride
+const soldCar = (() => { const g = makeCar(0xf6f6f8); scene.add(g); return g; })();
+
+const rider = (() => {
+  const g = new THREE.Group();
+  const b = new THREE.Mesh(new THREE.CapsuleGeometry(0.24, 0.55, 6, 14), M(0xe0509a, 0.6)); b.position.y = 0.55; b.castShadow = true; g.add(b);
+  const h = new THREE.Mesh(new THREE.SphereGeometry(0.2, 18, 12), M(0xc68a62, 0.6)); h.position.y = 1.22; h.castShadow = true; g.add(h);
+  scene.add(g); return g;
+})();
+
+// ---------- the neighbourhood: road, homes, the cab company's own app ----------
+const HOUSES = [
+  { hx: 3.2, body: 0xf3d6b4, roof: 0xc8643b },
+  { hx: 9.4, body: 0xd7e7f2, roof: 0x2f6f8f },
+  { hx: 15.6, body: 0xf6e7a9, roof: 0x004f3b },
+];
+const HY0 = 16.0, HY1 = 19.2, LANE = 13.3;
+part(4.0, "floor", (g) => {
+  g.add(rbox(-1.5, 12.0, 24.5, 14.6, -0.42, -0.08, M(0x4c5258, 0.85), 0.1));
+  for (let x = -0.5; x < 24; x += 2.2) g.add(rbox(x, LANE - 0.06, x + 1.1, LANE + 0.06, -0.08, -0.05, M(0xffffff, 0.6), 0.02));
+  g.add(rbox(-1.5, 11.3, 24.5, 12.0, -0.42, 0.0, M(0xe8e3db, 0.8), 0.06));
+}, [11.5, 13.3, 0]);
+HOUSES.forEach(({ hx, body, roof }, i) => part(4.35 + i * 0.14, "drop", (g) => {
+  g.add(rbox(hx - 2.4, 15.2, hx + 3.0, 20.2, -0.42, -0.05, M(0xcfe6c4, 0.9), 0.12));
+  g.add(rbox(hx - 1.6, HY0, hx + 1.6, HY1, 0, 2.5, M(body, 0.85), 0.08));
+  const tri = new THREE.Shape(); tri.moveTo(-1.95, 0); tri.lineTo(1.95, 0); tri.lineTo(0, 1.6); tri.closePath();
+  const rf = new THREE.Mesh(new THREE.ExtrudeGeometry(tri, { depth: 3.6, bevelEnabled: false }), M(roof, 0.7));
+  rf.rotation.y = Math.PI / 2; rf.position.set(hx - 1.8, 2.5, (HY0 + HY1) / 2); rf.castShadow = true; rf.receiveShadow = true;
+  // ExtrudeGeometry runs along +z; rotated, it runs along +x from hx-1.8
+  g.add(rf);
+  g.add(rbox(hx + 1.56, 17.2, hx + 1.7, 18.2, 0, 1.75, mat.woodDark, 0.04));            // door, on the +x face
+  g.add(rbox(hx - 0.9, HY1 - 0.04, hx + 0.6, HY1 + 0.08, 1.0, 1.9, mat.glass, 0.03));   // window, front face
+  g.add(rbox(hx - 1.0, HY1 + 0.02, hx + 0.7, HY1 + 0.1, 0.92, 0.98, mat.frame, 0.02));
+  g.add(cyl(hx - 1.9, 19.7, 0.1, 0, 0.7, mat.woodDark));
+  g.add(mesh(new THREE.IcosahedronGeometry(0.55, 1), mat.leaf, hx - 1.9, 19.7, 1.05));
+}));
+
+// the phone: the cab company's own booking app, standing to the right
+const PX = 19.6, PY = 4.6, PW = 4.2, PH = 8.6;
+const screenCanvas = document.createElement("canvas"); screenCanvas.width = 1080; screenCanvas.height = 2200;
+const screenTex = new THREE.CanvasTexture(screenCanvas); screenTex.colorSpace = THREE.SRGBColorSpace; screenTex.anisotropy = 8;
+const FONT = '"Space Grotesk", ui-sans-serif, system-ui, sans-serif';
+// The TanyCabs icon, drawn in its own 240-unit box (same paths as /brand/tanycabs-icon.svg).
+const LOGO = {
+  tile: "M16.3039 0.152087C19.0139 -0.0994188 24.312 0.0402772 27.1237 0.0456998L46.2888 0.070491L185.501 0.0712633L210.019 0.046476C214.272 0.0420863 219.945 -0.112587 224.097 0.167839C227.002 0.368476 229.806 1.28231 232.247 2.82311C240.796 8.20104 239.999 15.559 239.967 24.1169L239.935 38.0298L239.978 203.214C239.996 212.474 240.503 219.111 234.957 227.147C230.547 233.52 223.719 237.95 215.959 239.474C207.953 240.96 199.668 239.248 192.984 234.726C183.468 228.415 181.957 221.945 180.049 211.916C179.585 215.891 179.42 218.208 178.002 221.954C177.158 223.918 176.087 225.783 174.811 227.515C170.2 233.768 163.279 238.333 155.399 239.596C147.408 240.892 139.215 239.044 132.637 234.462C127.947 231.185 123.172 225.416 121.738 219.927C121.212 217.913 120.882 214.216 120.488 211.888C119.965 213.593 119.764 215.698 119.406 217.479C117.184 228.526 106.733 237.978 95.2741 239.632C87.052 240.864 78.6649 238.83 72.0104 233.992C63.2342 227.618 62.0798 222.219 60.6621 212.529C59.2779 219.015 58.2266 223.709 53.8329 229.044C36.9187 249.578 2.53398 239.47 0.380188 213.189C-0.31589 204.694 0.15873 47.8098 0.14887 39.2026L0.107035 24.7976C0.100906 22.3476 0.0945116 19.9585 0.178457 17.5093C0.49345 8.31156 6.63209 1.12583 16.3039 0.152087Z",
+  glyph: "M121.377 92.5C127.626 92.5006 132.251 95.3774 136.25 100.127L147.627 113.75L162.627 116.626C170.001 118.001 175 123.253 175 129.502V145H167.373C165.748 150.749 160.5 154.999 154.126 155C147.751 155 142.499 150.75 140.874 145H103.877C102.252 150.75 97 155 90.625 155C84.25 155 78.9981 150.75 77.3731 145H77.251C70.376 145 65 139.5 65 132.5V115H74.375L87.124 100.127C91.1238 95.5022 95.8745 92.5003 102.124 92.5H121.377ZM90.625 135.376C87.375 135.376 84.873 138 84.873 141.25C84.873 144.5 87.375 147.124 90.625 147.124C93.875 147.124 96.377 144.5 96.377 141.25C96.377 138 93.875 135.376 90.625 135.376ZM154.126 135.376C150.876 135.376 148.374 138 148.374 141.25C148.374 144.5 150.876 147.124 154.126 147.124C157.375 147.124 159.873 144.499 159.873 141.25C159.873 138.001 157.375 135.376 154.126 135.376ZM102.002 101.499C98.3769 101.499 96.373 103.499 94.248 105.874L86.377 115H137.002L129.248 105.874C127.249 103.625 125 101.5 121.377 101.499H102.002ZM114.751 81.001H104.248V70.498H114.751V81.001ZM135.752 81.001H125.249V70.498H135.752V81.001ZM104.248 70.498H93.75V60H104.248V70.498ZM125.249 70.498H114.751V60H125.249V70.498ZM146.25 70.498H135.752V60H146.25V70.498Z",
+};
+const BR = "#861043", PE = "#FDA5D5";
+function drawLogo(g, x, y, s) {
+  g.save(); g.translate(x, y); g.scale(s / 240, s / 240);
+  g.fillStyle = BR; g.fill(new Path2D(LOGO.tile));
+  g.fillStyle = PE; g.fill(new Path2D(LOGO.glyph));
+  g.restore();
+}
+const fontReady = () => document.fonts.check(`600 40px "Space Grotesk"`);
+function rr(g, x, y, w, h, r) { g.beginPath(); g.roundRect(x, y, w, h, r); }
+function drawScreen(orders, pulse) {
+  const g = screenCanvas.getContext("2d"), W = 540, H = 1100;
+  g.setTransform(2, 0, 0, 2, 0, 0);
+  g.fillStyle = "#f6f4f2"; g.fillRect(0, 0, W, H);
+  g.fillStyle = BR; g.fillRect(0, 0, W, 250);
+  g.fillStyle = "#ffffff"; g.font = `600 22px ${FONT}`; g.fillText("9:41", 34, 46);
+  rr(g, W - 112, 84, 82, 82, 18); g.fillStyle = "#ffffff"; g.fill(); drawLogo(g, W - 101, 95, 60);
+  g.fillStyle = "#ffffff"; g.font = `600 46px ${FONT}`; g.fillText("Ravi Travels", 34, 132);
+  g.fillStyle = PE; g.font = `500 23px ${FONT}`; g.fillText("ravitravels.tany.in", 34, 172);
+  rr(g, 34, 192, 196, 38, 19); g.fillStyle = "rgba(255,255,255,.16)"; g.fill();
+  g.fillStyle = "#fff"; g.font = `500 20px ${FONT}`; g.fillText("★ 4.8 · 24 cabs", 52, 218);
+  const items = [["Mini · 4 seats", "₹12/km · 3 min away", "#FDA5D5"], ["Sedan · 4 seats", "₹15/km · 5 min away", "#E0509A"], ["SUV · 7 seats", "₹19/km · 8 min away", "#861043"]];
+  items.forEach(([n, p, c], i) => {
+    const y = 280 + i * 132;
+    rr(g, 26, y, W - 52, 114, 22); g.fillStyle = "#fff"; g.fill();
+    rr(g, 46, y + 22, 92, 70, 16); g.fillStyle = c; g.fill();
+    rr(g, 62, y + 34, 52, 22, 8); g.fillStyle = "rgba(30,40,55,.55)"; g.fill();
+    g.fillStyle = "#1b1d20"; g.beginPath(); g.arc(66, y + 86, 9, 0, 7); g.arc(118, y + 86, 9, 0, 7); g.fill();
+    g.fillStyle = "#18191c"; g.font = `600 27px ${FONT}`; g.fillText(n, 160, y + 50);
+    g.fillStyle = "#6c6e75"; g.font = `500 22px ${FONT}`; g.fillText(p, 160, y + 86);
+  });
+  const y2 = 690;
+  rr(g, 26, y2, W - 52, 170, 24); g.fillStyle = pulse > 0 ? `rgba(253,165,213,${0.25 + 0.5 * pulse})` : "#ffffff"; g.fill();
+  g.fillStyle = "#6c6e75"; g.font = `500 22px ${FONT}`; g.fillText("Rides booked today", 54, y2 + 46);
+  g.fillStyle = "#18191c"; g.font = `600 78px ${FONT}`; g.fillText(String(orders), 52, y2 + 130);
+  g.fillStyle = BR; g.font = `600 24px ${FONT}`; g.fillText("↑ live", W - 140, y2 + 128);
+  rr(g, 26, y2 + 190, W - 52, 70, 20); g.fillStyle = "#FCE7F3"; g.fill();
+  g.fillStyle = BR; g.font = `600 25px ${FONT}`; g.fillText("Aggregator commission  ₹0", 50, y2 + 235);
+  rr(g, 26, H - 110, W - 52, 76, 22); g.fillStyle = BR; g.fill();
+  g.fillStyle = "#fff"; g.font = `600 28px ${FONT}`; g.fillText("Book a ride", W / 2 - 74, H - 62);
+  screenTex.needsUpdate = true;
+}
+const phone = (() => {
+  const g = new THREE.Group(); g.position.set(PX, 0, PY); g.rotation.y = Math.PI / 4;
+  const inner = new THREE.Group(); g.add(inner);
+  const body = new THREE.Mesh(new RoundedBoxGeometry(PW, PH, 0.42, 4, 0.36), M(0x1d2125, 0.35, 0.3));
+  body.position.y = PH / 2 + 0.25; body.castShadow = true; inner.add(body);
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(PW - 0.34, PH - 0.34), new THREE.MeshBasicMaterial({ map: screenTex, toneMapped: false }));
+  scr.position.set(0, PH / 2 + 0.25, 0.215); inner.add(scr);
+  const stand = new THREE.Mesh(new RoundedBoxGeometry(2.6, 0.25, 1.6, 3, 0.1), M(0xd9dcdf, 0.4, 0.3));
+  stand.position.set(0, 0.12, -0.2); stand.castShadow = true; stand.receiveShadow = true; g.add(stand);
+  scene.add(g);
+  return { g, inner };
+})();
+
+const brandDraws = [];
+// sprites: ride requests, tags, coins, the badge
+function iconSprite(draw, size) {
+  const c = document.createElement("canvas"); c.width = c.height = 256; draw(c.getContext("2d"));
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, toneMapped: false }));
+  s.scale.set(size, size, 1); s.renderOrder = 10; scene.add(s); return s;
+}
+const bagIcon = (g) => {
+  rr(g, 18, 18, 220, 220, 60); g.fillStyle = BR; g.fill();
+  g.fillStyle = "#fff";
+  g.beginPath(); g.arc(128, 108, 46, Math.PI * 0.82, Math.PI * 2.18); g.lineTo(128, 196); g.closePath(); g.fill();
+  g.beginPath(); g.arc(128, 108, 18, 0, Math.PI * 2); g.fillStyle = BR; g.fill();
+  g.beginPath(); g.arc(200, 56, 34, 0, Math.PI * 2); g.fillStyle = PE; g.fill();
+  g.fillStyle = BR; g.font = `700 40px ${FONT}`; g.textAlign = "center"; g.fillText("+1", 200, 70);
+};
+function tagSprite(text, bg, fg, w = 2.6) {
+  const c = document.createElement("canvas"); c.width = 800; c.height = 300; const g = c.getContext("2d");
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const draw = () => {
+    g.setTransform(2, 0, 0, 2, 0, 0); g.clearRect(0, 0, 400, 150);
+    rr(g, 8, 8, 384, 112, 40); g.fillStyle = bg; g.fill();
+    g.beginPath(); g.moveTo(180, 118); g.lineTo(200, 142); g.lineTo(220, 118); g.fill();
+    let fs = 58; g.font = `700 ${fs}px ${FONT}`; while (g.measureText(text).width > 340 && fs > 30) { fs -= 2; g.font = `700 ${fs}px ${FONT}`; }
+    g.fillStyle = fg; g.textAlign = "center"; g.fillText(text, 200, 64 + fs * 0.35);
+    t.needsUpdate = true;
+  };
+  draw(); brandDraws.push(draw);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, toneMapped: false }));
+  s.renderOrder = 10; s.userData.w = w; scene.add(s); return s;
+}
+
+const ORDERS = [0, 2, 1, 2, 1].map((h, i) => ({ h, t0: 6.5 + i * 0.42, dur: 0.95, s: iconSprite(bagIcon, 1.7) }));
+const coinMat = new THREE.MeshStandardMaterial({ color: 0xf2bf3c, roughness: 0.3, metalness: 0.7 });
+const TAGS = [
+  { s: tagSprite("Mini ₹12/km", "#ffffff", BR, 3.0), p: [4.55, 7.2, 3.2], t0: 5.7 },
+  { s: tagSprite("Sedan ₹15/km", "#ffffff", BR, 3.0), p: [7.5, 7.2, 3.2], t0: 5.85 },
+  { s: tagSprite("SUV ₹19/km", "#ffffff", BR, 3.0), p: [10.4, 7.2, 3.2], t0: 6.0 },
+];
+const soldTag = tagSprite("Ride booked", BR, PE, 3.0);
+const COINS = [];
+for (let k = 0; k < 8; k++) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.46, 0.12, 28), coinMat); m.castShadow = true; scene.add(m);
+  COINS.push({ h: 2, t0: 12.1 + k * 0.14, dur: 0.95, m });
+}
+const badge = (() => {
+  const c = document.createElement("canvas"); c.width = 640; c.height = 200; const g = c.getContext("2d");
+  rr(g, 10, 20, 620, 160, 80); g.fillStyle = BR; g.fill();
+  g.fillStyle = PE; g.font = `700 76px ${FONT}`; g.fillText("0%", 60, 128);
+  g.fillStyle = "#fff"; g.font = `600 46px ${FONT}`; g.fillText("commission", 210, 120);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, toneMapped: false }));
+  s.renderOrder = 11; scene.add(s); return s;
+})();
+
+// the ride: out of its bay to the rider's door, then reverse out and off on the trip
+const mkDrive = (pts, t0, dur) => {
+  const seg = []; let L = 0;
+  for (let k = 1; k < pts.length; k++) { const l = Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]); seg.push(l); L += l; }
+  return { pts, seg, L, t0, dur };
+};
+const DRIVE_A = mkDrive([[10.4, 7.2], [10.4, 12.6], [18.3, 12.6], [18.3, 17.3]], 9.0, 1.5);
+const DRIVE_B = mkDrive([[18.3, 17.3], [18.3, 13.7], [24.2, 13.7]], 10.85, 1.1);
+function along(r, u) {
+  let d = u * r.L;
+  for (let k = 0; k < r.seg.length; k++) {
+    if (d <= r.seg[k] || k === r.seg.length - 1) {
+      const a = r.pts[k], b = r.pts[k + 1], f = clamp(d / r.seg[k]);
+      return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, Math.atan2(b[1] - a[1], b[0] - a[0])];
+    }
+    d -= r.seg[k];
+  }
+}
+
+// ---------- timeline (a pure function of time) ----------
+const LOOP = 15.6, DROP = 3.6;
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const ease = (t) => { t = clamp(t); return 1 - Math.pow(1 - t, 3); };
+const inOut = (t) => { t = clamp(t); return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+const back = (t) => { t = clamp(t); const c = 1.5; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+const W = Math.sqrt(150), Z = 0.5, WD = W * Math.sqrt(1 - Z * Z);
+const springOff = (t) => Math.exp(-Z * W * t) * (Math.cos(WD * t) + (Z * W / WD) * Math.sin(WD * t));
+const arc = (a, b, u, hgt) => [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u + Math.sin(Math.PI * u) * hgt];
+const at = (x, y, z) => new THREE.Vector3(x, z, y);
+
+const VIEW0 = 10.0, VIEW1 = 14.6, T0 = [6.5, 5.5, 4.4], T1 = [10.2, 11.8, 5.6], OFF = new THREE.Vector3(30, 24, 30);
+let view = VIEW0;
+const CAPS = [
+  [0, "Step 1", "Set up your cab business online in 3 minutes"],
+  [4.0, "Step 2", "Launch your own TanyCabs booking app"],
+  [6.4, "Step 3", "Riders book directly with you"],
+  [8.7, "Step 4", "Pick up at the door. Drop anywhere."],
+  [12.0, "Step 5", "0% aggregator commission. Every rupee is yours."],
+];
+const capStep = document.getElementById("capStep"), capLine = document.getElementById("capLine"), fadeEl = document.getElementById("fade");
+let lastCap = -1, lastScreen = "";
+
+function pose(t) {
+  // camera: hold on the office, then pull back over the neighbourhood
+  const z = inOut((t - 3.7) / 1.5);
+  view = VIEW0 + (VIEW1 - VIEW0) * z;
+  const tgt = at(...T0.map((v, i) => v + (T1[i] - v) * z));
+  cam.position.copy(tgt).add(OFF); cam.lookAt(tgt); resize();
+
+  parts.forEach((p) => {
+    const lt = t - p.t0, g = p.g;
+    if (lt < 0) { g.visible = false; return; }
+    g.visible = true;
+    if (p.kind === "floor") {
+      const a = ease(lt / 0.55), b = ease((lt - 0.18) / 0.6);
+      g.scale.set(Math.max(0.001, a), 1, Math.max(0.04, b));
+    } else if (p.kind === "wall") {
+      g.scale.y = Math.max(0.001, ease(lt / 0.7));
+    } else if (p.kind === "drop") {
+      g.position.y = DROP * springOff(lt);
+      g.scale.setScalar(Math.min(1, 0.55 + lt / 0.25));
+    } else if (p.kind === "awning") {
+      const ang = 90 - 68 * ease(lt / 0.8);
+      awning.panel.rotation.x = THREE.MathUtils.degToRad(ang);
+      awning.val.rotation.x = -THREE.MathUtils.degToRad(ang);
+      g.scale.setScalar(Math.min(1, lt / 0.2));
+    }
+  });
+
+  // phone rises out of its stand
+  const pl = t - 5.0;
+  phone.g.visible = pl >= 0;
+  phone.inner.scale.y = Math.max(0.001, back(pl / 0.8));
+  phone.g.children[1].scale.setScalar(Math.min(1, Math.max(0.001, pl / 0.25)));
+
+  // ride requests fly from homes into the app
+  let arrived = 0, pulse = 0;
+  const scrC = [PX - 0.2, PY + 0.2, 5.4];
+  ORDERS.forEach((o) => {
+    const u = (t - o.t0) / o.dur, h = HOUSES[o.h];
+    o.s.visible = u > 0 && u < 1;
+    if (u >= 1) { arrived++; pulse = Math.max(pulse, 1 - clamp((t - o.t0 - o.dur) / 0.5)); }
+    if (o.s.visible) {
+      const p = arc([h.hx, (HY0 + HY1) / 2, 4.6], scrC, inOut(u), 3.2);
+      o.s.position.copy(at(...p));
+      const k = 1.7 * (u < 0.15 ? u / 0.15 : u > 0.85 ? Math.max(0.3, (1 - u) / 0.15) : 1);
+      o.s.scale.set(k, k, 1);
+    }
+  });
+  const key = 18 + arrived + ":" + pulse.toFixed(2) + fontReady();
+  if (key !== lastScreen) { lastScreen = key; drawScreen(18 + arrived, pulse); }
+
+  // price tags pop over the cars once the app lists them
+  TAGS.forEach((tg, i) => {
+    const lt = t - tg.t0, gone = i === 2 ? t > 8.6 : false;
+    tg.s.visible = lt > 0 && !gone;
+    const k = back(lt / 0.5);
+    tg.s.position.copy(at(tg.p[0], tg.p[1], tg.p[2] + 0.1 * Math.sin(Math.max(0, lt) * 2.2 + i)));
+    tg.s.scale.set(tg.s.userData.w * k, tg.s.userData.w * 0.375 * k, 1);
+  });
+
+  // the cab: drop into its bay, get booked, pick the rider up, head off
+  const cl = t - 2.25;
+  soldCar.visible = cl >= 0;
+  const ua = (t - DRIVE_A.t0) / DRIVE_A.dur, ub = (t - DRIVE_B.t0) / DRIVE_B.dur;
+  let cx, cy, hd;
+  if (ub > 0) {
+    const e = inOut(ub); [cx, cy, hd] = along(DRIVE_B, e);
+    if (e * DRIVE_B.L < DRIVE_B.seg[0]) hd += Math.PI;               // reversing out of the driveway
+  } else [cx, cy, hd] = along(DRIVE_A, inOut(ua));
+  soldCar.position.copy(at(cx, cy, ua > 0 ? 0 : DROP * springOff(Math.max(0, cl))));
+  soldCar.rotation.y = -hd;
+  soldCar.scale.setScalar(Math.min(1, 0.55 + Math.max(0, cl) / 0.25));
+  const sl = t - 8.6, gone = t > DRIVE_B.t0 + DRIVE_B.dur + 0.5;
+  soldTag.visible = sl > 0 && !gone;
+  const sk = back(sl / 0.5);
+  soldTag.position.copy(at(cx, cy, 3.4));
+  soldTag.scale.set(3.0 * sk, 1.125 * sk, 1);
+
+  // the rider steps out of the door and into the cab
+  const rl = t - 9.85, walk = clamp((t - 10.2) / 0.45);
+  rider.visible = rl > 0 && t < 10.75;
+  rider.scale.setScalar(clamp(rl / 0.2) * (1 - clamp((t - 10.62) / 0.12)));
+  rider.position.copy(at(17.35 + 0.05 * walk, 18.3 - 0.9 * walk, 0));
+
+  // the full fare comes straight back to the dispatch desk
+  const till = [9.9, 1.15, 3.0];
+  COINS.forEach((c) => {
+    const u = (t - c.t0) / c.dur;
+    c.m.visible = u > 0 && u < 1;
+    if (c.m.visible) {
+      c.m.position.copy(at(...arc([24.2, 13.7, 1.6], till, inOut(u), 5.5)));
+      c.m.rotation.set(Math.PI / 2, 0, u * 9);
+    }
+  });
+
+  // the badge over the office
+  const bl = t - 12.5;
+  badge.visible = bl > 0;
+  const bs = back(bl / 0.6);
+  badge.position.copy(at(7.0, 5.0, 9.9 + 0.12 * Math.sin(Math.max(0, bl) * 2.4)));
+  badge.scale.set(6.4 * bs, 2.0 * bs, 1);
+
+  // captions and the loop's fade
+  let ci = 0; CAPS.forEach((c, i) => { if (t >= c[0]) ci = i; });
+  if (ci !== lastCap) { lastCap = ci; capLine.textContent = CAPS[ci][2]; }
+  const since = t - CAPS[ci][0];
+  capLine.style.opacity = String(clamp(since / 0.35));
+  capLine.style.transform = `translateY(${(1 - ease(since / 0.45)) * 8}px)`;
+  fadeEl.style.opacity = String(clamp((t - (LOOP - 0.5)) / 0.4));
+}
+
+// ---------- sizing, theme, loop ----------
+let sz = '';
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  if (sz !== w + 'x' + h) { sz = w + 'x' + h; renderer.setSize(w, h, false); }
+  const a = w / h || 1; cam.left = -view * a; cam.right = view * a; cam.top = view; cam.bottom = -view; cam.updateProjectionMatrix();
+}
+const isDark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+const syncTheme = () => { ground.material.opacity = isDark() ? 0.35 : 0.12; ground.material.color.set(isDark() ? 0x000000 : 0x3a2a55); };
+new ResizeObserver(resize).observe(stage); resize(); syncTheme();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", syncTheme);
+
+window.renderAt = (t) => { sign.draw(); pose(t); renderer.render(scene, cam); };
+let start = performance.now();
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const PLAYBACK_RATE = 0.8;
+if (!q.get("video")) {
+  const loop = (now) => { const t = reduced ? 13 : (((now - start) / 1000) * PLAYBACK_RATE) % LOOP; window.renderAt(t); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+}
+window.LOOP = LOOP;
+window.brandRefresh = () => { sign.reset(); sign.draw(); lastScreen = ""; brandDraws.forEach((d) => d()); };
+document.fonts.load(`600 118px "Space Grotesk"`).then(() => window.brandRefresh()).catch(() => {});
+document.fonts.ready.then(() => { lastScreen = ''; window.ready = true; });
+</script>
+</body>
+</html>

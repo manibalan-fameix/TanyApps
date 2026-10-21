@@ -1,0 +1,560 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TanyEats Online Story</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: light; --ground: #D0FAE5; --ink: #18191c; --muted: #77787f; --line: #e6e6ea; --accent: #004F3B; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { color-scheme: dark; --ground: #0c0d0e; --ink: #e4e7ec; --muted: #8a8c95; --line: #26272b; --accent: #5EE9B5; }
+  }
+  :root[data-theme="dark"] { color-scheme: dark; --ground: #0c0d0e; --ink: #e4e7ec; --muted: #8a8c95; --line: #26272b; --accent: #5EE9B5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px;
+    background: var(--ground); color: var(--ink); font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif; }
+  main { width: 100%; max-width: 620px; }
+  /* Narrow frames (phones): start at the top instead of centring in the frame. */
+  @media (max-width: 480px) { body { place-items: start center; padding: 0 8px; } #stage .cap { top: 16px; } #stage canvas { transform: translateY(28px); } }
+  #stage { position: relative; width: 100%; aspect-ratio: 1 / 1; }
+  #stage canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; display: block; }
+  .cap { position: absolute; left: 4px; top: 6px; right: 4px; z-index: 2; pointer-events: none; text-align: center; }
+  .cap .step { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; font-size: 12px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  .cap .line { margin: 6px auto 0; font-size: clamp(16px, 2.4vw, 22px); font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; max-width: 15em; }
+  .cap > div { transition: none; }
+  #fade { position: absolute; inset: 0; background: var(--ground); opacity: 0; pointer-events: none; z-index: 3; }
+</style>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+</head>
+<body>
+<main>
+  <div id="stage" role="img" aria-label="A 3D TanyEats restaurant builds itself, launches its own ordering app, receives orders from nearby homes, delivers them by scooter and keeps every rupee with zero marketplace commission.">
+    <div class="cap"><div class="step" id="capStep"></div><div class="line" id="capLine"></div></div>
+    <div id="fade"></div>
+  </div>
+</main>
+<script type="module">
+import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+const root = document.documentElement, q = new URLSearchParams(location.search);
+if (q.get("video")) root.classList.add("video");
+if (["light", "dark"].includes(q.get("theme"))) root.dataset.theme = q.get("theme");
+const stage = document.getElementById("stage");
+
+// ---------- renderer, camera, light ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.max(2, Math.min(devicePixelRatio, 3)));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+
+const CX = 6.5, CZ = 5.5, VIEW = 9.6;
+const cam = new THREE.OrthographicCamera(-VIEW, VIEW, VIEW, -VIEW, 0.1, 200);
+cam.position.set(CX + 30, 26.8, CZ + 30);
+cam.lookAt(CX, 2.8, CZ);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xe9dccb, 0.8));
+const sun = new THREE.DirectionalLight(0xfff3e4, 2.1);
+sun.position.set(CX - 6, 18, CZ + 12);
+sun.target.position.set(CX, 0, CZ);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+sun.position.set(6, 22, 22); sun.target.position.set(12, 0, 10);
+sun.shadow.camera.left = -24; sun.shadow.camera.right = 24; sun.shadow.camera.top = 24; sun.shadow.camera.bottom = -24; sun.shadow.camera.far = 80;
+sun.shadow.radius = 4; sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.02;
+scene.add(sun, sun.target);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.ShadowMaterial({ opacity: 0.12, color: 0x3a2a55 }));
+ground.rotation.x = -Math.PI / 2; ground.position.y = -0.52; ground.receiveShadow = true;
+scene.add(ground);
+
+// ---------- materials ----------
+const M = (color, rough = 0.7, metal = 0) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
+const plankTex = (() => {
+  const c = document.createElement("canvas"); c.width = 1024; c.height = 1024; const g = c.getContext("2d");
+  const rows = 14, h = 1024 / rows;
+  for (let r = 0; r < rows; r++) {
+    let x = -((r * 337) % 400);
+    while (x < 1024) {
+      const w = 300 + ((r * 97 + x * 13) % 260), l = 76 + ((r * 31 + Math.abs(x) * 7) % 9);
+      g.fillStyle = `hsl(32, 52%, ${l}%)`; g.fillRect(x, r * h, w, h);
+      g.fillStyle = "rgba(120,80,40,.10)"; for (let k = 0; k < 5; k++) g.fillRect(x, r * h + 6 + k * (h / 5), w, 1);
+      g.fillStyle = "rgba(110,70,35,.35)"; g.fillRect(x, r * h, 2, h);
+      x += w;
+    }
+    g.fillStyle = "rgba(110,70,35,.35)"; g.fillRect(0, r * h, 1024, 2);
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+})();
+const mat = {
+  floor: new THREE.MeshStandardMaterial({ map: plankTex, roughness: 0.55 }),
+  floorEdge: M(0xd9b48a, 0.6),
+  wall: M(0xf6f2ec, 0.9),
+  frame: M(0xffffff, 0.5), glass: M(0xcfe4ec, 0.15, 0.1),
+  green: M(0x004f3b, 0.55), mint: M(0x5ee9b5, 0.5), cream: M(0xfff6e6, 0.7),
+  marble: M(0xf7f5f1, 0.25), wood: M(0xc68c55, 0.6), woodDark: M(0x9a6438, 0.6),
+  steel: M(0xe6e8ea, 0.35, 0.4), ink: M(0x24282c, 0.5), cushion: M(0x2f7d62, 0.85),
+  amber: M(0xe3a14f, 0.5), terra: M(0xc8643b, 0.7), leaf: new THREE.MeshStandardMaterial({ color: 0x4f9a5d, roughness: 0.8, flatShading: true }),
+  food: M(0xf0913a, 0.6), menuLine: M(0x9fe3c6, 0.6),
+};
+
+// ---------- the TanyEats sign (drawn once the brand font is in) ----------
+const sign = (() => {
+  const c = document.createElement("canvas"); c.width = 2400; c.height = 400;
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  let done = false;
+  const draw = () => {
+    if (done || typeof drawLogo !== "function") return;
+    const g = c.getContext("2d");
+    g.setTransform(2, 0, 0, 2, 0, 0);
+    g.fillStyle = "#ffffff"; g.fillRect(0, 0, 1200, 200);
+    g.font = `600 118px "Space Grotesk", ui-sans-serif, sans-serif`;
+    const wt = g.measureText("tany").width, we = g.measureText("eats").width, total = 150 + 30 + wt + we, x0 = (1200 - total) / 2;
+    drawLogo(g, x0, 25, 150);
+    g.textBaseline = "alphabetic";
+    g.lineWidth = 7; g.lineJoin = "round";
+    g.fillStyle = g.strokeStyle = "#E5270B"; g.fillText("tany", x0 + 180, 142); g.strokeText("tany", x0 + 180, 142);
+    g.fillStyle = g.strokeStyle = "#18191c"; g.fillText("eats", x0 + 180 + wt, 142); g.strokeText("eats", x0 + 180 + wt, 142);
+    tex.needsUpdate = true; done = fontReady();
+  };
+  return { tex, draw, reset: () => { done = false; } };
+})();
+
+// ---------- helpers (world: x, y on the floor, z up → three: x, z, y) ----------
+const mesh = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, z, y); o.castShadow = true; o.receiveShadow = true; return o; };
+const rbox = (x0, y0, x1, y1, z0, z1, m, r = 0.08) => mesh(new RoundedBoxGeometry(x1 - x0, z1 - z0, y1 - y0, 3, Math.min(r, (Math.min(x1 - x0, y1 - y0, z1 - z0)) / 2 - 0.001)), m, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+const cyl = (cx, cy, r, z0, z1, m, rTop = r) => mesh(new THREE.CylinderGeometry(rTop, r, z1 - z0, 40), m, cx, cy, (z0 + z1) / 2);
+
+const parts = [];
+const part = (t0, kind, build, pivot = [0, 0, 0]) => {
+  const g = new THREE.Group(); g.position.set(pivot[0], pivot[2], pivot[1]);
+  const inner = new THREE.Group(); inner.position.set(-pivot[0], -pivot[2], -pivot[1]);
+  g.add(inner); build(inner); scene.add(g);
+  parts.push({ t0, kind, g });
+};
+
+// 1 · floor slab
+part(0, "floor", (g) => {
+  const slab = rbox(0, 0, 13, 11, -0.5, 0, mat.floorEdge, 0.12);
+  slab.material = [mat.floorEdge, mat.floorEdge, mat.floor, mat.floorEdge, mat.floorEdge, mat.floorEdge];
+  g.add(slab);
+}, [6.5, 5.5, 0]);
+
+// 2 · walls with their windows, menu board and door
+part(0.45, "wall", (g) => {
+  g.add(rbox(0, 0.4, 0.4, 11, 0, 6.2, mat.wall, 0.06));
+  for (const yc of [7.4, 9.6]) {
+    g.add(rbox(0.38, yc - 0.8, 0.5, yc + 0.8, 2.1, 5.1, mat.frame, 0.05));
+    g.add(rbox(0.42, yc - 0.66, 0.54, yc + 0.66, 2.24, 4.96, mat.glass, 0.03));
+    g.add(rbox(0.5, yc - 0.04, 0.58, yc + 0.04, 2.24, 4.96, mat.frame, 0.02));
+    g.add(rbox(0.5, yc - 0.66, 0.58, yc + 0.66, 3.55, 3.63, mat.frame, 0.02));
+  }
+}, [0.2, 5.7, 0]);
+part(0.6, "wall", (g) => {
+  g.add(rbox(0, 0, 13, 0.4, 0, 6.2, mat.wall, 0.06));
+  g.add(rbox(1.2, 0.38, 4.0, 0.5, 2.6, 4.6, mat.green, 0.06));
+  for (const [z, w] of [[4.15, 2.2], [3.75, 1.6], [3.35, 2.0], [2.95, 1.3]]) g.add(rbox(1.5, 0.48, 1.5 + w, 0.53, z, z + 0.08, mat.menuLine, 0.02));
+  g.add(rbox(11.6, 0.38, 12.8, 0.52, 0, 4.1, mat.woodDark, 0.05));
+  g.add(cyl(11.85, 0.6, 0.07, 2.0, 2.1, mat.steel));
+  // the TanyEats sign above the awning
+  g.add(rbox(5.3, 0.38, 10.9, 0.5, 5.02, 6.04, mat.frame, 0.08));
+  const sp = new THREE.Mesh(new THREE.PlaneGeometry(5.4, 0.9), new THREE.MeshStandardMaterial({ map: sign.tex, roughness: 0.6 }));
+  sp.position.set(8.1, 5.53, 0.505); g.add(sp);
+}, [6.5, 0.2, 0]);
+
+// 3 · kitchen line: counter + burners, shelf, jars
+part(1.2, "drop", (g) => {
+  g.add(rbox(0.4, 1.0, 1.9, 6.2, 0, 2.05, mat.steel, 0.06));
+  g.add(rbox(0.4, 0.95, 2.0, 6.25, 2.05, 2.2, mat.ink, 0.04));
+  for (const y of [2.2, 3.8]) { g.add(cyl(1.15, y, 0.38, 2.2, 2.26, mat.ink)); g.add(cyl(1.15, y, 0.22, 2.26, 2.29, mat.steel)); }
+  g.add(cyl(1.15, 5.2, 0.42, 2.2, 2.75, mat.steel, 0.38));
+});
+part(1.32, "drop", (g) => g.add(rbox(0.4, 1.4, 1.15, 5.8, 4.0, 4.16, mat.wood, 0.04)));
+[[2.1, mat.amber, 0.75], [3.1, mat.terra, 0.62], [4.1, mat.green, 0.8]].forEach(([y, m, h], i) => part(1.42 + i * 0.05, "drop", (g) => {
+  g.add(cyl(0.78, y, 0.27, 4.16, 4.16 + h, m)); g.add(cyl(0.78, y, 0.2, 4.16 + h, 4.26 + h, mat.wood));
+}));
+
+// 4 · service counter + till
+part(1.5, "drop", (g) => {
+  g.add(rbox(5.0, 0.4, 11.2, 1.9, 0, 2.05, mat.green, 0.08));
+  g.add(rbox(4.9, 0.4, 11.3, 2.05, 2.05, 2.2, mat.marble, 0.05));
+  for (let x = 5.6; x < 11; x += 0.9) g.add(rbox(x, 1.9, x + 0.08, 1.95, 0.25, 1.85, mat.mint, 0.02));
+});
+part(1.64, "drop", (g) => {
+  g.add(rbox(9.4, 0.8, 10.4, 1.5, 2.2, 2.75, mat.ink, 0.08));
+  const s = rbox(9.55, 0.9, 10.25, 0.98, 2.75, 3.35, mat.ink, 0.03); s.rotation.x = -0.25; g.add(s);
+});
+
+// 5 · booth + its table
+part(1.75, "drop", (g) => {
+  g.add(rbox(0.4, 7.0, 0.95, 10.8, 0, 2.8, mat.cushion, 0.15));
+  g.add(rbox(0.4, 7.0, 1.75, 10.8, 0, 1.15, mat.cushion, 0.15));
+  g.add(rbox(0.4, 7.0, 1.75, 10.8, 0, 0.35, mat.woodDark, 0.06));
+});
+part(1.85, "drop", (g) => {
+  g.add(cyl(3.0, 8.9, 0.1, 0, 1.95, mat.ink)); g.add(cyl(3.0, 8.9, 0.45, 0, 0.06, mat.ink));
+  g.add(rbox(2.2, 7.6, 3.8, 10.2, 1.95, 2.13, mat.marble, 0.05));
+});
+
+// 6 · two round tables, stools landing outward
+for (const [tx, ty, t0] of [[10.0, 5.4, 2.0], [6.4, 8.4, 2.15]]) {
+  part(t0, "drop", (g) => {
+    g.add(cyl(tx, ty, 0.5, 0, 0.06, mat.ink)); g.add(cyl(tx, ty, 0.11, 0, 1.95, mat.ink));
+    g.add(cyl(tx, ty, 1.05, 1.95, 2.1, mat.marble));
+  });
+  [[-1.5, 0], [0, -1.5], [1.5, 0], [0, 1.5]].forEach(([dx, dy], i) => part(t0 + 0.06 + i * 0.04, "drop", (g) => {
+    const sx = tx + dx, sy = ty + dy;
+    for (const [lx, ly] of [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]]) g.add(cyl(sx + lx, sy + ly, 0.05, 0, 1.1, mat.woodDark));
+    g.add(cyl(sx, sy, 0.45, 1.1, 1.28, mat.wood));
+  }));
+  part(t0 + 1.3, "drop", (g) => [-0.45, 0.45].forEach((o) => {
+    g.add(cyl(tx + o, ty - o, 0.32, 2.1, 2.14, mat.frame));
+    const f = mesh(new THREE.SphereGeometry(0.17, 20, 12), mat.food, tx + o, ty - o, 2.18); f.scale.y = 0.55; g.add(f);
+  }));
+}
+
+// 7 · plant in the front corner
+part(2.45, "drop", (g) => {
+  g.add(cyl(12.2, 10.2, 0.38, 0, 0.8, mat.terra, 0.48));
+  const a = mesh(new THREE.IcosahedronGeometry(0.75, 1), mat.leaf, 12.2, 10.2, 1.55); g.add(a);
+  const b = mesh(new THREE.IcosahedronGeometry(0.5, 1), mat.leaf, 12.0, 10.4, 2.2); g.add(b);
+});
+
+// 8 · the striped awning unfolds over the counter (pivot at the hinge on the wall)
+const awning = (() => {
+  const g = new THREE.Group(); g.position.set(0, 4.85, 0.42);
+  const panel = new THREE.Group(); g.add(panel);
+  const x0 = 4.6, x1 = 11.6, n = 8, w = (x1 - x0) / n, L = 2.1;
+  for (let i = 0; i < n; i++) {
+    const m = i % 2 ? mat.cream : mat.green;
+    const s = new THREE.Mesh(new THREE.BoxGeometry(w, 0.07, L), m); s.position.set(x0 + w * (i + 0.5), 0, L / 2); s.castShadow = true; panel.add(s);
+  }
+  const val = new THREE.Group(); val.position.set(0, 0, L); panel.add(val);
+  for (let i = 0; i < n; i++) {
+    const m = i % 2 ? mat.cream : mat.green, cx = x0 + w * (i + 0.5);
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(w, 0.3, 0.07), m); strip.position.set(cx, -0.15, 0); strip.castShadow = true; val.add(strip);
+    const sc = new THREE.Mesh(new THREE.CylinderGeometry(w / 2, w / 2, 0.07, 32, 1, false, 0, Math.PI), m);
+    sc.rotation.x = Math.PI / 2; sc.rotation.y = Math.PI / 2; sc.position.set(cx, -0.3, 0); sc.castShadow = true; val.add(sc);
+  }
+  for (const x of [x0 + 0.1, x1 - 0.1]) { const arm = rbox(x - 0.04, 0, x + 0.04, 2.0, -0.04, 0.04, mat.ink, 0.02); arm.position.set(x, -0.02, 1.0); panel.add(arm); }
+  scene.add(g);
+  return { g, panel, val };
+})();
+parts.push({ t0: 2.9, kind: "awning", g: awning.g });
+
+// ---------- the neighbourhood: road, homes, the restaurant's own app ----------
+const HOUSES = [
+  { hx: 3.2, body: 0xf3d6b4, roof: 0xc8643b },
+  { hx: 9.4, body: 0xd7e7f2, roof: 0x2f6f8f },
+  { hx: 15.6, body: 0xf6e7a9, roof: 0x004f3b },
+];
+const HY0 = 16.0, HY1 = 19.2, LANE = 13.3;
+const road = { t0: 4.0, kind: "floor", g: null };
+part(4.0, "floor", (g) => {
+  g.add(rbox(-1.5, 12.0, 24.5, 14.6, -0.42, -0.08, M(0x4c5258, 0.85), 0.1));
+  for (let x = -0.5; x < 24; x += 2.2) g.add(rbox(x, LANE - 0.06, x + 1.1, LANE + 0.06, -0.08, -0.05, M(0xffffff, 0.6), 0.02));
+  g.add(rbox(-1.5, 11.3, 24.5, 12.0, -0.42, 0.0, M(0xe8e3db, 0.8), 0.06));
+}, [11.5, 13.3, 0]);
+HOUSES.forEach(({ hx, body, roof }, i) => part(4.35 + i * 0.14, "drop", (g) => {
+  g.add(rbox(hx - 2.4, 15.2, hx + 3.0, 20.2, -0.42, -0.05, M(0xcfe6c4, 0.9), 0.12));
+  g.add(rbox(hx - 1.6, HY0, hx + 1.6, HY1, 0, 2.5, M(body, 0.85), 0.08));
+  const tri = new THREE.Shape(); tri.moveTo(-1.95, 0); tri.lineTo(1.95, 0); tri.lineTo(0, 1.6); tri.closePath();
+  const rf = new THREE.Mesh(new THREE.ExtrudeGeometry(tri, { depth: 3.6, bevelEnabled: false }), M(roof, 0.7));
+  rf.rotation.y = Math.PI / 2; rf.position.set(hx - 1.8, 2.5, (HY0 + HY1) / 2); rf.castShadow = true; rf.receiveShadow = true;
+  // ExtrudeGeometry runs along +z; rotated, it runs along +x from hx-1.8
+  g.add(rf);
+  g.add(rbox(hx + 1.56, 17.2, hx + 1.7, 18.2, 0, 1.75, mat.woodDark, 0.04));            // door, on the +x face
+  g.add(rbox(hx - 0.9, HY1 - 0.04, hx + 0.6, HY1 + 0.08, 1.0, 1.9, mat.glass, 0.03));   // window, front face
+  g.add(rbox(hx - 1.0, HY1 + 0.02, hx + 0.7, HY1 + 0.1, 0.92, 0.98, mat.frame, 0.02));
+  g.add(cyl(hx - 1.9, 19.7, 0.1, 0, 0.7, mat.woodDark));
+  g.add(mesh(new THREE.IcosahedronGeometry(0.55, 1), mat.leaf, hx - 1.9, 19.7, 1.05));
+}));
+
+// the phone: the restaurant's own ordering app, standing to the right
+const PX = 19.6, PY = 4.6, PW = 4.2, PH = 8.6;
+const screenCanvas = document.createElement("canvas"); screenCanvas.width = 1080; screenCanvas.height = 2200;
+const screenTex = new THREE.CanvasTexture(screenCanvas); screenTex.colorSpace = THREE.SRGBColorSpace; screenTex.anisotropy = 8;
+const FONT = '"Space Grotesk", ui-sans-serif, system-ui, sans-serif';
+const LOGO = {
+  tile: "M0 22Q0 0 22 0H78Q100 0 100 22V82A16.667 16.667 0 0 1 66.667 82A16.667 16.667 0 0 1 33.333 82A16.667 16.667 0 0 1 0 82Z",
+  fork: "M30 19V36M35 19V36M40 19V36M45 19V36M30 34Q30 46 37.5 46Q45 46 45 34",
+  handle: "M37.5 46V75M65.5 47V75",
+  knife: "M60 18C68.5 20 71.5 29 71.5 43V48H60Z",
+};
+for (const [id, k] of [["lgTile", "tile"], ["lgFork", "fork"], ["lgHandle", "handle"], ["lgKnife", "knife"]]) document.getElementById(id)?.setAttribute("d", LOGO[k]);
+function drawLogo(g, x, y, s) {
+  g.save(); g.translate(x, y); g.scale(s / 100, s / 100);
+  g.fillStyle = "#004F3B"; g.fill(new Path2D(LOGO.tile));
+  g.strokeStyle = "#5EE9B5"; g.lineCap = "round";
+  g.lineWidth = 4.2; g.stroke(new Path2D(LOGO.fork));
+  g.lineWidth = 6; g.stroke(new Path2D(LOGO.handle));
+  g.fillStyle = "#5EE9B5"; g.fill(new Path2D(LOGO.knife));
+  g.restore();
+}
+const fontReady = () => document.fonts.check(`600 40px "Space Grotesk"`);
+function rr(g, x, y, w, h, r) { g.beginPath(); g.roundRect(x, y, w, h, r); }
+function drawScreen(orders, pulse) {
+  const g = screenCanvas.getContext("2d"), W = 540, H = 1100;
+  g.setTransform(2, 0, 0, 2, 0, 0);
+  g.fillStyle = "#f5f6f3"; g.fillRect(0, 0, W, H);
+  g.fillStyle = "#004F3B"; g.fillRect(0, 0, W, 250);
+  g.fillStyle = "#ffffff"; g.font = `600 22px ${FONT}`; g.fillText("9:41", 34, 46);
+  rr(g, W - 112, 84, 82, 82, 18); g.fillStyle = "#ffffff"; g.fill(); drawLogo(g, W - 101, 95, 60);
+  g.font = `600 46px ${FONT}`; g.fillText("Chennai Kitchen", 34, 132);
+  g.fillStyle = "#5EE9B5"; g.font = `500 23px ${FONT}`; g.fillText("chennaikitchen.tany.in", 34, 172);
+  rr(g, 34, 192, 150, 38, 19); g.fillStyle = "rgba(255,255,255,.14)"; g.fill();
+  g.fillStyle = "#fff"; g.font = `500 20px ${FONT}`; g.fillText("★ 4.8 · Open", 52, 218);
+  const items = [["Ghee Roast Dosa", "₹120", "#E7A04B"], ["Chicken Biryani", "₹220", "#C8643B"], ["Filter Coffee", "₹40", "#8A5A35"]];
+  items.forEach(([n, p, c], i) => {
+    const y = 280 + i * 132;
+    rr(g, 26, y, W - 52, 114, 22); g.fillStyle = "#fff"; g.fill();
+    g.beginPath(); g.arc(90, y + 57, 38, 0, Math.PI * 2); g.fillStyle = c; g.fill();
+    g.fillStyle = "#18191c"; g.font = `600 27px ${FONT}`; g.fillText(n, 146, y + 50);
+    g.fillStyle = "#6c6e75"; g.font = `500 24px ${FONT}`; g.fillText(p, 146, y + 86);
+    rr(g, W - 150, y + 36, 96, 44, 14); g.fillStyle = "#004F3B"; g.fill();
+    g.fillStyle = "#fff"; g.font = `600 21px ${FONT}`; g.fillText("ADD", W - 124, y + 65);
+  });
+  const y2 = 690;
+  rr(g, 26, y2, W - 52, 170, 24); g.fillStyle = pulse > 0 ? `rgba(94,233,181,${0.25 + 0.5 * pulse})` : "#ffffff"; g.fill();
+  g.fillStyle = "#6c6e75"; g.font = `500 22px ${FONT}`; g.fillText("Direct orders today", 54, y2 + 46);
+  g.fillStyle = "#18191c"; g.font = `600 78px ${FONT}`; g.fillText(String(orders), 52, y2 + 130);
+  g.fillStyle = "#004F3B"; g.font = `600 24px ${FONT}`; g.fillText("↑ live", W - 140, y2 + 128);
+  rr(g, 26, y2 + 190, W - 52, 70, 20); g.fillStyle = "#E3FBF2"; g.fill();
+  g.fillStyle = "#004F3B"; g.font = `600 25px ${FONT}`; g.fillText("Marketplace commission  ₹0", 50, y2 + 235);
+  rr(g, 26, H - 110, W - 52, 76, 22); g.fillStyle = "#004F3B"; g.fill();
+  g.fillStyle = "#fff"; g.font = `600 28px ${FONT}`; g.fillText("Order direct", W / 2 - 82, H - 62);
+  screenTex.needsUpdate = true;
+}
+const phone = (() => {
+  const g = new THREE.Group(); g.position.set(PX, 0, PY); g.rotation.y = Math.PI / 4;
+  const inner = new THREE.Group(); g.add(inner);
+  const body = new THREE.Mesh(new RoundedBoxGeometry(PW, PH, 0.42, 4, 0.36), M(0x1d2125, 0.35, 0.3));
+  body.position.y = PH / 2 + 0.25; body.castShadow = true; inner.add(body);
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(PW - 0.34, PH - 0.34), new THREE.MeshBasicMaterial({ map: screenTex, toneMapped: false }));
+  scr.position.set(0, PH / 2 + 0.25, 0.215); inner.add(scr);
+  const stand = new THREE.Mesh(new RoundedBoxGeometry(2.6, 0.25, 1.6, 3, 0.1), M(0xd9dcdf, 0.4, 0.3));
+  stand.position.set(0, 0.12, -0.2); stand.castShadow = true; stand.receiveShadow = true; g.add(stand);
+  scene.add(g);
+  return { g, inner };
+})();
+
+// sprites: order bubbles, coins, the badge
+function iconSprite(draw, size) {
+  const c = document.createElement("canvas"); c.width = c.height = 256; draw(c.getContext("2d"));
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, toneMapped: false }));
+  s.scale.set(size, size, 1); s.renderOrder = 10; scene.add(s); return s;
+}
+const bagIcon = (g) => {
+  rr(g, 18, 18, 220, 220, 60); g.fillStyle = "#004F3B"; g.fill();
+  g.strokeStyle = "#fff"; g.lineWidth = 14; g.lineJoin = "round";
+  rr(g, 76, 102, 104, 96, 14); g.stroke();
+  g.beginPath(); g.arc(128, 104, 28, Math.PI, 0); g.stroke();
+  g.beginPath(); g.arc(196, 60, 34, 0, Math.PI * 2); g.fillStyle = "#5EE9B5"; g.fill();
+  g.fillStyle = "#004F3B"; g.font = `700 40px ${FONT}`; g.textAlign = "center"; g.fillText("+1", 196, 74);
+};
+const ORDERS = [0, 2, 1, 2, 0].map((h, i) => ({ h, t0: 6.5 + i * 0.42, dur: 0.95, s: iconSprite(bagIcon, 1.7) }));
+const coinMat = new THREE.MeshStandardMaterial({ color: 0xf2bf3c, roughness: 0.3, metalness: 0.7 });
+const COINS = [];
+HOUSES.forEach((_, h) => { for (let k = 0; k < 3; k++) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.46, 0.12, 28), coinMat); m.castShadow = true; scene.add(m);
+  COINS.push({ h, t0: 11.0 + h * 0.28 + k * 0.13, dur: 0.95, m });
+} });
+const badge = (() => {
+  const c = document.createElement("canvas"); c.width = 640; c.height = 200; const g = c.getContext("2d");
+  rr(g, 10, 20, 620, 160, 80); g.fillStyle = "#004F3B"; g.fill();
+  g.fillStyle = "#5EE9B5"; g.font = `700 76px ${FONT}`; g.fillText("0%", 60, 128);
+  g.fillStyle = "#fff"; g.font = `600 46px ${FONT}`; g.fillText("commission", 210, 120);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, toneMapped: false }));
+  s.renderOrder = 11; scene.add(s); return s;
+})();
+
+// scooters
+function makeScooter() {
+  const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
+  const add = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; body.add(o); return o; };
+  const wheel = new THREE.CylinderGeometry(0.26, 0.26, 0.14, 20);
+  add(wheel, mat.ink, 0.62, 0.26, 0).rotation.x = Math.PI / 2;
+  add(wheel, mat.ink, -0.62, 0.26, 0).rotation.x = Math.PI / 2;
+  add(new RoundedBoxGeometry(1.3, 0.34, 0.5, 3, 0.12), M(0xe9ecee, 0.4), 0, 0.5, 0);
+  add(new RoundedBoxGeometry(0.16, 0.9, 0.16, 2, 0.06), mat.green, 0.6, 0.9, 0);
+  add(new RoundedBoxGeometry(0.1, 0.1, 0.7, 2, 0.04), mat.ink, 0.62, 1.34, 0);
+  add(new RoundedBoxGeometry(0.42, 0.62, 0.42, 3, 0.14), mat.green, -0.05, 1.0, 0);          // rider
+  add(new THREE.SphereGeometry(0.2, 18, 12), M(0x5EE9B5, 0.5), -0.02, 1.48, 0);                // helmet
+  add(new RoundedBoxGeometry(0.62, 0.58, 0.62, 3, 0.1), mat.green, -0.62, 1.0, 0);             // delivery box
+  add(new RoundedBoxGeometry(0.64, 0.08, 0.64, 2, 0.03), M(0x5EE9B5, 0.5), -0.62, 1.12, 0);
+  g.scale.setScalar(1.15); scene.add(g); return g;
+}
+const RIDES = HOUSES.map(({ hx }, i) => {
+  const d = [hx + 2.35, 17.7];
+  const pts = [[11.2, 11.6], [11.2, LANE + (i - 1) * 0.35], [d[0], LANE + (i - 1) * 0.35], d];
+  const seg = []; let L = 0;
+  for (let k = 1; k < pts.length; k++) { const l = Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]); seg.push(l); L += l; }
+  const parcel = rbox(hx + 1.85, 17.5, hx + 2.25, 17.9, 0, 0.4, mat.green, 0.06); scene.add(parcel);
+  return { pts, seg, L, t0: 8.7 + i * 0.35, dur: 2.0, g: makeScooter(), parcel };
+});
+function along(r, u) {
+  let d = u * r.L;
+  for (let k = 0; k < r.seg.length; k++) {
+    if (d <= r.seg[k] || k === r.seg.length - 1) {
+      const a = r.pts[k], b = r.pts[k + 1], f = clamp(d / r.seg[k]);
+      return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, Math.atan2(b[1] - a[1], b[0] - a[0])];
+    }
+    d -= r.seg[k];
+  }
+}
+
+// ---------- timeline (a pure function of time) ----------
+const LOOP = 15.6, DROP = 3.6;
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const ease = (t) => { t = clamp(t); return 1 - Math.pow(1 - t, 3); };
+const inOut = (t) => { t = clamp(t); return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+const back = (t) => { t = clamp(t); const c = 1.5; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+const W = Math.sqrt(150), Z = 0.5, WD = W * Math.sqrt(1 - Z * Z);
+const springOff = (t) => Math.exp(-Z * W * t) * (Math.cos(WD * t) + (Z * W / WD) * Math.sin(WD * t));
+const arc = (a, b, u, hgt) => [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u + Math.sin(Math.PI * u) * hgt];
+const at = (x, y, z) => new THREE.Vector3(x, z, y);
+
+const VIEW0 = 10.0, VIEW1 = 14.6, T0 = [6.5, 5.5, 4.4], T1 = [10.2, 11.8, 5.6], OFF = new THREE.Vector3(30, 24, 30);
+let view = VIEW0;
+const CAPS = [
+  [0, "Step 1", "Set up your restaurant online in 3 minutes"],
+  [4.0, "Step 2", "Launch your own ordering app"],
+  [6.4, "Step 3", "Customers order directly from you"],
+  [8.7, "Step 4", "Deliver to their doorstep"],
+  [10.9, "Step 5", "0% marketplace commission. Every rupee is yours."],
+];
+const capStep = document.getElementById("capStep"), capLine = document.getElementById("capLine"), fadeEl = document.getElementById("fade");
+let lastCap = -1, lastScreen = "";
+
+function pose(t) {
+  // camera: hold on the restaurant, then pull back over the neighbourhood
+  const z = inOut((t - 3.7) / 1.5);
+  view = VIEW0 + (VIEW1 - VIEW0) * z;
+  const tgt = at(...T0.map((v, i) => v + (T1[i] - v) * z));
+  cam.position.copy(tgt).add(OFF); cam.lookAt(tgt); resize();
+
+  parts.forEach((p) => {
+    const lt = t - p.t0, g = p.g;
+    if (lt < 0) { g.visible = false; return; }
+    g.visible = true;
+    if (p.kind === "floor") {
+      const a = ease(lt / 0.55), b = ease((lt - 0.18) / 0.6);
+      g.scale.set(Math.max(0.001, a), 1, Math.max(0.04, b));
+    } else if (p.kind === "wall") {
+      g.scale.y = Math.max(0.001, ease(lt / 0.7));
+    } else if (p.kind === "drop") {
+      g.position.y = DROP * springOff(lt);
+      g.scale.setScalar(Math.min(1, 0.55 + lt / 0.25));
+    } else if (p.kind === "awning") {
+      const ang = 90 - 68 * ease(lt / 0.8);
+      awning.panel.rotation.x = THREE.MathUtils.degToRad(ang);
+      awning.val.rotation.x = -THREE.MathUtils.degToRad(ang);
+      g.scale.setScalar(Math.min(1, lt / 0.2));
+    }
+  });
+
+  // phone rises out of its stand
+  const pl = t - 5.0;
+  phone.g.visible = pl >= 0;
+  phone.inner.scale.y = Math.max(0.001, back(pl / 0.8));
+  phone.g.children[1].scale.setScalar(Math.min(1, Math.max(0.001, pl / 0.25)));
+
+  // orders fly from homes into the app
+  let arrived = 0, pulse = 0;
+  const scrC = [PX - 0.2, PY + 0.2, 5.4];
+  ORDERS.forEach((o) => {
+    const u = (t - o.t0) / o.dur, h = HOUSES[o.h];
+    o.s.visible = u > 0 && u < 1;
+    if (u >= 1) { arrived++; pulse = Math.max(pulse, 1 - clamp((t - o.t0 - o.dur) / 0.5)); }
+    if (o.s.visible) {
+      const p = arc([h.hx, (HY0 + HY1) / 2, 4.6], scrC, inOut(u), 3.2);
+      o.s.position.copy(at(...p));
+      const k = 1.7 * (u < 0.15 ? u / 0.15 : u > 0.85 ? Math.max(0.3, (1 - u) / 0.15) : 1);
+      o.s.scale.set(k, k, 1);
+    }
+  });
+  const key = 24 + arrived + ":" + pulse.toFixed(2) + fontReady();
+  if (key !== lastScreen) { lastScreen = key; drawScreen(24 + arrived, pulse); }
+
+  // scooters ride out, parcels land at the door
+  RIDES.forEach((r) => {
+    const u = (t - r.t0) / r.dur;
+    r.g.visible = t >= r.t0 - 0.25;
+    const [x, y, hd] = along(r, inOut(u));
+    r.g.position.copy(at(x, y, 0));
+    r.g.rotation.y = -hd;
+    r.g.scale.setScalar(1.15 * clamp((t - r.t0 + 0.25) / 0.25));
+    const pu = t - (r.t0 + r.dur);
+    r.parcel.visible = pu > 0;
+    r.parcel.position.y = pu > 0 ? 1.4 * springOff(pu) : 0;
+  });
+
+  // payments come straight back to the restaurant's till
+  const till = [9.9, 1.15, 3.0];
+  COINS.forEach((c) => {
+    const u = (t - c.t0) / c.dur, h = HOUSES[c.h];
+    c.m.visible = u > 0 && u < 1;
+    if (c.m.visible) {
+      c.m.position.copy(at(...arc([h.hx + 2.2, 17.7, 1.2], till, inOut(u), 4.5)));
+      c.m.rotation.set(Math.PI / 2, 0, u * 9);
+    }
+  });
+
+  // the badge over the restaurant
+  const bl = t - 11.7;
+  badge.visible = bl > 0;
+  const bs = back(bl / 0.6);
+  badge.position.copy(at(7.0, 5.0, 9.9 + 0.12 * Math.sin(Math.max(0, bl) * 2.4)));
+  badge.scale.set(6.4 * bs, 2.0 * bs, 1);
+
+  // captions and the loop's fade
+  let ci = 0; CAPS.forEach((c, i) => { if (t >= c[0]) ci = i; });
+  if (ci !== lastCap) { lastCap = ci; capLine.textContent = CAPS[ci][2]; }
+  const since = t - CAPS[ci][0];
+  capLine.style.opacity = String(clamp(since / 0.35));
+  capLine.style.transform = `translateY(${(1 - ease(since / 0.45)) * 8}px)`;
+  fadeEl.style.opacity = String(clamp((t - (LOOP - 0.5)) / 0.4));
+}
+
+// ---------- sizing, theme, loop ----------
+let sz = '';
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  if (sz !== w + 'x' + h) { sz = w + 'x' + h; renderer.setSize(w, h, false); }
+  const a = w / h || 1; cam.left = -view * a; cam.right = view * a; cam.top = view; cam.bottom = -view; cam.updateProjectionMatrix();
+}
+const isDark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+const syncTheme = () => { ground.material.opacity = isDark() ? 0.35 : 0.12; ground.material.color.set(isDark() ? 0x000000 : 0x3a2a55); };
+new ResizeObserver(resize).observe(stage); resize(); syncTheme();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", syncTheme);
+
+window.renderAt = (t) => { sign.draw(); pose(t); renderer.render(scene, cam); };
+let start = performance.now();
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const PLAYBACK_RATE = 0.8;
+if (!q.get("video")) {
+  const loop = (now) => { const t = reduced ? 13 : (((now - start) / 1000) * PLAYBACK_RATE) % LOOP; window.renderAt(t); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+}
+window.LOOP = LOOP;
+window.brandRefresh = () => { sign.reset(); sign.draw(); lastScreen = ""; };
+document.fonts.load(`600 118px "Space Grotesk"`).then(() => window.brandRefresh()).catch(() => {});
+document.fonts.ready.then(() => { lastScreen = ''; window.ready = true; });
+</script>
+</body>
+</html>
+
+</body></html>

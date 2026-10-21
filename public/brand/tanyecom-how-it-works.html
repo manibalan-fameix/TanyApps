@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TanyEcom Online Story</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: light; --ground: #EDE9FE; --ink: #18191c; --muted: #77787f; --line: #e6e6ea; --accent: #4D179A; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { color-scheme: dark; --ground: #0c0d0e; --ink: #e4e7ec; --muted: #8a8c95; --line: #26272b; --accent: #C4B4FF; }
+  }
+  :root[data-theme="dark"] { color-scheme: dark; --ground: #0c0d0e; --ink: #e4e7ec; --muted: #8a8c95; --line: #26272b; --accent: #C4B4FF; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px;
+    background: var(--ground); color: var(--ink); font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif; }
+  main { width: 100%; max-width: 620px; }
+  /* Narrow frames (phones): start at the top instead of centring in the frame. */
+  @media (max-width: 480px) { body { place-items: start center; padding: 0 8px; } #stage .cap { top: 16px; } #stage canvas { transform: translateY(28px); } }
+  #stage { position: relative; width: 100%; aspect-ratio: 1 / 1; }
+  #stage canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; display: block; }
+  .cap { position: absolute; left: 4px; top: 6px; right: 4px; z-index: 2; pointer-events: none; text-align: center; }
+  .cap .step { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; font-size: 12px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  .cap .line { margin: 6px auto 0; font-size: clamp(16px, 2.4vw, 22px); font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; max-width: 15em; }
+  .cap > div { transition: none; }
+  #fade { position: absolute; inset: 0; background: var(--ground); opacity: 0; pointer-events: none; z-index: 3; }
+</style>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+</head>
+<body>
+<main>
+  <div id="stage" role="img" aria-label="A 3D TanyEcom store builds itself, launches its own shopping app, receives orders from nearby homes, packs and delivers them, and keeps every rupee with zero marketplace commission.">
+    <div class="cap"><div class="step" id="capStep"></div><div class="line" id="capLine"></div></div>
+    <div id="fade"></div>
+  </div>
+</main>
+<script type="module">
+import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+const root = document.documentElement, q = new URLSearchParams(location.search);
+if (q.get("video")) root.classList.add("video");
+if (["light", "dark"].includes(q.get("theme"))) root.dataset.theme = q.get("theme");
+const stage = document.getElementById("stage");
+
+// ---------- renderer, camera, light ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.max(2, Math.min(devicePixelRatio, 3)));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+
+const CX = 6.5, CZ = 5.5, VIEW = 9.6;
+const cam = new THREE.OrthographicCamera(-VIEW, VIEW, VIEW, -VIEW, 0.1, 200);
+cam.position.set(CX + 30, 26.8, CZ + 30);
+cam.lookAt(CX, 2.8, CZ);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xe9dccb, 0.8));
+const sun = new THREE.DirectionalLight(0xfff3e4, 2.1);
+sun.position.set(CX - 6, 18, CZ + 12);
+sun.target.position.set(CX, 0, CZ);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+sun.position.set(6, 22, 22); sun.target.position.set(12, 0, 10);
+sun.shadow.camera.left = -24; sun.shadow.camera.right = 24; sun.shadow.camera.top = 24; sun.shadow.camera.bottom = -24; sun.shadow.camera.far = 80;
+sun.shadow.radius = 4; sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.02;
+scene.add(sun, sun.target);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.ShadowMaterial({ opacity: 0.12, color: 0x3a2a55 }));
+ground.rotation.x = -Math.PI / 2; ground.position.y = -0.52; ground.receiveShadow = true;
+scene.add(ground);
+
+// ---------- materials ----------
+const M = (color, rough = 0.7, metal = 0) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
+const plankTex = (() => {
+  const c = document.createElement("canvas"); c.width = 1024; c.height = 1024; const g = c.getContext("2d");
+  const rows = 14, h = 1024 / rows;
+  for (let r = 0; r < rows; r++) {
+    let x = -((r * 337) % 400);
+    while (x < 1024) {
+      const w = 300 + ((r * 97 + x * 13) % 260), l = 76 + ((r * 31 + Math.abs(x) * 7) % 9);
+      g.fillStyle = `hsl(32, 52%, ${l}%)`; g.fillRect(x, r * h, w, h);
+      g.fillStyle = "rgba(120,80,40,.10)"; for (let k = 0; k < 5; k++) g.fillRect(x, r * h + 6 + k * (h / 5), w, 1);
+      g.fillStyle = "rgba(110,70,35,.35)"; g.fillRect(x, r * h, 2, h);
+      x += w;
+    }
+    g.fillStyle = "rgba(110,70,35,.35)"; g.fillRect(0, r * h, 1024, 2);
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+})();
+const mat = {
+  floor: new THREE.MeshStandardMaterial({ map: plankTex, roughness: 0.55 }),
+  floorEdge: M(0xd9b48a, 0.6),
+  wall: M(0xf6f2ec, 0.9),
+  frame: M(0xffffff, 0.5), glass: M(0xcfe4ec, 0.15, 0.1),
+  green: M(0x3a0f7e, 0.5), mint: M(0xc4b4ff, 0.5), cream: M(0xfff6e6, 0.7),
+  marble: M(0xf7f5f1, 0.25), wood: M(0xc68c55, 0.6), woodDark: M(0x9a6438, 0.6),
+  steel: M(0xe6e8ea, 0.35, 0.4), ink: M(0x24282c, 0.5), cushion: M(0x6b4fb8, 0.8), kraft: M(0xc99a62, 0.85), tape: M(0xc4b4ff, 0.6),
+  amber: M(0xe3a14f, 0.5), terra: M(0xc8643b, 0.7), leaf: new THREE.MeshStandardMaterial({ color: 0x4f9a5d, roughness: 0.8, flatShading: true }),
+  food: M(0xf0913a, 0.6), menuLine: M(0xc4b4ff, 0.6),
+};
+
+// ---------- the TanyEcom sign (drawn once the brand font is in) ----------
+const sign = (() => {
+  const c = document.createElement("canvas"); c.width = 2400; c.height = 400;
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  let done = false;
+  const draw = () => {
+    if (done || typeof drawLogo !== "function") return;
+    const g = c.getContext("2d");
+    g.setTransform(2, 0, 0, 2, 0, 0);
+    g.fillStyle = "#ffffff"; g.fillRect(0, 0, 1200, 200);
+    const wh = 104, ww = wh * 231 / 41, total = 150 + 34 + ww, x0 = (1200 - total) / 2;
+    drawLogo(g, x0, 25, 150);
+    if (imgsReady) for (let a = 0; a < 12; a++) g.drawImage(imgWord, x0 + 184 + 2.6 * Math.cos(a * Math.PI / 6), 48 + 2.6 * Math.sin(a * Math.PI / 6), ww, wh);
+    tex.needsUpdate = true; done = imgsReady;
+  };
+  return { tex, draw, reset: () => { done = false; } };
+})();
+
+// ---------- helpers (world: x, y on the floor, z up → three: x, z, y) ----------
+const mesh = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, z, y); o.castShadow = true; o.receiveShadow = true; return o; };
+const rbox = (x0, y0, x1, y1, z0, z1, m, r = 0.08) => mesh(new RoundedBoxGeometry(x1 - x0, z1 - z0, y1 - y0, 3, Math.min(r, (Math.min(x1 - x0, y1 - y0, z1 - z0)) / 2 - 0.001)), m, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+const cyl = (cx, cy, r, z0, z1, m, rTop = r) => mesh(new THREE.CylinderGeometry(rTop, r, z1 - z0, 40), m, cx, cy, (z0 + z1) / 2);
+
+const parts = [];
+const part = (t0, kind, build, pivot = [0, 0, 0]) => {
+  const g = new THREE.Group(); g.position.set(pivot[0], pivot[2], pivot[1]);
+  const inner = new THREE.Group(); inner.position.set(-pivot[0], -pivot[2], -pivot[1]);
+  g.add(inner); build(inner); scene.add(g);
+  parts.push({ t0, kind, g });
+};
+
+// 1 · floor slab
+part(0, "floor", (g) => {
+  const slab = rbox(0, 0, 13, 11, -0.5, 0, mat.floorEdge, 0.12);
+  slab.material = [mat.floorEdge, mat.floorEdge, mat.floor, mat.floorEdge, mat.floorEdge, mat.floorEdge];
+  g.add(slab);
+}, [6.5, 5.5, 0]);
+
+// 2 · walls with their windows, banner and door
+part(0.45, "wall", (g) => {
+  g.add(rbox(0, 0.4, 0.4, 11, 0, 6.2, mat.wall, 0.06));
+  for (const yc of [7.4, 9.6]) {
+    g.add(rbox(0.38, yc - 0.8, 0.5, yc + 0.8, 2.1, 5.1, mat.frame, 0.05));
+    g.add(rbox(0.42, yc - 0.66, 0.54, yc + 0.66, 2.24, 4.96, mat.glass, 0.03));
+    g.add(rbox(0.5, yc - 0.04, 0.58, yc + 0.04, 2.24, 4.96, mat.frame, 0.02));
+    g.add(rbox(0.5, yc - 0.66, 0.58, yc + 0.66, 3.55, 3.63, mat.frame, 0.02));
+  }
+}, [0.2, 5.7, 0]);
+part(0.6, "wall", (g) => {
+  g.add(rbox(0, 0, 13, 0.4, 0, 6.2, mat.wall, 0.06));
+  g.add(rbox(1.2, 0.38, 4.0, 0.5, 2.6, 4.6, mat.green, 0.06));
+  g.add(rbox(1.55, 0.48, 2.45, 0.54, 3.0, 3.8, mat.menuLine, 0.1));                    // a "new arrivals" banner: two product tiles
+  g.add(rbox(2.75, 0.48, 3.65, 0.54, 3.0, 3.8, mat.menuLine, 0.1));
+  g.add(rbox(1.55, 0.48, 3.65, 0.54, 4.05, 4.2, mat.menuLine, 0.03));
+  g.add(rbox(11.6, 0.38, 12.8, 0.52, 0, 4.1, mat.woodDark, 0.05));
+  g.add(cyl(11.85, 0.6, 0.07, 2.0, 2.1, mat.steel));
+  // the TanyEcom sign above the awning
+  g.add(rbox(5.3, 0.38, 10.9, 0.5, 5.02, 6.04, mat.frame, 0.08));
+  const sp = new THREE.Mesh(new THREE.PlaneGeometry(5.4, 0.9), new THREE.MeshStandardMaterial({ map: sign.tex, roughness: 0.6 }));
+  sp.position.set(8.1, 5.53, 0.505); g.add(sp);
+}, [6.5, 0.2, 0]);
+
+// 3 · two shelving units on the left wall, filled with products
+const PRODUCT = [0xd64933, 0xe3a14f, 0x5e9e6e, 0x7856ff, 0x2f6f8f, 0xc8643b, 0xf2c14e, 0x8fb8de];
+[[0.9, 5.8, 1.2], [6.9, 10.6, 1.45]].forEach(([y0, y1, t0], u) => {
+  part(t0, "drop", (g) => {
+    g.add(rbox(0.4, y0, 1.7, y0 + 0.14, 0, 4.4, mat.wood, 0.04));
+    g.add(rbox(0.4, y1 - 0.14, 1.7, y1, 0, 4.4, mat.wood, 0.04));
+    for (const z of [0.3, 1.35, 2.4, 3.45]) g.add(rbox(0.4, y0, 1.7, y1, z, z + 0.1, mat.wood, 0.03));
+  });
+  part(t0 + 0.18, "drop", (g) => {
+    let k = u * 3;
+    for (const z of [0.4, 1.45, 2.5, 3.55]) for (let y = y0 + 0.35; y < y1 - 0.6; y += 0.78) {
+      const h = 0.45 + ((k * 7) % 4) * 0.1, c = PRODUCT[k++ % PRODUCT.length];
+      g.add(k % 3 ? rbox(0.6, y, 1.4, y + 0.6, z, z + h, M(c, 0.6), 0.06) : cyl(1.0, y + 0.3, 0.28, z, z + h + 0.1, M(c, 0.5)));
+    }
+  });
+});
+
+// 4 · the checkout and packing counter, with a till
+part(1.5, "drop", (g) => {
+  g.add(rbox(5.0, 0.4, 11.2, 1.9, 0, 2.05, mat.green, 0.08));
+  g.add(rbox(4.9, 0.4, 11.3, 2.05, 2.05, 2.2, mat.marble, 0.05));
+  for (let x = 5.6; x < 11; x += 0.9) g.add(rbox(x, 1.9, x + 0.08, 1.95, 0.25, 1.85, mat.mint, 0.02));
+});
+part(1.64, "drop", (g) => {
+  g.add(rbox(9.4, 0.8, 10.4, 1.5, 2.2, 2.75, mat.ink, 0.08));
+  const s = rbox(9.55, 0.9, 10.25, 0.98, 2.75, 3.35, mat.ink, 0.03); s.rotation.x = -0.25; g.add(s);
+});
+// parcels on the counter, ready to go
+part(1.75, "drop", (g) => {
+  for (const [x, w, h] of [[5.6, 0.9, 0.6], [6.7, 0.7, 0.5], [7.6, 1.0, 0.75]]) {
+    g.add(rbox(x, 0.7, x + w, 1.6, 2.2, 2.2 + h, mat.kraft, 0.04));
+    g.add(rbox(x + w / 2 - 0.08, 0.68, x + w / 2 + 0.08, 1.62, 2.2, 2.22 + h, mat.tape, 0.02));
+  }
+});
+
+// 5 · a display table in the middle with folded stock, and a second smaller table
+part(1.9, "drop", (g) => {
+  for (const [lx, ly] of [[5.5, 5.6], [8.7, 5.6], [5.5, 7.8], [8.7, 7.8]]) g.add(cyl(lx, ly, 0.08, 0, 1.55, mat.woodDark));
+  g.add(rbox(5.2, 5.3, 9.0, 8.1, 1.55, 1.75, mat.wood, 0.06));
+});
+part(2.05, "drop", (g) => {
+  [[5.7, 5.8, 0xd64933], [6.8, 5.8, 0x5e9e6e], [7.9, 5.8, 0xe3a14f], [5.7, 7.0, 0x7856ff], [6.8, 7.0, 0x2f6f8f], [7.9, 7.0, 0xc8643b]].forEach(([x, y, c], i) => {
+    for (let k = 0; k < 2 + (i % 2); k++) g.add(rbox(x, y, x + 0.85, y + 0.85, 1.75 + k * 0.17, 1.9 + k * 0.17, M(c, 0.8), 0.04));
+  });
+  g.add(cyl(8.6, 7.6, 0.22, 1.75, 2.45, M(0xe3a14f, 0.3, 0.6), 0.14));
+});
+part(2.2, "drop", (g) => {
+  g.add(cyl(10.6, 8.6, 0.1, 0, 1.3, mat.ink)); g.add(cyl(10.6, 8.6, 0.5, 0, 0.06, mat.ink));
+  g.add(cyl(10.6, 8.6, 1.0, 1.3, 1.45, mat.marble));
+  g.add(cyl(10.3, 8.4, 0.22, 1.45, 1.95, M(0x5e9e6e, 0.5))); g.add(cyl(10.9, 8.8, 0.26, 1.45, 1.85, M(0xd64933, 0.5)));
+});
+
+// 7 · plant in the front corner
+part(2.45, "drop", (g) => {
+  g.add(cyl(12.2, 10.2, 0.38, 0, 0.8, mat.terra, 0.48));
+  const a = mesh(new THREE.IcosahedronGeometry(0.75, 1), mat.leaf, 12.2, 10.2, 1.55); g.add(a);
+  const b = mesh(new THREE.IcosahedronGeometry(0.5, 1), mat.leaf, 12.0, 10.4, 2.2); g.add(b);
+});
+
+// 8 · the striped awning unfolds over the counter (pivot at the hinge on the wall)
+const awning = (() => {
+  const g = new THREE.Group(); g.position.set(0, 4.85, 0.42);
+  const panel = new THREE.Group(); g.add(panel);
+  const x0 = 4.6, x1 = 11.6, n = 8, w = (x1 - x0) / n, L = 2.1;
+  for (let i = 0; i < n; i++) {
+    const m = i % 2 ? mat.cream : mat.green;
+    const s = new THREE.Mesh(new THREE.BoxGeometry(w, 0.07, L), m); s.position.set(x0 + w * (i + 0.5), 0, L / 2); s.castShadow = true; panel.add(s);
+  }
+  const val = new THREE.Group(); val.position.set(0, 0, L); panel.add(val);
+  for (let i = 0; i < n; i++) {
+    const m = i % 2 ? mat.cream : mat.green, cx = x0 + w * (i + 0.5);
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(w, 0.3, 0.07), m); strip.position.set(cx, -0.15, 0); strip.castShadow = true; val.add(strip);
+    const sc = new THREE.Mesh(new THREE.CylinderGeometry(w / 2, w / 2, 0.07, 32, 1, false, 0, Math.PI), m);
+    sc.rotation.x = Math.PI / 2; sc.rotation.y = Math.PI / 2; sc.position.set(cx, -0.3, 0); sc.castShadow = true; val.add(sc);
+  }
+  for (const x of [x0 + 0.1, x1 - 0.1]) { const arm = rbox(x - 0.04, 0, x + 0.04, 2.0, -0.04, 0.04, mat.ink, 0.02); arm.position.set(x, -0.02, 1.0); panel.add(arm); }
+  scene.add(g);
+  return { g, panel, val };
+})();
+parts.push({ t0: 2.9, kind: "awning", g: awning.g });
+
+// ---------- the neighbourhood: road, homes, the store's own app ----------
+const HOUSES = [
+  { hx: 3.2, body: 0xf3d6b4, roof: 0xc8643b },
+  { hx: 9.4, body: 0xd7e7f2, roof: 0x2f6f8f },
+  { hx: 15.6, body: 0xf6e7a9, roof: 0x3e6b5a },
+];
+const HY0 = 16.0, HY1 = 19.2, LANE = 13.3;
+part(4.0, "floor", (g) => {
+  g.add(rbox(-1.5, 12.0, 24.5, 14.6, -0.42, -0.08, M(0x4c5258, 0.85), 0.1));
+  for (let x = -0.5; x < 24; x += 2.2) g.add(rbox(x, LANE - 0.06, x + 1.1, LANE + 0.06, -0.08, -0.05, M(0xffffff, 0.6), 0.02));
+  g.add(rbox(-1.5, 11.3, 24.5, 12.0, -0.42, 0.0, M(0xe8e3db, 0.8), 0.06));
+}, [11.5, 13.3, 0]);
+HOUSES.forEach(({ hx, body, roof }, i) => part(4.35 + i * 0.14, "drop", (g) => {
+  g.add(rbox(hx - 2.4, 15.2, hx + 3.0, 20.2, -0.42, -0.05, M(0xcfe6c4, 0.9), 0.12));
+  g.add(rbox(hx - 1.6, HY0, hx + 1.6, HY1, 0, 2.5, M(body, 0.85), 0.08));
+  const tri = new THREE.Shape(); tri.moveTo(-1.95, 0); tri.lineTo(1.95, 0); tri.lineTo(0, 1.6); tri.closePath();
+  const rf = new THREE.Mesh(new THREE.ExtrudeGeometry(tri, { depth: 3.6, bevelEnabled: false }), M(roof, 0.7));
+  rf.rotation.y = Math.PI / 2; rf.position.set(hx - 1.8, 2.5, (HY0 + HY1) / 2); rf.castShadow = true; rf.receiveShadow = true;
+  // ExtrudeGeometry runs along +z; rotated, it runs along +x from hx-1.8
+  g.add(rf);
+  g.add(rbox(hx + 1.56, 17.2, hx + 1.7, 18.2, 0, 1.75, mat.woodDark, 0.04));            // door, on the +x face
+  g.add(rbox(hx - 0.9, HY1 - 0.04, hx + 0.6, HY1 + 0.08, 1.0, 1.9, mat.glass, 0.03));   // window, front face
+  g.add(rbox(hx - 1.0, HY1 + 0.02, hx + 0.7, HY1 + 0.1, 0.92, 0.98, mat.frame, 0.02));
+  g.add(cyl(hx - 1.9, 19.7, 0.1, 0, 0.7, mat.woodDark));
+  g.add(mesh(new THREE.IcosahedronGeometry(0.55, 1), mat.leaf, hx - 1.9, 19.7, 1.05));
+}));
+
+// the phone: the store's own shopping app, standing to the right
+const PX = 19.6, PY = 4.6, PW = 4.2, PH = 8.6;
+const screenCanvas = document.createElement("canvas"); screenCanvas.width = 1080; screenCanvas.height = 2200;
+const screenTex = new THREE.CanvasTexture(screenCanvas); screenTex.colorSpace = THREE.SRGBColorSpace; screenTex.anisotropy = 8;
+const FONT = '"Space Grotesk", ui-sans-serif, system-ui, sans-serif';
+// The TanyEcom icon and wordmark, as in /brand/tanyecom-icon.svg and tanyecom-wordmark.svg.
+const LOGO_TILE = `<svg width="240" height="240" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M16.3039 0.152087C19.0139 -0.0994188 24.312 0.0402772 27.1237 0.0456998L46.2888 0.070491L185.501 0.0712633L210.019 0.046476C214.272 0.0420863 219.945 -0.112587 224.097 0.167839C227.002 0.368476 229.806 1.28231 232.247 2.82311C240.796 8.20104 239.999 15.559 239.967 24.1169L239.935 38.0298L239.978 203.214C239.996 212.474 240.503 219.111 234.957 227.147C230.547 233.52 223.719 237.95 215.959 239.474C207.953 240.96 199.668 239.248 192.984 234.726C183.468 228.415 181.957 221.945 180.049 211.916C179.585 215.891 179.42 218.208 178.002 221.954C177.158 223.918 176.087 225.783 174.811 227.515C170.2 233.768 163.279 238.333 155.399 239.596C147.408 240.892 139.215 239.044 132.637 234.462C127.947 231.185 123.172 225.416 121.738 219.927C121.212 217.913 120.882 214.216 120.488 211.888C119.965 213.593 119.764 215.698 119.406 217.479C117.184 228.526 106.733 237.978 95.2741 239.632C87.052 240.864 78.6649 238.83 72.0104 233.992C63.2342 227.618 62.0798 222.219 60.6621 212.529C59.2779 219.015 58.2266 223.709 53.8329 229.044C36.9187 249.578 2.53398 239.47 0.380188 213.189C-0.31589 204.694 0.15873 47.8098 0.14887 39.2026L0.107035 24.7976C0.100906 22.3476 0.0945116 19.9585 0.178457 17.5093C0.49345 8.31156 6.63209 1.12583 16.3039 0.152087Z" fill="#4D179A"/>
+<path d="M66.75 71.5C64.25 71.5 62.25 69.5 62.25 67C62.25 64.5 64.25 62.5 66.75 62.5H87.375L89.5 75H168.5L158.625 130H89.5L79.25 71.5H66.75ZM95.625 155C91.75 155 88.75 152 88.75 148.125C88.75 144.25 91.75 141.25 95.625 141.25C99.5 141.25 102.5 144.25 102.5 148.125C102.5 152 99.5 155 95.625 155ZM153.625 155C149.75 155 146.75 152 146.75 148.125C146.75 144.25 149.75 141.25 153.625 141.25C157.5 141.25 160.5 144.25 160.5 148.125C160.5 152 157.5 155 153.625 155Z" fill="#C4B4FF"/>
+</svg>`;
+const LOGO_WORD = `<svg width="231" height="41" viewBox="0 0 231 41" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M195.753 31.1998V7.39181H201.705V9.98381H202.569C202.985 9.18381 203.673 8.49581 204.633 7.91981C205.593 7.31181 206.857 7.00781 208.425 7.00781C210.121 7.00781 211.481 7.34381 212.505 8.01581C213.529 8.65581 214.313 9.50381 214.857 10.5598H215.721C216.265 9.53581 217.033 8.68781 218.025 8.01581C219.017 7.34381 220.425 7.00781 222.249 7.00781C223.721 7.00781 225.049 7.32781 226.233 7.96781C227.449 8.57581 228.409 9.51981 229.113 10.7998C229.849 12.0478 230.217 13.6318 230.217 15.5518V31.1998H224.169V15.9838C224.169 14.6718 223.833 13.6958 223.161 13.0558C222.489 12.3838 221.545 12.0478 220.329 12.0478C218.953 12.0478 217.881 12.4958 217.113 13.3918C216.377 14.2558 216.009 15.5038 216.009 17.1358V31.1998H209.961V15.9838C209.961 14.6718 209.625 13.6958 208.953 13.0558C208.281 12.3838 207.337 12.0478 206.121 12.0478C204.745 12.0478 203.673 12.4958 202.905 13.3918C202.169 14.2558 201.801 15.5038 201.801 17.1358V31.1998H195.753Z" fill="black"/>
+<path d="M177.69 31.8708C175.322 31.8708 173.194 31.3908 171.306 30.4308C169.418 29.4708 167.93 28.0788 166.842 26.2548C165.754 24.4308 165.21 22.2388 165.21 19.6788V18.9108C165.21 16.3508 165.754 14.1588 166.842 12.3348C167.93 10.5108 169.418 9.11875 171.306 8.15875C173.194 7.19875 175.322 6.71875 177.69 6.71875C180.058 6.71875 182.186 7.19875 184.074 8.15875C185.962 9.11875 187.45 10.5108 188.538 12.3348C189.626 14.1588 190.17 16.3508 190.17 18.9108V19.6788C190.17 22.2388 189.626 24.4308 188.538 26.2548C187.45 28.0788 185.962 29.4708 184.074 30.4308C182.186 31.3908 180.058 31.8708 177.69 31.8708ZM177.69 26.4948C179.546 26.4948 181.082 25.9028 182.298 24.7188C183.514 23.5028 184.122 21.7748 184.122 19.5348V19.0548C184.122 16.8148 183.514 15.1028 182.298 13.9188C181.114 12.7028 179.578 12.0948 177.69 12.0948C175.834 12.0948 174.298 12.7028 173.082 13.9188C171.866 15.1028 171.258 16.8148 171.258 19.0548V19.5348C171.258 21.7748 171.866 23.5028 173.082 24.7188C174.298 25.9028 175.834 26.4948 177.69 26.4948Z" fill="black"/>
+<path d="M149.421 31.8708C147.117 31.8708 145.021 31.3908 143.133 30.4308C141.277 29.4708 139.805 28.0788 138.717 26.2548C137.629 24.4308 137.085 22.2228 137.085 19.6308V18.9588C137.085 16.3668 137.629 14.1588 138.717 12.3348C139.805 10.5108 141.277 9.11875 143.133 8.15875C145.021 7.19875 147.117 6.71875 149.421 6.71875C151.693 6.71875 153.645 7.11875 155.277 7.91875C156.909 8.71875 158.221 9.82275 159.213 11.2308C160.237 12.6068 160.909 14.1748 161.229 15.9348L155.373 17.1828C155.245 16.2228 154.957 15.3588 154.509 14.5908C154.061 13.8228 153.421 13.2148 152.589 12.7668C151.789 12.3188 150.781 12.0948 149.565 12.0948C148.349 12.0948 147.245 12.3668 146.253 12.9108C145.293 13.4228 144.525 14.2068 143.949 15.2628C143.405 16.2868 143.133 17.5508 143.133 19.0548V19.5348C143.133 21.0388 143.405 22.3188 143.949 23.3748C144.525 24.3988 145.293 25.1828 146.253 25.7268C147.245 26.2388 148.349 26.4948 149.565 26.4948C151.389 26.4948 152.765 26.0308 153.693 25.1028C154.653 24.1428 155.261 22.8948 155.517 21.3588L161.373 22.7508C160.957 24.4468 160.237 25.9988 159.213 27.4068C158.221 28.7828 156.909 29.8708 155.277 30.6708C153.645 31.4708 151.693 31.8708 149.421 31.8708Z" fill="black"/>
+<path d="M121.382 31.8708C119.014 31.8708 116.918 31.3748 115.094 30.3828C113.302 29.3588 111.894 27.9348 110.87 26.1108C109.878 24.2548 109.382 22.0788 109.382 19.5828V19.0068C109.382 16.5108 109.878 14.3508 110.87 12.5268C111.862 10.6708 113.254 9.24675 115.046 8.25475C116.838 7.23075 118.918 6.71875 121.286 6.71875C123.622 6.71875 125.654 7.24675 127.382 8.30275C129.11 9.32675 130.454 10.7668 131.414 12.6228C132.374 14.4468 132.854 16.5748 132.854 19.0068V21.0708H115.526C115.59 22.7028 116.198 24.0308 117.35 25.0548C118.502 26.0788 119.91 26.5908 121.574 26.5908C123.27 26.5908 124.518 26.2228 125.318 25.4868C126.118 24.7508 126.726 23.9348 127.142 23.0388L132.086 25.6308C131.638 26.4628 130.982 27.3748 130.118 28.3668C129.286 29.3268 128.166 30.1588 126.758 30.8628C125.35 31.5348 123.558 31.8708 121.382 31.8708ZM115.574 16.5588H126.71C126.582 15.1828 126.022 14.0788 125.03 13.2468C124.07 12.4148 122.806 11.9988 121.238 11.9988C119.606 11.9988 118.31 12.4148 117.35 13.2468C116.39 14.0788 115.798 15.1828 115.574 16.5588Z" fill="black"/>
+<path d="M83.5477 40.7986V35.5186H96.5077C97.4037 35.5186 97.8517 35.0386 97.8517 34.0786V28.0786H96.9877C96.7317 28.6226 96.3317 29.1666 95.7877 29.7106C95.2437 30.2546 94.5077 30.7026 93.5797 31.0546C92.6517 31.4066 91.4677 31.5826 90.0277 31.5826C88.1717 31.5826 86.5397 31.1666 85.1317 30.3346C83.7557 29.4706 82.6837 28.2866 81.9157 26.7826C81.1477 25.2786 80.7637 23.5506 80.7637 21.5986V7.39062H86.8117V21.1186C86.8117 22.9106 87.2437 24.2546 88.1077 25.1506C89.0037 26.0466 90.2677 26.4946 91.8997 26.4946C93.7557 26.4946 95.1957 25.8866 96.2197 24.6706C97.2437 23.4226 97.7557 21.6946 97.7557 19.4866V7.39062H103.804V35.4226C103.804 37.0546 103.324 38.3506 102.364 39.3106C101.404 40.3026 100.124 40.7986 98.5237 40.7986H83.5477Z" fill="#E5270B"/>
+<path d="M51.7529 31.1998V7.39181H57.7049V10.5118H58.5689C58.9529 9.67981 59.6729 8.89581 60.7289 8.15981C61.7849 7.39181 63.3849 7.00781 65.5289 7.00781C67.3849 7.00781 69.0009 7.43981 70.3769 8.30381C71.7849 9.13581 72.8729 10.3038 73.6409 11.8078C74.4089 13.2798 74.7929 15.0078 74.7929 16.9918V31.1998H68.7449V17.4718C68.7449 15.6798 68.2969 14.3358 67.4009 13.4398C66.5369 12.5438 65.2889 12.0958 63.6569 12.0958C61.8009 12.0958 60.3609 12.7198 59.3369 13.9678C58.3129 15.1838 57.8009 16.8958 57.8009 19.1038V31.1998H51.7529Z" fill="#E5270B"/>
+<path d="M31.3948 31.8708C29.6988 31.8708 28.1788 31.5828 26.8348 31.0068C25.4908 30.3988 24.4188 29.5348 23.6188 28.4148C22.8508 27.2628 22.4668 25.8708 22.4668 24.2388C22.4668 22.6068 22.8508 21.2468 23.6188 20.1588C24.4188 19.0388 25.5068 18.2068 26.8828 17.6628C28.2908 17.0868 29.8908 16.7988 31.6828 16.7988H38.2108V15.4548C38.2108 14.3348 37.8588 13.4228 37.1548 12.7188C36.4508 11.9828 35.3308 11.6148 33.7948 11.6148C32.2908 11.6148 31.1708 11.9668 30.4348 12.6708C29.6988 13.3428 29.2188 14.2228 28.9948 15.3108L23.4268 13.4388C23.8108 12.2228 24.4188 11.1188 25.2508 10.1268C26.1148 9.10275 27.2508 8.28675 28.6588 7.67875C30.0988 7.03875 31.8428 6.71875 33.8908 6.71875C37.0268 6.71875 39.5068 7.50275 41.3308 9.07075C43.1548 10.6388 44.0668 12.9108 44.0668 15.8868V24.7668C44.0668 25.7268 44.5148 26.2068 45.4108 26.2068H47.3308V31.1988H43.2988C42.1148 31.1988 41.1388 30.9108 40.3708 30.3348C39.6028 29.7588 39.2188 28.9908 39.2188 28.0308V27.9828H38.3068C38.1788 28.3668 37.8908 28.8788 37.4428 29.5188C36.9948 30.1268 36.2908 30.6708 35.3308 31.1508C34.3708 31.6308 33.0588 31.8708 31.3948 31.8708ZM32.4508 26.9748C34.1468 26.9748 35.5228 26.5108 36.5788 25.5828C37.6668 24.6228 38.2108 23.3588 38.2108 21.7908V21.3108H32.1148C30.9948 21.3108 30.1148 21.5508 29.4748 22.0308C28.8348 22.5108 28.5148 23.1828 28.5148 24.0468C28.5148 24.9108 28.8508 25.6148 29.5228 26.1588C30.1948 26.7028 31.1708 26.9748 32.4508 26.9748Z" fill="#E5270B"/>
+<path d="M11.232 31.2C9.664 31.2 8.384 30.72 7.392 29.76C6.432 28.768 5.952 27.456 5.952 25.824V12.384H0V7.392H5.952V0H12V7.392H18.528V12.384H12V24.768C12 25.728 12.448 26.208 13.344 26.208H17.952V31.2H11.232Z" fill="#E5270B"/>
+</svg>`;
+const svgImg = (src) => { const i = new Image(); i.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(src); return i; };
+const imgTile = svgImg(LOGO_TILE), imgWord = svgImg(LOGO_WORD);
+let imgsReady = false;
+Promise.all([imgTile.decode(), imgWord.decode()]).then(() => { imgsReady = true; if (window.brandRefresh) window.brandRefresh(); }).catch(() => {});
+function drawLogo(g, x, y, s) { if (imgsReady) g.drawImage(imgTile, x, y, s, s); }
+const fontReady = () => document.fonts.check(`600 40px "Space Grotesk"`);
+function rr(g, x, y, w, h, r) { g.beginPath(); g.roundRect(x, y, w, h, r); }
+function drawScreen(orders, pulse) {
+  const g = screenCanvas.getContext("2d"), W = 540, H = 1100;
+  g.setTransform(2, 0, 0, 2, 0, 0);
+  g.fillStyle = "#f5f6f3"; g.fillRect(0, 0, W, H);
+  g.fillStyle = "#4D179A"; g.fillRect(0, 0, W, 250);
+  g.fillStyle = "#ffffff"; g.font = `600 22px ${FONT}`; g.fillText("9:41", 34, 46);
+  rr(g, W - 112, 84, 82, 82, 18); g.fillStyle = "#ffffff"; g.fill(); drawLogo(g, W - 101, 95, 60);
+  g.font = `600 46px ${FONT}`; g.fillText("Kavya Store", 34, 132);
+  g.fillStyle = "#C4B4FF"; g.font = `500 23px ${FONT}`; g.fillText("kavyastore.tany.in", 34, 172);
+  rr(g, 34, 192, 200, 38, 19); g.fillStyle = "rgba(255,255,255,.14)"; g.fill();
+  g.fillStyle = "#fff"; g.font = `500 20px ${FONT}`; g.fillText("★ 4.9 · 120 items", 52, 218);
+  const items = [["Handloom Saree", "₹1,450", "#C8643B"], ["Brass Diya Set", "₹680", "#E3A14F"], ["Neem Wood Comb", "₹199", "#9A6438"]];
+  items.forEach(([n, p, c], i) => {
+    const y = 280 + i * 132;
+    rr(g, 26, y, W - 52, 114, 22); g.fillStyle = "#fff"; g.fill();
+    g.beginPath(); g.arc(90, y + 57, 38, 0, Math.PI * 2); g.fillStyle = c; g.fill();
+    g.fillStyle = "#18191c"; g.font = `600 27px ${FONT}`; g.fillText(n, 146, y + 50);
+    g.fillStyle = "#6c6e75"; g.font = `500 24px ${FONT}`; g.fillText(p, 146, y + 86);
+    rr(g, W - 150, y + 36, 96, 44, 14); g.fillStyle = "#4D179A"; g.fill();
+    g.fillStyle = "#fff"; g.font = `600 21px ${FONT}`; g.fillText("ADD", W - 124, y + 65);
+  });
+  const y2 = 690;
+  rr(g, 26, y2, W - 52, 170, 24); g.fillStyle = pulse > 0 ? `rgba(196,180,255,${0.25 + 0.5 * pulse})` : "#ffffff"; g.fill();
+  g.fillStyle = "#6c6e75"; g.font = `500 22px ${FONT}`; g.fillText("Direct orders today", 54, y2 + 46);
+  g.fillStyle = "#18191c"; g.font = `600 78px ${FONT}`; g.fillText(String(orders), 52, y2 + 130);
+  g.fillStyle = "#4D179A"; g.font = `600 24px ${FONT}`; g.fillText("↑ live", W - 140, y2 + 128);
+  rr(g, 26, y2 + 190, W - 52, 70, 20); g.fillStyle = "#EFEAFF"; g.fill();
+  g.fillStyle = "#4D179A"; g.font = `600 25px ${FONT}`; g.fillText("Marketplace commission  ₹0", 50, y2 + 235);
+  rr(g, 26, H - 110, W - 52, 76, 22); g.fillStyle = "#4D179A"; g.fill();
+  g.fillStyle = "#fff"; g.font = `600 28px ${FONT}`; g.fillText("Checkout", W / 2 - 58, H - 62);
+  screenTex.needsUpdate = true;
+}
+const phone = (() => {
+  const g = new THREE.Group(); g.position.set(PX, 0, PY); g.rotation.y = Math.PI / 4;
+  const inner = new THREE.Group(); g.add(inner);
+  const body = new THREE.Mesh(new RoundedBoxGeometry(PW, PH, 0.42, 4, 0.36), M(0x1d2125, 0.35, 0.3));
+  body.position.y = PH / 2 + 0.25; body.castShadow = true; inner.add(body);
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(PW - 0.34, PH - 0.34), new THREE.MeshBasicMaterial({ map: screenTex, toneMapped: false }));
+  scr.position.set(0, PH / 2 + 0.25, 0.215); inner.add(scr);
+  const stand = new THREE.Mesh(new RoundedBoxGeometry(2.6, 0.25, 1.6, 3, 0.1), M(0xd9dcdf, 0.4, 0.3));
+  stand.position.set(0, 0.12, -0.2); stand.castShadow = true; stand.receiveShadow = true; g.add(stand);
+  scene.add(g);
+  return { g, inner };
+})();
+
+// sprites: order bubbles, coins, the badge
+function iconSprite(draw, size) {
+  const c = document.createElement("canvas"); c.width = c.height = 256; draw(c.getContext("2d"));
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, toneMapped: false }));
+  s.scale.set(size, size, 1); s.renderOrder = 10; scene.add(s); return s;
+}
+const bagIcon = (g) => {
+  rr(g, 18, 18, 220, 220, 60); g.fillStyle = "#4D179A"; g.fill();
+  g.strokeStyle = "#fff"; g.lineWidth = 14; g.lineJoin = "round";
+  rr(g, 76, 102, 104, 96, 14); g.stroke();
+  g.beginPath(); g.arc(128, 104, 28, Math.PI, 0); g.stroke();
+  g.beginPath(); g.arc(196, 60, 34, 0, Math.PI * 2); g.fillStyle = "#C4B4FF"; g.fill();
+  g.fillStyle = "#4D179A"; g.font = `700 40px ${FONT}`; g.textAlign = "center"; g.fillText("+1", 196, 74);
+};
+const ORDERS = [0, 2, 1, 2, 0].map((h, i) => ({ h, t0: 6.5 + i * 0.42, dur: 0.95, s: iconSprite(bagIcon, 1.7) }));
+const coinMat = new THREE.MeshStandardMaterial({ color: 0xf2bf3c, roughness: 0.3, metalness: 0.7 });
+const COINS = [];
+HOUSES.forEach((_, h) => { for (let k = 0; k < 3; k++) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.46, 0.12, 28), coinMat); m.castShadow = true; scene.add(m);
+  COINS.push({ h, t0: 11.0 + h * 0.28 + k * 0.13, dur: 0.95, m });
+} });
+const badge = (() => {
+  const c = document.createElement("canvas"); c.width = 640; c.height = 200; const g = c.getContext("2d");
+  rr(g, 10, 20, 620, 160, 80); g.fillStyle = "#4D179A"; g.fill();
+  g.fillStyle = "#C4B4FF"; g.font = `700 76px ${FONT}`; g.fillText("0%", 60, 128);
+  g.fillStyle = "#fff"; g.font = `600 46px ${FONT}`; g.fillText("commission", 210, 120);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, toneMapped: false }));
+  s.renderOrder = 11; scene.add(s); return s;
+})();
+
+// scooters
+function makeScooter() {
+  const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
+  const add = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; body.add(o); return o; };
+  const wheel = new THREE.CylinderGeometry(0.26, 0.26, 0.14, 20);
+  add(wheel, mat.ink, 0.62, 0.26, 0).rotation.x = Math.PI / 2;
+  add(wheel, mat.ink, -0.62, 0.26, 0).rotation.x = Math.PI / 2;
+  add(new RoundedBoxGeometry(1.3, 0.34, 0.5, 3, 0.12), M(0xe9ecee, 0.4), 0, 0.5, 0);
+  add(new RoundedBoxGeometry(0.16, 0.9, 0.16, 2, 0.06), mat.green, 0.6, 0.9, 0);
+  add(new RoundedBoxGeometry(0.1, 0.1, 0.7, 2, 0.04), mat.ink, 0.62, 1.34, 0);
+  add(new RoundedBoxGeometry(0.42, 0.62, 0.42, 3, 0.14), mat.green, -0.05, 1.0, 0);          // rider
+  add(new THREE.SphereGeometry(0.2, 18, 12), M(0xC4B4FF, 0.5), -0.02, 1.48, 0);                // helmet
+  add(new RoundedBoxGeometry(0.62, 0.58, 0.62, 3, 0.1), mat.green, -0.62, 1.0, 0);             // delivery box (brand purple)
+  add(new RoundedBoxGeometry(0.64, 0.08, 0.64, 2, 0.03), M(0xC4B4FF, 0.5), -0.62, 1.12, 0);
+  g.scale.setScalar(1.15); scene.add(g); return g;
+}
+const RIDES = HOUSES.map(({ hx }, i) => {
+  const d = [hx + 2.35, 17.7];
+  const pts = [[11.2, 11.6], [11.2, LANE + (i - 1) * 0.35], [d[0], LANE + (i - 1) * 0.35], d];
+  const seg = []; let L = 0;
+  for (let k = 1; k < pts.length; k++) { const l = Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]); seg.push(l); L += l; }
+  const parcel = rbox(hx + 1.8, 17.45, hx + 2.3, 17.95, 0, 0.45, mat.kraft, 0.05); scene.add(parcel);
+  return { pts, seg, L, t0: 8.7 + i * 0.35, dur: 2.0, g: makeScooter(), parcel };
+});
+function along(r, u) {
+  let d = u * r.L;
+  for (let k = 0; k < r.seg.length; k++) {
+    if (d <= r.seg[k] || k === r.seg.length - 1) {
+      const a = r.pts[k], b = r.pts[k + 1], f = clamp(d / r.seg[k]);
+      return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, Math.atan2(b[1] - a[1], b[0] - a[0])];
+    }
+    d -= r.seg[k];
+  }
+}
+
+// ---------- timeline (a pure function of time) ----------
+const LOOP = 15.6, DROP = 3.6;
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const ease = (t) => { t = clamp(t); return 1 - Math.pow(1 - t, 3); };
+const inOut = (t) => { t = clamp(t); return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+const back = (t) => { t = clamp(t); const c = 1.5; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+const W = Math.sqrt(150), Z = 0.5, WD = W * Math.sqrt(1 - Z * Z);
+const springOff = (t) => Math.exp(-Z * W * t) * (Math.cos(WD * t) + (Z * W / WD) * Math.sin(WD * t));
+const arc = (a, b, u, hgt) => [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u + Math.sin(Math.PI * u) * hgt];
+const at = (x, y, z) => new THREE.Vector3(x, z, y);
+
+const VIEW0 = 10.0, VIEW1 = 14.6, T0 = [6.5, 5.5, 4.4], T1 = [10.2, 11.8, 5.6], OFF = new THREE.Vector3(30, 24, 30);
+let view = VIEW0;
+const CAPS = [
+  [0, "Step 1", "Set up your online store in 3 minutes"],
+  [4.0, "Step 2", "Launch your own TanyEcom shopping app"],
+  [6.4, "Step 3", "Customers order directly from you"],
+  [8.7, "Step 4", "Pack it. Deliver it to their doorstep."],
+  [10.9, "Step 5", "0% marketplace commission. Every rupee is yours."],
+];
+const capStep = document.getElementById("capStep"), capLine = document.getElementById("capLine"), fadeEl = document.getElementById("fade");
+let lastCap = -1, lastScreen = "";
+
+function pose(t) {
+  // camera: hold on the store, then pull back over the neighbourhood
+  const z = inOut((t - 3.7) / 1.5);
+  view = VIEW0 + (VIEW1 - VIEW0) * z;
+  const tgt = at(...T0.map((v, i) => v + (T1[i] - v) * z));
+  cam.position.copy(tgt).add(OFF); cam.lookAt(tgt); resize();
+
+  parts.forEach((p) => {
+    const lt = t - p.t0, g = p.g;
+    if (lt < 0) { g.visible = false; return; }
+    g.visible = true;
+    if (p.kind === "floor") {
+      const a = ease(lt / 0.55), b = ease((lt - 0.18) / 0.6);
+      g.scale.set(Math.max(0.001, a), 1, Math.max(0.04, b));
+    } else if (p.kind === "wall") {
+      g.scale.y = Math.max(0.001, ease(lt / 0.7));
+    } else if (p.kind === "drop") {
+      g.position.y = DROP * springOff(lt);
+      g.scale.setScalar(Math.min(1, 0.55 + lt / 0.25));
+    } else if (p.kind === "awning") {
+      const ang = 90 - 68 * ease(lt / 0.8);
+      awning.panel.rotation.x = THREE.MathUtils.degToRad(ang);
+      awning.val.rotation.x = -THREE.MathUtils.degToRad(ang);
+      g.scale.setScalar(Math.min(1, lt / 0.2));
+    }
+  });
+
+  // phone rises out of its stand
+  const pl = t - 5.0;
+  phone.g.visible = pl >= 0;
+  phone.inner.scale.y = Math.max(0.001, back(pl / 0.8));
+  phone.g.children[1].scale.setScalar(Math.min(1, Math.max(0.001, pl / 0.25)));
+
+  // orders fly from homes into the app
+  let arrived = 0, pulse = 0;
+  const scrC = [PX - 0.2, PY + 0.2, 5.4];
+  ORDERS.forEach((o) => {
+    const u = (t - o.t0) / o.dur, h = HOUSES[o.h];
+    o.s.visible = u > 0 && u < 1;
+    if (u >= 1) { arrived++; pulse = Math.max(pulse, 1 - clamp((t - o.t0 - o.dur) / 0.5)); }
+    if (o.s.visible) {
+      const p = arc([h.hx, (HY0 + HY1) / 2, 4.6], scrC, inOut(u), 3.2);
+      o.s.position.copy(at(...p));
+      const k = 1.7 * (u < 0.15 ? u / 0.15 : u > 0.85 ? Math.max(0.3, (1 - u) / 0.15) : 1);
+      o.s.scale.set(k, k, 1);
+    }
+  });
+  const key = 24 + arrived + ":" + pulse.toFixed(2) + fontReady() + imgsReady;
+  if (key !== lastScreen) { lastScreen = key; drawScreen(24 + arrived, pulse); }
+
+  // scooters ride out, parcels land at the door
+  RIDES.forEach((r) => {
+    const u = (t - r.t0) / r.dur;
+    r.g.visible = t >= r.t0 - 0.25;
+    const [x, y, hd] = along(r, inOut(u));
+    r.g.position.copy(at(x, y, 0));
+    r.g.rotation.y = -hd;
+    r.g.scale.setScalar(1.15 * clamp((t - r.t0 + 0.25) / 0.25));
+    const pu = t - (r.t0 + r.dur);
+    r.parcel.visible = pu > 0;
+    r.parcel.position.y = pu > 0 ? 1.4 * springOff(pu) : 0;
+  });
+
+  // payments come straight back to the store's till
+  const till = [9.9, 1.15, 3.0];
+  COINS.forEach((c) => {
+    const u = (t - c.t0) / c.dur, h = HOUSES[c.h];
+    c.m.visible = u > 0 && u < 1;
+    if (c.m.visible) {
+      c.m.position.copy(at(...arc([h.hx + 2.2, 17.7, 1.2], till, inOut(u), 4.5)));
+      c.m.rotation.set(Math.PI / 2, 0, u * 9);
+    }
+  });
+
+  // the badge over the store
+  const bl = t - 11.7;
+  badge.visible = bl > 0;
+  const bs = back(bl / 0.6);
+  badge.position.copy(at(7.0, 5.0, 9.9 + 0.12 * Math.sin(Math.max(0, bl) * 2.4)));
+  badge.scale.set(6.4 * bs, 2.0 * bs, 1);
+
+  // captions and the loop's fade
+  let ci = 0; CAPS.forEach((c, i) => { if (t >= c[0]) ci = i; });
+  if (ci !== lastCap) { lastCap = ci; capLine.textContent = CAPS[ci][2]; }
+  const since = t - CAPS[ci][0];
+  capLine.style.opacity = String(clamp(since / 0.35));
+  capLine.style.transform = `translateY(${(1 - ease(since / 0.45)) * 8}px)`;
+  fadeEl.style.opacity = String(clamp((t - (LOOP - 0.5)) / 0.4));
+}
+
+// ---------- sizing, theme, loop ----------
+let sz = '';
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  if (sz !== w + 'x' + h) { sz = w + 'x' + h; renderer.setSize(w, h, false); }
+  const a = w / h || 1; cam.left = -view * a; cam.right = view * a; cam.top = view; cam.bottom = -view; cam.updateProjectionMatrix();
+}
+const isDark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+const syncTheme = () => { ground.material.opacity = isDark() ? 0.35 : 0.12; ground.material.color.set(isDark() ? 0x000000 : 0x3a2a55); };
+new ResizeObserver(resize).observe(stage); resize(); syncTheme();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", syncTheme);
+
+window.renderAt = (t) => { sign.draw(); pose(t); renderer.render(scene, cam); };
+let start = performance.now();
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const PLAYBACK_RATE = 0.8;
+if (!q.get("video")) {
+  const loop = (now) => { const t = reduced ? 13 : (((now - start) / 1000) * PLAYBACK_RATE) % LOOP; window.renderAt(t); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+}
+window.LOOP = LOOP;
+window.brandRefresh = () => { sign.reset(); sign.draw(); lastScreen = ""; };
+document.fonts.load(`600 118px "Space Grotesk"`).then(() => window.brandRefresh()).catch(() => {});
+document.fonts.ready.then(() => { lastScreen = ''; window.ready = true; });
+</script>
+</body>
+</html>
