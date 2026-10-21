@@ -96,6 +96,7 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time sync of scroll-button state from Embla, an external system that only exists after mount; later changes arrive through the subscriptions below.
     onSelect(api)
     api.on("reInit", onSelect)
     api.on("select", onSelect)
