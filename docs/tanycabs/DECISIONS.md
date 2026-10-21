@@ -1,5 +1,11 @@
 # TanyCabs decisions and assumptions
 
+## Working rules (owner, 2026-10-21)
+
+- **Never `git add -A` or `git add .`.** Stage explicit paths only, and show `git status` before every commit. (Reason: on 2026-10-21 a `git add -A` on `main` committed about 1,450 generated build files, and an earlier one committed a Firebase debug log. `main` was rebuilt cleanly as a result; the old one is kept as `main-with-build-output` until the owner deletes it.)
+- Never run `rm -rf`, `git clean`, `git reset --hard` or force-push; ask instead. `scripts/clean-e2e.sh` may be run (it removes only `.next-e2e-login` and `.next-e2e-cabs`).
+- Stop and ask on product decisions; log assumptions here. Never commit `.env*` files. Money is integer paise.
+
 Newest phase last. Each entry says what was decided, why, and what would reverse it. Product decisions are the owner's; technical choices were made by the implementer and are marked as such.
 
 ## Phase 0: foundation

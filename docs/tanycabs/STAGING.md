@@ -12,6 +12,7 @@ The same code as production on its own domain (**tanystaging.in**, a separate Cl
 | Public files | bucket `tany`, `cdn.tany.in` | bucket `tany-staging`, `cdn.tanystaging.in` |
 | Private documents | production private bucket | `tany-staging-private` (no public access) |
 | Workers | `tanyapps`, `tanyapps-tracker`, `tanyapps-cron` | `…-staging` of each |
+| Firebase project | `tany-6c638` | **`tany-staging`** (its own project: users, SMS bill, App Check) |
 | Database | production Neon | its own fresh Neon database |
 | Secrets | `.env.local` | `.env.staging` |
 | Razorpay | live keys | **test** keys (`rzp_test_…`) and a test-mode webhook |
@@ -25,13 +26,13 @@ What is in the repository:
 - `pnpm deploy:staging`: `bash scripts/predeploy-check.sh staging`, then tracker, app build and deploy, cron, all to the `staging` environment.
 - `pnpm db:migrate:staging`, `pnpm secrets:staging` (`scripts/upload-secrets.sh staging`), `pnpm seed:staging` (`scripts/seed-staging.ts`), and `bash scripts/setup-wildcard-dns.sh staging`.
 
-`predeploy-check.sh staging` **blocks** when: `.env.staging` is missing or a core value is empty; the database is local or is production's (same host and database, whatever the options); `AUTH_SECRET`, `ENCRYPTION_KEY`, `BLIND_INDEX_KEY`, `CRON_SECRET` or `TRACKER_SECRET` equals production's; `R2_PRIVATE_BUCKET` is production's; the Razorpay key is not `rzp_test_`; a dev/test-only setting (`GEO_FIXTURE`, `FIREBASE_AUTH_EMULATOR_HOST`, `E2E`, `FIREBASE_TEST_PHONES`, …) is present; the working tree is dirty; or typecheck, lint or tests fail. `upload-secrets.sh staging` repeats the database, Razorpay and shared-secret checks, and `seed-staging.ts` refuses to run against the database named in `.env.local`.
+`predeploy-check.sh staging` **blocks** when: `.env.staging` is missing or a core value is empty; the database is local or is production's (same host and database, whatever the options); `AUTH_SECRET`, `ENCRYPTION_KEY`, `BLIND_INDEX_KEY`, `CRON_SECRET` or `TRACKER_SECRET` equals production's; `R2_PRIVATE_BUCKET` is production's; the Razorpay key is not `rzp_test_`; the Firebase web config is missing or names production's project; `wrangler.jsonc` hard-codes a Firebase value in the staging block; a dev/test-only setting (`GEO_FIXTURE`, `FIREBASE_AUTH_EMULATOR_HOST`, `E2E`, `FIREBASE_TEST_PHONES`, …) is present; the working tree is dirty; or typecheck, lint or tests fail. `upload-secrets.sh staging` repeats the database, Razorpay and shared-secret checks, and `seed-staging.ts` refuses to run against the database named in `.env.local`.
 
 ## The order (summary)
 
-1. Buy `tanystaging.in`. 2. Add it to Cloudflare, point the registrar's nameservers there, wait for **Active**. 3. Create the Neon database. 4. Create the two R2 buckets, the CDN domain and the token. 5. Razorpay test keys and webhook. 6. Firebase: authorised domain, App Check domain, test phone numbers. 7. Maps key. 8. Write `.env.staging`. 9. Run the commands: `wrangler login`, `pnpm db:migrate:staging`, `bash scripts/setup-wildcard-dns.sh staging`, `pnpm deploy:staging`, `pnpm secrets:staging`, `pnpm seed:staging`. 10. Check it.
+1. Buy `tanystaging.in`. 2. Add it to Cloudflare, point the registrar's nameservers there, wait for **Active**. 3. Create the Neon database. 4. Create the two R2 buckets, the CDN domain and the token. 5. Razorpay test keys and webhook. 6. Create the **`tany-staging`** Firebase project and register its web app. 7. Maps key. 8. Write `.env.staging`. 9. Run the commands: `wrangler login`, **`pnpm secrets:staging`**, `pnpm db:migrate:staging`, `bash scripts/setup-wildcard-dns.sh staging`, `pnpm deploy:staging`, `pnpm seed:staging`. 10. Check it.
 
-The Cloudflare zone must be **Active before the first deploy** (the Workers' custom-domain routes cannot be created otherwise), and the secrets can only be uploaded after the first deploy has created the Workers.
+Only the Cloudflare zone must be **Active before the first deploy** (the Workers' custom-domain routes cannot be created otherwise). Secrets go **first**: see the note in step 9.
 
 ## 1. Buy the domain
 
@@ -70,13 +71,23 @@ Create a **new, empty database** for staging: a new Neon project (cleanest), or 
 3. Route (linked accounts) in test mode: if Route is not enabled for test mode on your account, enable it, otherwise operator payout onboarding fails on staging only.
 4. Use Razorpay's test cards and UPI ids; no real money moves with a `rzp_test_` key.
 
-## 6. Firebase
+## 6. Firebase: a separate project, `tany-staging`
 
-Staging uses **the same Firebase project** by default (the web keys in `wrangler.jsonc` are the same public values). That shares one SMS bill and one set of Auth users with production; the databases are separate, so nobody sees the other's data. For full separation, create a second Firebase project and change the four `FIREBASE_*` values in `env.staging.vars`.
+Staging has **its own Firebase project**, so its users, SMS bill, App Check enforcement and authorised domains are independent of production's. Nothing in the repository names the staging project: its web config lives in `.env.staging` and is uploaded with `pnpm secrets:staging`; the app reads `FIREBASE_API_KEY`, `FIREBASE_AUTH_DOMAIN`, `FIREBASE_PROJECT_ID` and `FIREBASE_APP_ID` from the environment at request time (`getFirebaseWebConfig`). The only place the production project (`tany-6c638`) appears is production's own config in `wrangler.jsonc` and the Firebase CLI files; `predeploy-check.sh` and `upload-secrets.sh` refuse a staging config that names it.
 
-1. *Authentication → Settings → Authorized domains* → add **`app.tanystaging.in`**. (Business sites and customers' own domains need no listing: the login lives only on the app host.)
-2. **App Check:** open the reCAPTCHA Enterprise site key you made for `app.tany.in` (Google Cloud console → *Security → reCAPTCHA Enterprise*) and **add `app.tanystaging.in`** to its allowed domains (or create a second key and set `FIREBASE_APPCHECK_SITE_KEY` to it in `.env.staging`). If App Check is enforced and the key does not include the staging host, every staging login is refused.
-3. **Avoid SMS spend while testing:** *Authentication → Sign-in method → Phone → Phone numbers for testing* → add fictional numbers with fixed codes (up to 10). They send nothing and cost nothing. (I have not tried them with the real login page; if the page refuses a test number, tell me.)
+1. **Create the project.** Firebase console → *Add project* → name it **`tany-staging`** (the project id may get a suffix if the name is taken; use whatever id Firebase shows). Google Analytics is not needed.
+2. **Blaze plan.** *Usage and billing → Details & settings → Modify plan → Blaze*, and attach a billing account (the same one as production is fine; the budget alert below is per project). Phone sign-in does not work on the free plan.
+3. **Sign-in methods.** *Build → Authentication → Get started → Sign-in method*: enable **Phone**, **Google** (set the project support email) and **Email/Password**. These are the methods the app's logins use.
+4. **SMS region policy = India only.** *Authentication → Settings → SMS region policy* → **Allow** → select only **India (+91)** → Save. (New projects allow no region at all, so phone sign-in is refused until you do this.)
+5. **Authorised domain.** *Authentication → Settings → Authorized domains* → add **`app.tanystaging.in`**. Business sites and customers' own domains need no listing: the login lives only on the app host. (`localhost` is not allowed for phone sign-in.)
+6. **Register the web app and copy its config.** *Project settings (gear) → General → Your apps → Add app → Web* (nickname `tany-staging-web`, no Firebase Hosting). Copy the four values it shows into `.env.staging`: `apiKey` → `FIREBASE_API_KEY`; `authDomain` → `FIREBASE_AUTH_DOMAIN` (`<project-id>.firebaseapp.com`); `projectId` → `FIREBASE_PROJECT_ID`; `appId` → `FIREBASE_APP_ID`. These are public values, not secrets.
+7. **App Check with reCAPTCHA Enterprise.**
+   1. Google Cloud console, project `tany-staging` → *APIs & Services* → enable **reCAPTCHA Enterprise API**.
+   2. *Security → reCAPTCHA Enterprise* → **Create key** → *Website*, domain **`app.tanystaging.in`**, score-based (no checkbox). Copy the **site key** into `.env.staging` as `FIREBASE_APPCHECK_SITE_KEY`.
+   3. Firebase console → *App Check → Apps* → the web app → **reCAPTCHA Enterprise** → paste the same site key → Save.
+   4. After one successful test login (step 10), *App Check → APIs → Authentication* → **Enforce**. If you enforce before the key is in the page, every login is refused; that is the failure to watch for.
+8. **Test phone numbers (no SMS, no cost).** *Authentication → Sign-in method → Phone → Phone numbers for testing* → add up to 10 fictional numbers with fixed codes, for example `+91 90000 00201` with code `123456`. I have not tried them with the real login page; if the page refuses a test number, tell me.
+9. **Budget alert for this project.** Google Cloud console → *Billing → Budgets & alerts → Create budget* → scope to project `tany-staging` → a small monthly amount (suggest ₹500) → alerts at 50%, 90%, 100% to your email. A budget warns; it does not stop spending.
 
 ## 7. Google Maps
 
@@ -110,9 +121,13 @@ RAZORPAY_KEY_ID=           # step 5, rzp_test_...
 RAZORPAY_KEY_SECRET=
 RAZORPAY_WEBHOOK_SECRET=
 GOOGLE_MAPS_SERVER_KEY=    # step 7
+FIREBASE_API_KEY=          # step 6: the tany-staging web app's config
+FIREBASE_AUTH_DOMAIN=
+FIREBASE_PROJECT_ID=
+FIREBASE_APP_ID=
 CABS_ALLOWED_EMAILS=       # emails allowed to create a cab business on staging
 PHONE_OTP_PROVIDER=firebase
-FIREBASE_APPCHECK_SITE_KEY=
+FIREBASE_APPCHECK_SITE_KEY= # step 6.7
 PILOT_DEALERS=
 STAGING_OWNER_EMAIL=       # optional: links this Google account as owner of the demo businesses (seed step)
 ```
@@ -122,27 +137,30 @@ STAGING_OWNER_EMAIL=       # optional: links this Google account as owner of the
 ```
 pnpm exec wrangler login
 
+pnpm secrets:staging                       # uploads .env.staging to the three staging Workers (creates them as empty stubs)
 pnpm db:migrate:staging                    # creates every table in the empty staging database
 bash scripts/setup-wildcard-dns.sh staging # the *.tanystaging.in record (zone must be Active)
-
-pnpm deploy:staging                        # predeploy check, tracker, app, cron. First run creates the Workers.
-pnpm secrets:staging                       # uploads .env.staging to the three staging Workers (they must exist)
+pnpm deploy:staging                        # predeploy check, tracker, app, cron. Fills in the stubs; secrets are kept.
 pnpm seed:staging                          # demo cab operator, restaurant and car dealer (fake data)
 ```
 
+**Why secrets come before the first deploy.** I first wrote it the other way round, on the belief that a Worker must exist before it can hold secrets. That was wrong: Wrangler's `secret bulk` (checked in the installed wrangler 4.136.3) creates a missing Worker as an empty stub holding just the secrets, and a later `wrangler deploy` replaces the stub's code and keeps its secrets (the same thing every production deploy relies on). Secrets first is better because the very first deploy is already complete and working, with nothing running briefly without its keys, and the secrets script's safety checks (database, shared keys, Firebase project, Razorpay) run before anything exists on Cloudflare. What I could not test without your account: the tracker's first deploy onto a stub (it applies the Durable Object migrations v1 and v2 to a Worker that has none). If that first deploy complains about migrations, stop and tell me the exact message.
+
+`pnpm deploy:staging` runs the predeploy check first, which needs `.env.staging` but no uploaded secrets, so it can run before or after `secrets:staging`.
+
 The seed creates `demo-cabs`, `demo-eats` and `demo-motors`. It only links an owner when `STAGING_OWNER_EMAIL` is set; to manage the demo businesses, sign in once with that Google account, then run `pnpm seed:staging` again (it is safe to repeat).
 
-After this, `pnpm deploy:staging` is the only command for a new version (run `pnpm db:migrate:staging` first when a branch adds a migration). Secrets take effect immediately; no second deploy is needed after `pnpm secrets:staging`.
+After this, `pnpm deploy:staging` is the only command for a new version (run `pnpm db:migrate:staging` first when a branch adds a migration). Secrets take effect immediately; no deploy is needed after changing one with `pnpm secrets:staging`.
 
 ## 10. Check it
 
 1. `https://app.tanystaging.in/login` loads with a valid certificate; so do `https://tanystaging.in` and `https://demo-cabs.tanystaging.in`.
 2. `https://nosuch.tanystaging.in` answers 404 (not a certificate error).
 3. Cloudflare → *Workers → tanyapps-cron-staging → Logs*: a line every minute for `expire-trip-holds`.
-4. On `https://demo-cabs.tanystaging.in`: book an airport trip, log in with a Firebase test phone number, request; in the operator app (signed in as the owner) accept it; the customer page shows Confirmed.
+4. On `https://demo-cabs.tanystaging.in`: book an airport trip, log in with a Firebase test phone number (step 6.8), request; in the operator app (signed in as the owner) accept it; the customer page shows Confirmed.
 5. A Razorpay test payment (a subscription on the billing screen): the webhook shows delivered (200) in Razorpay's dashboard, and the Workers logs do **not** show `razorpay_webhook_fallback`.
 
 ## What is shared with production, and what is not
 
-- **Separate:** domain and zone, database, encryption and signing keys, Workers and their Durable Objects (rate limits and live positions), buckets, Razorpay mode, the Maps key, cron locks, analytics datasets (`*_staging`).
-- **Shared:** the Cloudflare account, the Firebase project (and its SMS bill and budget alert), the GitHub repository.
+- **Separate:** domain and zone, Firebase project (users, SMS, App Check), database, encryption and signing keys, Workers and their Durable Objects (rate limits and live positions), buckets, Razorpay mode, the Maps key, cron locks, analytics datasets (`*_staging`).
+- **Shared:** the Cloudflare account, the Google/Firebase billing account if you attached the same one (the projects and their budgets are separate), the GitHub repository.

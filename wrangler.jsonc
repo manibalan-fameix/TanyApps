@@ -55,11 +55,8 @@
         "ROOT_DOMAIN": "tanystaging.in",
         // CLOUDFLARE_ZONE_ID (the tanystaging.in zone) is a secret on staging: see .env.staging in STAGING.md.
         "AUTH_TRUST_HOST": "true",
-        // The same Firebase project as production unless you create a separate one (STAGING.md). The web keys are public values.
-        "FIREBASE_API_KEY": "AIzaSyDwdZSWGytJA4jgaefwFK05woapq84MTdI",
-        "FIREBASE_AUTH_DOMAIN": "tany-6c638.firebaseapp.com",
-        "FIREBASE_PROJECT_ID": "tany-6c638",
-        "FIREBASE_APP_ID": "1:582955315597:web:6c70cfd8b1f84bf4ef8dc4",
+        // The Firebase web config (FIREBASE_API_KEY, FIREBASE_AUTH_DOMAIN, FIREBASE_PROJECT_ID, FIREBASE_APP_ID) is NOT here: staging has its
+        // own Firebase project (tany-staging) and its values come from .env.staging via `pnpm secrets:staging`. The app reads them at request time.
         "R2_ACCOUNT_ID": "8b98f4164cf5f4c0400f25a3f66b2ede",
         "R2_BUCKET": "tany-staging",
         "R2_PUBLIC_URL": "https://cdn.tanystaging.in",

@@ -33,7 +33,7 @@ grep -q '"RC_PROVIDER": "mock"' wrangler.jsonc && echo "warning: RC_PROVIDER is 
 [ -f "$FILE" ] || bad "$FILE not found."
 # Secrets the app cannot work without. upload-secrets.sh sends them from the file, so an empty one here means an empty one live.
 core="ENCRYPTION_KEY BLIND_INDEX_KEY CRON_SECRET TRACKER_SECRET"
-[ "$MODE" = staging ] && core="DATABASE_URL AUTH_SECRET $core R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_PRIVATE_BUCKET RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET CLOUDFLARE_ZONE_ID"
+[ "$MODE" = staging ] && core="DATABASE_URL AUTH_SECRET $core R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_PRIVATE_BUCKET RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET CLOUDFLARE_ZONE_ID FIREBASE_API_KEY FIREBASE_PROJECT_ID FIREBASE_APP_ID"
 for key in $core; do
   [ -n "$(val "$key" "$FILE")" ] || bad "$key is empty or missing in $FILE (scripts/upload-secrets.sh would not set it)."
 done
@@ -48,6 +48,9 @@ if [ "$MODE" = staging ]; then
   for key in AUTH_SECRET ENCRYPTION_KEY BLIND_INDEX_KEY CRON_SECRET TRACKER_SECRET; do
     [ -n "$(val "$key" "$FILE")" ] && [ "$(val "$key" "$FILE")" = "$(val "$key" .env.local)" ] && bad "$key in $FILE is the same as production's. Generate a new one."
   done
+  prod_fb="$(grep -m1 '"FIREBASE_PROJECT_ID"' wrangler.jsonc | sed -E 's/.*: *"([^"]+)".*/\1/')"
+  [ -n "$prod_fb" ] && [ "$(val FIREBASE_PROJECT_ID "$FILE")" = "$prod_fb" ] && bad "FIREBASE_PROJECT_ID in $FILE is production's project ($prod_fb). Staging needs its own Firebase project."
+  sed -n '/"env": {/,$p' wrangler.jsonc | grep -q '"FIREBASE_' && bad "wrangler.jsonc env.staging hard-codes a Firebase value; it must come from $FILE."
   [ "$(val R2_PRIVATE_BUCKET "$FILE")" = "$(val R2_PRIVATE_BUCKET .env.local)" ] && [ -n "$(val R2_PRIVATE_BUCKET "$FILE")" ] && bad "R2_PRIVATE_BUCKET is production's bucket. Use the staging bucket."
 fi
 

@@ -2,7 +2,8 @@
 # Uploads the runtime secrets to the Cloudflare Workers in one call each.
 # Usage: bash scripts/upload-secrets.sh            production, from .env.local
 #        bash scripts/upload-secrets.sh staging    staging, from .env.staging, to the "staging" environment of each Worker
-# (run `pnpm exec wrangler login` first, and deploy once so the Workers exist)
+# (run `pnpm exec wrangler login` first. A Worker that does not exist yet is created as an empty stub holding just the secrets; the
+# next deploy fills it in and keeps the secrets, so this can run BEFORE the first deploy.)
 # Empty values are skipped. Nothing is printed except the key names.
 # The file must hold values for the target: the script refuses a DATABASE_URL that points at this machine, and for staging it also
 # refuses the production database and any live Razorpay key.
@@ -30,6 +31,13 @@ host = urlparse(env.get("DATABASE_URL", "")).hostname or ""
 if not host or host in ("localhost", "127.0.0.1", "::1") or host.endswith(".local"):
     sys.exit(f"DATABASE_URL in {os.environ['ENV_FILE']} points at a local database. Put the {os.environ['TARGET']} URL there first.")
 if os.environ["TARGET"] == "staging":
+    # Staging has its own Firebase project. The web config is read from .env.staging; it must be complete and not production's.
+    missing = [k for k in ("FIREBASE_API_KEY", "FIREBASE_PROJECT_ID", "FIREBASE_APP_ID") if not env.get(k)]
+    if missing:
+        sys.exit(f".env.staging is missing {', '.join(missing)} (the tany-staging Firebase web config).")
+    m = re.search(r'"FIREBASE_PROJECT_ID":\s*"([^"]+)"', open("wrangler.jsonc").read())
+    if m and env["FIREBASE_PROJECT_ID"] == m.group(1):
+        sys.exit(f"FIREBASE_PROJECT_ID in .env.staging is production's project ({m.group(1)}). Staging needs its own Firebase project.")
     if env.get("RAZORPAY_KEY_ID", "").startswith("rzp_live_"):
         sys.exit("RAZORPAY_KEY_ID in .env.staging is a LIVE key. Staging must use rzp_test_ keys.")
     # Staging must never share production's database: compare with the production file when it exists.
@@ -63,7 +71,8 @@ for line in open(os.environ["ENV_FILE"]):
     if m:
         env[m[1]] = m[2].strip().strip('"').strip("'")
 if os.environ["TARGET"] == "staging":
-    keys.append("CLOUDFLARE_ZONE_ID")  # a var in production (wrangler.jsonc); the staging zone's id is a secret here
+    # Vars in production (wrangler.jsonc); on staging they come from .env.staging so nothing of production's is hard-coded there.
+    keys += ["CLOUDFLARE_ZONE_ID", "FIREBASE_API_KEY", "FIREBASE_AUTH_DOMAIN", "FIREBASE_PROJECT_ID", "FIREBASE_APP_ID"]
 out = {k: env[k] for k in keys if env.get(k)}
 print("app: uploading:", sorted(out), file=sys.stderr)
 print("app: skipped (empty):", [k for k in keys if not env.get(k)], file=sys.stderr)
