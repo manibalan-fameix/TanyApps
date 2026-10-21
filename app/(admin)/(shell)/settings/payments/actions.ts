@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { getDealerContext } from "@/lib/auth/context"
-import { allow } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/core/rate-limit"
 import { createLinkedAccount, getAccountStatus, requestRouteProduct } from "@/lib/route/razorpay"
 import { getDealerRouteAccount, updateDealerRouteAccount } from "@/lib/tenant/route"
 
@@ -39,7 +39,7 @@ export async function connectRazorpayAccount(input: unknown): Promise<Result> {
   const who = await owner()
   if (!who.ctx) return { ok: false, error: who.error }
   const { ctx } = who
-  if (!allow(`route-connect:${ctx.user.id}`, 5, 10 * 60_000)) return { ok: false, error: "Too many attempts. Try again in a few minutes." }
+  if (!(await rateLimit(`route-connect:${ctx.user.id}`, 5, 10 * 60_000))) return { ok: false, error: "Too many attempts. Try again in a few minutes." }
 
   const parsed = connectSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the details." }

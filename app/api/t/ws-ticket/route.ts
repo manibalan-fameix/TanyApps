@@ -8,7 +8,7 @@ import { scopedDb } from "@/lib/db/scoped"
 import { TICKET_TTL_S, signTicket } from "@/lib/restaurant/ws-ticket"
 import { TOKEN_RE, hashRiderToken, sharingAllowed } from "@/lib/restaurant/tracking"
 import { orderByRiderToken } from "@/lib/restaurant/trip"
-import { allow } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/core/rate-limit"
 
 const json = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } })
 
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
   const parsed = z.object({ token: z.string().regex(TOKEN_RE) }).safeParse(await req.json().catch(() => null))
   if (!parsed.success) return json({ ok: false }, 400)
   if (!secret() || !socketUrl()) return json({ ok: true, live: false })
-  if (!allow(`ws-ticket:${(await hashRiderToken(parsed.data.token)).slice(0, 16)}`, 20, 60_000)) return json({ ok: false, error: "slow_down" }, 429)
+  if (!(await rateLimit(`ws-ticket:${(await hashRiderToken(parsed.data.token)).slice(0, 16)}`, 20, 60_000))) return json({ ok: false, error: "slow_down" }, 429)
   const order = await orderByRiderToken(dealer.id, parsed.data.token)
   if (!order) return json({ ok: false, error: "link_closed" }, 404)
   if (!sharingAllowed(order.status)) return json({ ok: false, error: "not_in_progress" }, 409)
@@ -45,7 +45,7 @@ export async function GET(req: Request) {
   if (!/^[A-Z0-9]{6}$/.test(code)) return json({ ok: false }, 400)
   if (!secret() || !socketUrl()) return json({ ok: true, live: false })
   const ip = clientIp(req.headers)
-  if (!allow(`ws-ticket:${ip}:${code}`, 20, 60_000)) return json({ ok: false, error: "slow_down" }, 429)
+  if (!(await rateLimit(`ws-ticket:${ip}:${code}`, 20, 60_000))) return json({ ok: false, error: "slow_down" }, 429)
   const [order] = await scopedDb(dealer.id).orders.select(eq(orders.code, code), { limit: 1 })
   if (!order || order.fulfilment !== "delivery" || order.status !== "out_for_delivery") return json({ ok: true, live: false })
   const ticket = await signTicket(secret(), { k: `${dealer.id}:${order.id}`, r: "guest", e: Math.floor(Date.now() / 1000) + TICKET_TTL_S })

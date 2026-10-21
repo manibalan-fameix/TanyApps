@@ -11,7 +11,7 @@ import { billingState } from "@/lib/billing/state"
 import { cars } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
 import { BILLING_CYCLES, PLANS, SELLABLE_PLAN_KEYS } from "@/lib/plans"
-import { allow } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/core/rate-limit"
 import { getDealerBilling, updateDealerBilling } from "@/lib/tenant/billing"
 
 export type Checkout = { subscriptionId: string; keyId: string }
@@ -26,7 +26,7 @@ export async function startCheckout(input: unknown): Promise<{ ok: true; checkou
   const ctx = await getDealerContext()
   if (ctx.status !== "ok" || ctx.devBypass) return { ok: false, error: "Please sign in again." }
   if (ctx.role !== "owner") return { ok: false, error: "Only the owner can change billing." }
-  if (!allow(`billing:${ctx.user.id}`, 10, 10 * 60_000)) return { ok: false, error: "Too many attempts. Try again in a few minutes." }
+  if (!(await rateLimit(`billing:${ctx.user.id}`, 10, 10 * 60_000))) return { ok: false, error: "Too many attempts. Try again in a few minutes." }
   const parsed = choice.safeParse(input)
   if (!parsed.success) return { ok: false, error: "Choose a plan." }
 
@@ -84,7 +84,7 @@ export async function cancelPlan(): Promise<{ ok: true } | { ok: false; error: s
   const ctx = await getDealerContext()
   if (ctx.status !== "ok" || ctx.devBypass) return { ok: false, error: "Please sign in again." }
   if (ctx.role !== "owner") return { ok: false, error: "Only the owner can cancel the plan." }
-  if (!allow(`billing:${ctx.user.id}`, 10, 10 * 60_000)) return { ok: false, error: "Too many attempts. Try again in a few minutes." }
+  if (!(await rateLimit(`billing:${ctx.user.id}`, 10, 10 * 60_000))) return { ok: false, error: "Too many attempts. Try again in a few minutes." }
 
   const dealer = await getDealerBilling(ctx.dealer.id)
   if (!dealer?.subscriptionId) return { ok: false, error: "There is no plan to cancel." }

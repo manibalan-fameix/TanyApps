@@ -12,8 +12,17 @@
   // and give the main app the very same value (see wrangler.jsonc).
   "vars": { "ALLOWED_ROOT": "tany.in" },
   "preview_urls": false,
-  "durable_objects": { "bindings": [{ "name": "TRACKER", "class_name": "OrderTracker" }] },
+  "durable_objects": {
+    "bindings": [
+      { "name": "TRACKER", "class_name": "OrderTracker" },
+      // The shared rate limiter (lib/core/rate-limit.ts).
+      { "name": "RATE_LIMITER", "class_name": "RateLimiter" }
+    ]
+  },
   // SQLite-backed objects: available on every Cloudflare plan.
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["OrderTracker"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["OrderTracker"] },
+    { "tag": "v2", "new_sqlite_classes": ["RateLimiter"] }
+  ],
   "observability": { "enabled": true }
 }

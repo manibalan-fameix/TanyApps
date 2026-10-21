@@ -17,7 +17,7 @@ import { getCarState, type CarState } from "@/lib/cars/state"
 import { marketplaceDetailsSchema, type MarketplaceDetails } from "@/lib/cars/marketplace"
 import { cars } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
-import { allow } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/core/rate-limit"
 import { getCachedRcRecord, lookupRcForCar } from "@/lib/rc/lookup"
 import { RcError, type RcErrorCode } from "@/lib/rc/types"
 import { getAllVariants, getVariantById } from "@/lib/variants/repo"
@@ -51,7 +51,7 @@ export async function ocrPlateAction(input: z.infer<typeof plateInput>) {
   if (!d) return fail("unauthorised")
   const parsed = plateInput.safeParse(input)
   if (!parsed.success) return fail("invalid")
-  if (!allow(`ocr:${d.id}`, 40, 3_600_000)) return fail("rate_limited")
+  if (!(await rateLimit(`ocr:${d.id}`, 40, 3_600_000))) return fail("rate_limited")
   const reading = await readPlate(getVisionClient(), parsed.data)
   return { ok: true as const, ...reading }
 }
@@ -305,7 +305,7 @@ export async function updateCarAction(input: z.infer<typeof manageInput>) {
 export async function deleteCarAction(carId: string) {
   const d = await dealer()
   if (!d || !uuid.safeParse(carId).success) return fail("unauthorised")
-  if (!allow(`delete-car:${d.id}`, 60, 3_600_000)) return fail("rate_limited")
+  if (!(await rateLimit(`delete-car:${d.id}`, 60, 3_600_000))) return fail("rate_limited")
   const res = await deleteCar(d.id, carId)
   if (!res.ok) return fail(res.error)
   revalidatePath("/cars")

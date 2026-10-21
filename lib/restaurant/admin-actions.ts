@@ -17,7 +17,7 @@ import { type Fulfilment, orderSettingsSchema } from "@/lib/restaurant/settings"
 import { profileSchema } from "@/lib/restaurant/profile"
 import { type Place, reverseGeocode, searchPlaces } from "@/lib/restaurant/geocode"
 import { validCoords } from "@/lib/restaurant/location"
-import { allow } from "@/lib/rate-limit"
+import { rateLimit } from "../core/rate-limit"
 import { dropFix, readFixes, storeKind } from "@/lib/restaurant/live-location"
 import { customerMessage, etaMinutes, isFresh, riderMessage, shareOnWhatsApp } from "@/lib/restaurant/tracking"
 import { forgetRiderLink, issueRiderToken } from "@/lib/restaurant/trip"
@@ -510,7 +510,7 @@ export async function fetchOrderAlerts(since: string | null): Promise<{ ok: true
 export async function findPlaces(query: string): Promise<{ ok: true; places: Place[] } | { ok: false; error: string }> {
   const s = await session()
   if (!s) return { ok: false, error: "Please sign in again." }
-  if (!allow(`places:${s.dealer.id}`, 30, 10 * 60_000)) return { ok: false, error: "Too many searches. Try again in a few minutes." }
+  if (!(await rateLimit(`places:${s.dealer.id}`, 30, 10 * 60_000))) return { ok: false, error: "Too many searches. Try again in a few minutes." }
   return { ok: true, places: await searchPlaces(query) }
 }
 
@@ -519,7 +519,7 @@ export async function describeSpot(lat: number, lng: number): Promise<{ ok: true
   const s = await session()
   if (!s) return { ok: false, error: "Please sign in again." }
   if (!validCoords(lat, lng)) return { ok: false, error: "That location is outside India." }
-  if (!allow(`spot:${s.dealer.id}`, 30, 10 * 60_000)) return { ok: false, error: "Too many tries. Try again in a few minutes." }
+  if (!(await rateLimit(`spot:${s.dealer.id}`, 30, 10 * 60_000))) return { ok: false, error: "Too many tries. Try again in a few minutes." }
   const found = await reverseGeocode(lat, lng)
   return { ok: true, address: found?.address ?? "" }
 }

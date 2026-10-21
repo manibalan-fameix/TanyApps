@@ -3,7 +3,7 @@ import { and, desc, eq, gt } from "drizzle-orm"
 import { decrypt, decryptJson, encryptJson } from "../crypto"
 import { cars, rcLookups } from "../db/schema"
 import { scopedDb } from "../db/scoped"
-import { allow } from "../rate-limit"
+import { rateLimit } from "../core/rate-limit"
 import { isValidReg } from "../reg"
 import { getRcProvider, providerByName, type RcProvider } from "./provider"
 import { RcError, type RcRecord } from "./types"
@@ -47,7 +47,7 @@ export async function lookupRcForCar(
   // 2. Rate limits (only for calls that would reach the provider).
   const recent = await db.rcLookups.count(gt(rcLookups.fetchedAt, new Date(Date.now() - HOUR_MS)))
   if (recent >= PER_DEALER_PER_HOUR) throw new RcError("rate_limited", "Too many RC lookups this hour")
-  if (opts.ip && !allow(`rc:ip:${opts.ip}`, PER_IP_PER_HOUR, HOUR_MS)) {
+  if (opts.ip && !(await rateLimit(`rc:ip:${opts.ip}`, PER_IP_PER_HOUR, HOUR_MS))) {
     throw new RcError("rate_limited", "Too many RC lookups from this network")
   }
 

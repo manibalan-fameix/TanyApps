@@ -8,7 +8,7 @@ import { readFix } from "@/lib/restaurant/live-location"
 import { roadRoute } from "@/lib/restaurant/route"
 import { readServiceArea, distanceKm } from "@/lib/restaurant/service-area"
 import { etaMinutes, isFresh } from "@/lib/restaurant/tracking"
-import { allow } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/core/rate-limit"
 
 const json = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } })
 
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
   const code = new URL(req.url).searchParams.get("code")?.toUpperCase() ?? ""
   if (!/^[A-Z0-9]{6}$/.test(code)) return json({ ok: false }, 400)
   // A page polls about 15 times a minute; this leaves room for a few open tabs but stops guessing at codes.
-  if (!allow(`order-loc:${ip}:${code}`, 60, 60_000)) return json({ ok: false, error: "slow_down" }, 429)
+  if (!(await rateLimit(`order-loc:${ip}:${code}`, 60, 60_000))) return json({ ok: false, error: "slow_down" }, 429)
 
   const db = scopedDb(dealer.id)
   const [order] = await db.orders.select(eq(orders.code, code), { limit: 1 })

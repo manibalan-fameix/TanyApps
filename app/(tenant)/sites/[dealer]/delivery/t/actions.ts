@@ -8,7 +8,7 @@ import { scopedDb } from "@/lib/db/scoped"
 import { dropFix } from "@/lib/restaurant/live-location"
 import { hashRiderToken } from "@/lib/restaurant/tracking"
 import { orderByRiderToken } from "@/lib/restaurant/trip"
-import { allow } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/core/rate-limit"
 
 type Result = { ok: true; status: string } | { ok: false; error: string }
 
@@ -20,7 +20,7 @@ export async function tripAct(token: string, kind: "pickup" | "delivered", colle
   const tenant = await tenantContext("restaurants")
   if (!tenant) return { ok: false, error: "This link is not available." }
   const { dealer } = tenant
-  if (!allow(`trip-act:${(await hashRiderToken(token)).slice(0, 16)}`, 20, 10 * 60_000)) return { ok: false, error: "Too many taps. Wait a moment." }
+  if (!(await rateLimit(`trip-act:${(await hashRiderToken(token)).slice(0, 16)}`, 20, 10 * 60_000))) return { ok: false, error: "Too many taps. Wait a moment." }
 
   const order = await orderByRiderToken(dealer.id, token)
   if (!order) return { ok: false, error: "This delivery link is no longer active." }

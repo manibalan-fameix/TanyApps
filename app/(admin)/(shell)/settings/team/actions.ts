@@ -9,7 +9,7 @@ import { createUser, fillMissingUserDetails, findMembership, findUsersByContact,
 import { dealerUsers } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
 import { hashPassword } from "@/lib/auth/password"
-import { allow } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/core/rate-limit"
 
 type Result = { ok: true } | { ok: false; error: string }
 
@@ -44,7 +44,7 @@ export async function addTeammate(input: unknown): Promise<Result> {
   const who = await owner()
   if (!who.ctx) return { ok: false, error: who.error }
   const { ctx } = who
-  if (!allow(`team:${ctx.user.id}`, 20, 10 * 60_000)) return { ok: false, error: "Too many attempts. Try again in a few minutes." }
+  if (!(await rateLimit(`team:${ctx.user.id}`, 20, 10 * 60_000, { failClosed: true }))) return { ok: false, error: "Too many attempts. Try again in a few minutes." }
   const parsed = teammateSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the details." }
   const { name, email, phone, password } = parsed.data
@@ -86,6 +86,7 @@ export async function resetTeammatePassword(userId: string, password: unknown): 
   const who = await owner()
   if (!who.ctx) return { ok: false, error: who.error }
   const { ctx } = who
+  if (!(await rateLimit(`team:${ctx.user.id}`, 20, 10 * 60_000, { failClosed: true }))) return { ok: false, error: "Too many attempts. Try again in a few minutes." }
   const parsed = teammateSchema.shape.password.safeParse(password)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the password." }
   const [target] = await scopedDb(ctx.dealer.id).dealerUsers.select(eq(dealerUsers.userId, userId))

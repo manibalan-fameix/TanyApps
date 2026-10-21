@@ -8,7 +8,7 @@ import { z } from "zod"
 import { billingState, effectivePlanKey } from "@/lib/billing/state"
 import { menuCategories, menuItems } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
-import { allow } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/core/rate-limit"
 import {
   categoryNameSchema,
   menuItemSchema,
@@ -50,7 +50,7 @@ export async function requestImageUpload(
   const d = await restaurant()
   if (!d) return unauthorised
   if (!(IMAGE_KINDS as readonly string[]).includes(kind)) return { ok: false, error: "Invalid upload." }
-  if (!allow(`menu-image:${d.id}`, 60, 60 * 60_000)) return { ok: false, error: "Too many uploads. Try again later." }
+  if (!(await rateLimit(`menu-image:${d.id}`, 60, 60 * 60_000))) return { ok: false, error: "Too many uploads. Try again later." }
   const storage = getStorage()
   const key = imageKey(d.id, kind, crypto.randomUUID())
   const target = await storage.presignPut(key, "image/jpeg")
@@ -60,7 +60,7 @@ export async function requestImageUpload(
 export async function createMenuItem(draft: unknown): Promise<Result<{ id: string }>> {
   const d = await restaurant()
   if (!d) return unauthorised
-  if (!allow(`menu-write:${d.id}`, 120, 60_000)) return { ok: false, error: "Too many changes. Try again in a minute." }
+  if (!(await rateLimit(`menu-write:${d.id}`, 120, 60_000))) return { ok: false, error: "Too many changes. Try again in a minute." }
   const parsed = menuItemSchema.safeParse(draft)
   if (!parsed.success) return invalid(parsed.error)
   if (!(await ownsCategory(d.id, parsed.data.categoryId))) return { ok: false, error: "Pick a category from your list." }

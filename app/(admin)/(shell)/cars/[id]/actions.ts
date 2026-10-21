@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache"
 import { getDealerContext } from "@/lib/auth/context"
 import { bookings } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
-import { allow } from "@/lib/rate-limit"
+import { rateLimit } from "@/lib/core/rate-limit"
 import { refundBookingPayment } from "@/lib/route/razorpay"
 
 type Result = { ok: true } | { ok: false; error: string }
@@ -15,7 +15,7 @@ type Result = { ok: true } | { ok: false; error: string }
 export async function refundBooking(bookingId: string): Promise<Result> {
   const ctx = await getDealerContext()
   if (ctx.status !== "ok" || !ctx.dealerInDb) return { ok: false, error: "Please sign in again." }
-  if (!allow(`refund-booking:${ctx.user.id}`, 10, 10 * 60_000)) return { ok: false, error: "Too many attempts. Try again in a few minutes." }
+  if (!(await rateLimit(`refund-booking:${ctx.user.id}`, 10, 10 * 60_000))) return { ok: false, error: "Too many attempts. Try again in a few minutes." }
 
   const db = scopedDb(ctx.dealer.id)
   const [booking] = await db.bookings.select(eq(bookings.id, bookingId), { limit: 1 })
