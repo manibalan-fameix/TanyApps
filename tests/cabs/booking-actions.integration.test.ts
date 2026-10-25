@@ -3,7 +3,9 @@ import { randomBytes, randomUUID } from "node:crypto"
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 
-const url = process.env.TEST_DATABASE_URL
+import { testDatabaseUrl } from "../support/disposable-db"
+
+const url = testDatabaseUrl()
 
 let operator: { dealer: Record<string, unknown>; owner: boolean } | null = null
 let tenant: { dealer: Record<string, unknown>; ip: string } | null = null
@@ -306,5 +308,67 @@ describe.skipIf(!url)("booking actions (live database)", () => {
 
   it("unused import guard", () => {
     expect(seal.sealPlace).toBeTypeOf("function")
+  })
+
+  // ---------- a package id from the browser must belong to the business being booked ----------
+
+  describe("package ownership", () => {
+    let ownPkg: string
+    let foreignPkg: string
+    const sess = () => randomUUID()
+    const pkgRow = (dealerId: string, name: string) => ({ dealerId, name, slug: `${name}-${randomUUID().slice(0, 6)}`, days: 2, vehicleClassPrices: {}, active: true })
+
+    beforeAll(async () => {
+      ownPkg = (await db.unscopedDb.insert(s.packages).values(pkgRow(A, "own")).returning({ id: s.packages.id }))[0].id
+      foreignPkg = (await db.unscopedDb.insert(s.packages).values(pkgRow(B, "foreign")).returning({ id: s.packages.id }))[0].id
+    })
+    async function draft(over: Record<string, unknown> = {}) {
+      const p = await pub.placeDetailsPublic("fixture-t-nagar", sess())
+      const d = await pub.placeDetailsPublic("fixture-maa", sess())
+      if (!p.ok || !d.ok) throw new Error("place lookup failed")
+      return { tripType: "airport", pickup: p.place.token, drop: d.place.token, startAt: inHours(30), returnAt: null, pax: 2, bags: 1, ...over }
+    }
+    const tripsWithPackage = async (id: string) => (await db.unscopedDb.select().from(s.trips).where(drizzle.eq(s.trips.packageId, id))).length
+
+    it("public: a package of another business is refused for every trip type, exactly like an unknown id", async () => {
+      for (const tripType of ["airport", "outstation_one_way", "outstation_round", "local_hourly", "package_tour"]) {
+        expect(await pub.getQuotes(await draft({ tripType, packageId: foreignPkg }))).toEqual({ ok: false, code: "bad_request" })
+        expect(await pub.getQuotes(await draft({ tripType, packageId: randomUUID() }))).toEqual({ ok: false, code: "bad_request" })
+      }
+    })
+    it("public: a booking naming another business's package creates nothing and stores no reference to it", async () => {
+      const c = await tr.upsertCustomer(scoped.scopedDb(A), `+9198${Math.floor(10_000_000 + Math.random() * 89_999_999)}`, { verified: true, now: new Date() })
+      signedIn = (await scoped.scopedDb(A).customers.select(drizzle.eq(s.customers.id, c.id)))[0]
+      const ok = await pub.getQuotes(await draft())
+      if (!ok.ok) throw new Error("no quote")
+      const before = await scoped.scopedDb(A).trips.count()
+      const forged = await draft({ packageId: foreignPkg })
+      expect(await pub.requestBooking(forged, ok.options[0].classId, ok.options[0].totalPaise, "")).toEqual({ ok: false, code: "bad_request" })
+      expect(await scoped.scopedDb(A).trips.count()).toBe(before)
+      expect(await tripsWithPackage(foreignPkg)).toBe(0)
+    })
+    it("public: the business's own package is still accepted", async () => {
+      expect((await pub.getQuotes(await draft({ packageId: ownPkg }))).ok).toBe(true)
+    })
+    it("operator: a manual booking naming another business's package is refused for every trip type, and nothing is stored", async () => {
+      asOperator()
+      const before = await scoped.scopedDb(A).trips.count()
+      for (const tripType of ["airport", "package_tour"]) {
+        expect(await admin.createManualBooking(manual({ tripType, packageId: foreignPkg }))).toEqual({ ok: false, error: "Choose a package from your list." })
+      }
+      expect(await scoped.scopedDb(A).trips.count()).toBe(before)
+      expect(await tripsWithPackage(foreignPkg)).toBe(0)
+    })
+    it("operator: the business's own package is accepted", async () => {
+      asOperator()
+      expect((await admin.createManualBooking(manual({ packageId: ownPkg, phone: "9876500888" }))).ok).toBe(true)
+    })
+    it("business B cannot be made to reference A's package either (the check is symmetric)", async () => {
+      const mine = await db.unscopedDb.select().from(s.packages).where(drizzle.eq(s.packages.id, ownPkg))
+      expect(mine[0].dealerId).toBe(A)
+      expect(await tripsWithPackage(ownPkg)).toBeGreaterThanOrEqual(0)
+      const crossB = await db.unscopedDb.select().from(s.trips).where(drizzle.and(drizzle.eq(s.trips.dealerId, B), drizzle.eq(s.trips.packageId, ownPkg)))
+      expect(crossB).toHaveLength(0)
+    })
   })
 })

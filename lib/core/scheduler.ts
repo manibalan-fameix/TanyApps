@@ -1,9 +1,12 @@
 import { sql } from "drizzle-orm"
 
 import { unscopedDb } from "../db/client"
+import { safeErrorMessage } from "./safe-error"
 import { cronRuns } from "../db/schema"
 import { expireTripHoldsJob } from "./jobs/expire-trip-holds"
 import { expireUnpaidOrdersJob } from "./jobs/expire-unpaid-orders"
+import { retryBookingRefundsJob } from "./jobs/retry-booking-refunds"
+import { retryOrderRefundsJob } from "./jobs/retry-order-refunds"
 
 /**
  * Scheduled jobs. A job is a function plus a name; the Cloudflare cron worker (workers/cron) calls
@@ -21,6 +24,8 @@ export const JOBS: Record<string, Job> = Object.fromEntries(
   [
     expireUnpaidOrdersJob,
     expireTripHoldsJob,
+    retryBookingRefundsJob,
+    retryOrderRefundsJob,
     // Placeholders for the daily (08:00 IST) and monthly (06:00 IST, 1st) triggers, so the whole path is proven end to end.
     // Document-expiry digests, corporate invoices and the like replace these in the phases that build them.
     noop("daily"),
@@ -68,7 +73,7 @@ export async function runJob(name: string, slot: Date): Promise<RunOutcome> {
     await finishRun(name, slot, "done", result)
     return { ran: true, ok: true, result }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "unknown error"
+    const message = safeErrorMessage(error)
     console.error(`cron job ${name} failed: ${message}`)
     await finishRun(name, slot, "failed", message)
     return { ran: true, ok: false, result: message }

@@ -1,4 +1,5 @@
 import { findState } from "../../cabs/states"
+import { distanceKm } from "./distance"
 import { reverseGeocode, searchPlaces } from "./geocode"
 import type { PlaceDetail, PlaceSuggestion, PlacesProvider, RouteResult } from "./places"
 import { validCoords } from "./validate"
@@ -25,11 +26,11 @@ export function parseOsmId(id: string): { lat: number; lng: number } | null {
 export const osmProvider: PlacesProvider = {
   name: "osm",
 
-  async autocomplete(query): Promise<PlaceSuggestion[]> {
+  async autocomplete(query, _sessionToken, origin): Promise<PlaceSuggestion[]> {
     const places = await searchPlaces(query)
     return places.map((p) => {
       const [first, ...rest] = p.label.split(",")
-      return { placeId: idFor(p.lat, p.lng), primary: first.trim(), secondary: rest.join(",").trim() }
+      return { placeId: idFor(p.lat, p.lng), primary: first.trim(), secondary: rest.join(",").trim(), ...(origin ? { distanceM: Math.round(distanceKm(origin, p) * 1000) } : {}) }
     })
   },
 

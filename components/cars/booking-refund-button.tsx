@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { useTransition } from "react"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 
 import { refundBooking } from "@/app/(admin)/(shell)/cars/[id]/actions"
 import {
@@ -18,15 +18,16 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 
-export function BookingRefundButton({ bookingId }: { bookingId: string }) {
+export function BookingRefundButton({ bookingId, retry = false }: { bookingId: string; retry?: boolean }) {
   const router = useRouter()
   const [pending, start] = useTransition()
 
   const refund = () => {
     start(async () => {
       const res = await refundBooking(bookingId)
-      if (res.ok) toast.success("Booking refunded.")
-      else toast.error(res.error)
+      if (!res.ok) toast.error(res.error)
+      else if (res.refund === "processed") toast.success("Refund sent to the buyer.")
+      else toast.success("Refund started. It can take 5-7 working days to reach the buyer.")
       router.refresh()
     })
   }
@@ -36,7 +37,7 @@ export function BookingRefundButton({ bookingId }: { bookingId: string }) {
       <AlertDialogTrigger
         render={<Button variant="outline" size="sm" disabled={pending} />}
       >
-        Refund booking
+        {retry ? "Retry refund" : "Refund booking"}
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>

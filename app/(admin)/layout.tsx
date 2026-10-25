@@ -1,5 +1,5 @@
 import { ThemeProvider } from "@/components/theme-provider"
-import { Toaster } from "@/components/ui/sonner"
+import { Toaster } from "@/components/ui/toaster"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
 // Dealer admin: the preset, untouched. Dark mode lives here only.

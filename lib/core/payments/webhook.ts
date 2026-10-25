@@ -58,20 +58,30 @@ export async function dispatchPaymentEvent(event: PaymentEvent, handlers: Paymen
       return "ignored"
     }
     countMetric("razorpay_webhook_fallback", { event: "order.paid", reason: "no_kind" })
-    await legacyLookup(orderId, paymentId, handlers)
+    const looked = await legacyLookup(orderId, paymentId, handlers)
+    if (!looked.found) {
+      countMetric("razorpay_webhook_unmatched", { event: "order.paid", reason: "no_order" })
+      return "unmatched"
+    }
     return "fallback"
   }
 
-  const worked = await legacyLookup(orderId, paymentId, handlers)
-  if (worked) countMetric("razorpay_webhook_fallback", { event: "payment.captured", reason: "did_the_work" })
+  const looked = await legacyLookup(orderId, paymentId, handlers)
+  if (looked.worked) countMetric("razorpay_webhook_fallback", { event: "payment.captured", reason: "did_the_work" })
+  // A captured payment that belongs to no order of ours: money taken that nothing will ever act on. Counted so a person is told.
+  if (!looked.found) {
+    countMetric("razorpay_webhook_unmatched", { event: "payment.captured", reason: "no_order" })
+    return "unmatched"
+  }
   return "fallback"
 }
 
-/** The pre-kind lookup: the food flow first, then the car flow. Returns whether this call changed anything. */
-async function legacyLookup(orderId: string, paymentId: string, handlers: PaymentHandlers): Promise<boolean> {
+/** The pre-kind lookup: the food flow first, then the car flow. `worked`: this call changed something. `found`: some flow owns the order. */
+async function legacyLookup(orderId: string, paymentId: string, handlers: PaymentHandlers): Promise<{ worked: boolean; found: boolean }> {
   const eats = await handlers.eats_order(orderId, paymentId)
   if (eats.refundFailed) throw new Error("refund of a late payment failed")
-  if (eats.found) return Boolean(eats.applied)
+  if (eats.found) return { worked: Boolean(eats.applied), found: true }
   const motors = await handlers.motors_booking(orderId, paymentId)
-  return Boolean(motors.applied)
+  if (motors.refundFailed) throw new Error("refund of a late payment failed")
+  return { worked: Boolean(motors.applied), found: motors.found }
 }

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 
 import {
   cancelPlan,
@@ -75,7 +75,7 @@ export function BillingPanel({
           hasPaymentMethod ? "Plan updated" : "Payment method added"
         )
       else if (result === "unconfirmed")
-        toast.message(
+        toast.warning(
           "Payment received. It can take a minute to show here. Refresh shortly."
         )
       else if (result === "unavailable")

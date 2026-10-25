@@ -48,7 +48,9 @@ export function friendlyAuthError(error: unknown): string {
   const expected = cancelled || code === "auth/too-many-requests"
   if (process.env.NODE_ENV === "development" && !expected) console.error("Firebase auth error:", code, server ?? error)
   if (process.env.NODE_ENV === "development" && (!MESSAGES[code] || code === "auth/invalid-app-credential")) {
-    return `Firebase says: ${code}${server ? ` - ${server}` : ""}`
+    // No code means it was not a Firebase error at all (a failed server action, a network drop): show its message.
+    const detail = server ?? (code ? undefined : (error as Error)?.message)
+    return `Firebase says: ${code || "(no code)"}${detail ? ` - ${detail}` : ""}`
   }
   return MESSAGES[code] ?? "Something went wrong. Please try again."
 }

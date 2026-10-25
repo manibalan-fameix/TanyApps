@@ -27,7 +27,7 @@
     { "binding": "METRICS", "dataset": "tany_platform_metrics" }
   ],
   // Each delivery's latest rider position lives in a Durable Object defined by workers/tracker. Deploy that worker first
-  // (`pnpm deploy:tracker`, which `pnpm run deploy` does for you), then this one.
+  // (`pnpm run deploy:tracker production`, which `pnpm run deploy production` does for you), then this one.
   "durable_objects": {
     "bindings": [
       { "name": "TRACKER", "class_name": "OrderTracker", "script_name": "tanyapps-tracker" },

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 
 import {
   createMenuItem,

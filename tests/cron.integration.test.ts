@@ -1,8 +1,10 @@
 // Live lock test. Runs only when TEST_DATABASE_URL points at a DISPOSABLE, migrated database (see tenant-leak.integration.test.ts).
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
-const url = process.env.TEST_DATABASE_URL
+import { testDatabaseUrl } from "./support/disposable-db"
+
+const url = testDatabaseUrl()
 
 describe.skipIf(!url)("cron lock (live database)", () => {
   let scheduler: typeof import("../lib/core/scheduler")
@@ -74,10 +76,12 @@ describe.skipIf(!url)("cron lock (live database)", () => {
   })
 
   it("runs the real expire-unpaid-orders job end to end", async () => {
-    const outcome = await scheduler.runJob("expire-unpaid-orders", slot(50 + Math.floor(Math.random() * 9)))
+    // This job sweeps every restaurant in the database by design; the disposable-database guard is what makes that safe to run here.
+    const realSlot = slot(50 + Math.floor(Math.random() * 9))
+    const outcome = await scheduler.runJob("expire-unpaid-orders", realSlot)
     expect(outcome.ran && outcome.ok).toBe(true)
     expect(outcome.ran && outcome.result).toMatch(/order\(s\) released across \d+ restaurant\(s\)/)
-    await unscopedDb.delete(cronRuns).where(eq(cronRuns.job, "expire-unpaid-orders"))
+    await unscopedDb.delete(cronRuns).where(and(eq(cronRuns.job, "expire-unpaid-orders"), eq(cronRuns.slot, realSlot)))
   })
 
   it("answers unknown_job without touching the lock table", async () => {

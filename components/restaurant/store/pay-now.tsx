@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 
 import { cancelPendingOrder, getPaymentCheckout } from "@/app/(tenant)/sites/[dealer]/actions"
 import { payWithRazorpay } from "@/components/restaurant/store/razorpay"

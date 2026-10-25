@@ -1,5 +1,8 @@
 "use server"
 
+import { cookies } from "next/headers"
+
+import { ACTIVE_BUSINESS_COOKIE } from "@/lib/auth/active-business"
 import { verifyFirebaseIdToken } from "@/lib/auth/firebase"
 import { claimVerifiedPhone, getOtherProductForUser, getUserContact, getUserPhone } from "@/lib/tenant/user-phone"
 import { mapDealerSubdomain } from "@/lib/cloudflare/domains"
@@ -20,8 +23,9 @@ export type SlugStatus = "available" | "taken" | "invalid" | "limited"
 
 /** Live "is this web address free?" check. Signed-in users only, and rate limited. */
 export async function checkSlug(raw: string): Promise<SlugStatus> {
+  // Signed in is enough: a user adding a second product already has a business.
   const ctx = await getDealerContext()
-  if (ctx.status !== "no-dealer") return "invalid"
+  if (ctx.status === "anonymous") return "invalid"
   if (!(await rateLimit(`slug:${ctx.user.id}`, 60, 60_000))) return "limited"
   const parsed = slugSchema.safeParse(raw)
   if (!parsed.success) return "invalid"
@@ -169,6 +173,8 @@ export async function createDealership(
     console.error("create dealership failed")
     return { ok: false, error: "Something went wrong. Please try again." }
   }
+  // Open the product they just created, not whichever they used last.
+  ;(await cookies()).set(ACTIVE_BUSINESS_COOKIE, dealerId, { httpOnly: true, sameSite: "lax", path: "/", secure: process.env.NODE_ENV === "production" })
   // The dealer exists at this point. A Cloudflare failure must not undo it: the mapping is an idempotent PUT and can be re-run.
   const mapped = await mapDealerSubdomain(parsed.data.slug)
   if (!mapped.ok && !mapped.skipped)
@@ -205,7 +211,7 @@ export async function findMyProduct(
   | { ok: false; error: string }
 > {
   const ctx = await getDealerContext()
-  if (ctx.status !== "no-dealer") return { ok: false, error: "Please sign in again." }
+  if (ctx.status === "anonymous") return { ok: false, error: "Please sign in again." }
   const text = description.trim().slice(0, 300)
   if (text.length < 3) return { ok: false, error: "Tell us a little about your business." }
   if (!(await rateLimit(`recommend:${ctx.user.id}`, 15, 10 * 60_000)))

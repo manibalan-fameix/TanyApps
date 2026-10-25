@@ -6,7 +6,9 @@ import path from "node:path"
 import { eq } from "drizzle-orm"
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
-const url = process.env.TEST_DATABASE_URL
+import { testDatabaseUrl } from "../support/disposable-db"
+
+const url = testDatabaseUrl()
 
 let session: { dealer: { id: string; plan: string; trialEndsAt: Date | null; paidThrough: Date | null; subscriptionStatus: string | null; nextPlan: null; nextPlanStartsAt: null; cancelRequestedAt: null }; owner: boolean } | null = null
 vi.mock("@/lib/core/guards", () => ({ industrySession: async () => session }))

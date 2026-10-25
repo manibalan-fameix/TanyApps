@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useState, useSyncExternalStore, useTransition } from "react"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Add01Icon,
@@ -170,6 +170,18 @@ export function OnboardingWizard({
       : remote?.slug === parsedSlug.data
         ? remote.status
         : "checking"
+  // Set by the login form when it finds a first-time user.
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("tany:new-user") !== "1") return
+      sessionStorage.removeItem("tany:new-user")
+    } catch {
+      return
+    }
+    toast.info("You're new to Tany", {
+      description: "Create your account to get started.",
+    })
+  }, [])
   useEffect(() => {
     const parsed = slugSchema.safeParse(slug)
     if (!parsed.success) return
@@ -467,7 +479,7 @@ export function OnboardingWizard({
               className={cn(
                 "pt-2 text-3xl font-bold text-balance sm:text-4xl",
                 // Phones: a smaller heading leaves more height for the product card.
-                step === 0 && "max-sm:pt-0 max-sm:text-xl max-sm:[-webkit-text-stroke:0.5px_currentColor]"
+                step === 0 && "font-semibold max-sm:pt-0 max-sm:text-xl max-sm:[-webkit-text-stroke:0.5px_currentColor]"
               )}
             >
               {step === 0 ? (
@@ -509,7 +521,7 @@ export function OnboardingWizard({
               "flex min-h-0 flex-col",
               step === 0
                 ? "gap-9 max-lg:gap-8"
-                : "gap-5",
+                : "gap-8",
               step === 0 ? "flex-1" : "overflow-y-auto p-1"
             )}
           >

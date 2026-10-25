@@ -3,7 +3,7 @@
 import { useRef, useState } from "react"
 import { ImageUpload01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 
 import { requestImageUpload } from "@/app/(admin)/(shell)/menu/actions"
 import { Button } from "@/components/ui/button"
@@ -41,15 +41,22 @@ export function ImageUpload({
     if (!file) return
     if (!file.type.startsWith("image/")) return toast.error("Choose an image file.")
     setBusy(true)
-    try {
+    const upload = async () => {
       const { blob } = await resizeToJpeg(file, MAX_EDGE)
       const target = await (requestUpload ? requestUpload() : requestImageUpload(kind))
       if (!target.ok) throw new Error(target.error)
       const res = await fetch(target.url, { method: target.method, headers: target.headers, body: blob })
       if (!res.ok) throw new Error("Upload failed.")
       onChange(target.publicUrl)
-    } catch (e) {
-      toast.error(e instanceof Error && e.message ? e.message : "Could not upload that photo. Try another.")
+    }
+    try {
+      await toast.promise(upload, {
+        loading: { title: "Uploading photo…" },
+        success: { title: "Photo uploaded." },
+        error: (e) => ({ title: e instanceof Error && e.message ? e.message : "Could not upload that photo. Try another." }),
+      })
+    } catch {
+      // the error toast above already told the user
     } finally {
       setBusy(false)
     }

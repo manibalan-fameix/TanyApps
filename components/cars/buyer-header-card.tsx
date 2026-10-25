@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Location01Icon } from "@hugeicons/core-free-icons"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 
 import { createBooking } from "@/app/(tenant)/sites/[dealer]/[carSlug]/actions"
 import { authoriseBookingPayment } from "@/components/cars/booking-checkout"
@@ -63,8 +63,18 @@ function BookingDialog({
         toast.success("Booking confirmed. The dealer will contact you shortly.")
         setOpen(false)
       } else if (result === "unconfirmed") {
-        toast.message(
+        toast.warning(
           "Payment received. It can take a minute to confirm. Refresh shortly."
+        )
+        setOpen(false)
+      } else if (result === "lost") {
+        toast.warning(
+          "Someone else booked this car just before your payment went through. We are refunding your payment to the original payment method; it can take 5-7 working days."
+        )
+        setOpen(false)
+      } else if (result === "duplicate") {
+        toast.warning(
+          "You were charged twice for this booking, so we are refunding the second payment to your original payment method; it can take 5-7 working days."
         )
         setOpen(false)
       } else if (result === "unavailable") {

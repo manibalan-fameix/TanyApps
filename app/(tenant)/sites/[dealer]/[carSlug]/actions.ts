@@ -6,6 +6,7 @@ import { z } from "zod"
 
 import { razorpayCredentials } from "@/lib/billing/razorpay"
 import { applyBookingPayment } from "@/lib/bookings/service"
+import { safeErrorMessage } from "@/lib/core/safe-error"
 import { emptyMarketplaceDetails, marketplaceDetailsSchema } from "@/lib/cars/marketplace"
 import { encrypt } from "@/lib/crypto"
 import { cars } from "@/lib/db/schema"
@@ -70,20 +71,26 @@ export async function createBooking(input: unknown): Promise<{ ok: true; checkou
     })
     return { ok: true, checkout: { orderId: order.orderId, keyId: creds.keyId, amount: bookingAmount } }
   } catch (error) {
-    console.error(`create booking failed: ${error instanceof Error ? error.message : "unknown"}`)
+    console.error(`create booking failed: ${safeErrorMessage(error)}`)
     return { ok: false, error: "Could not start payment. Please try again." }
   }
 }
 
-/** Called after Checkout succeeds. The signature proves this order was actually paid. */
-export async function confirmBooking(input: { orderId: string; paymentId: string; signature: string; carSlug: string }): Promise<{ ok: boolean }> {
+/**
+ * Called after Checkout succeeds. The signature proves this order was actually paid. `ok` is true once this payment has been applied,
+ * including when the webhook got there first. `lost` means another buyer's payment took the car first; this payment is being
+ * refunded (`refund` says how far that has got: never "processed" unless Razorpay says so).
+ */
+export async function confirmBooking(input: { orderId: string; paymentId: string; signature: string; carSlug: string }): Promise<{ ok: boolean; lost?: boolean; duplicate?: boolean; refund?: "owed" | "pending" | "processed" | "failed" }> {
   if (!(await verifyBookingPaymentSignature(input))) return { ok: false }
   try {
-    const { applied } = await applyBookingPayment(input.orderId, input.paymentId)
+    const r = await applyBookingPayment(input.orderId, input.paymentId)
     revalidatePath(`/${input.carSlug}`)
-    return { ok: applied }
+    if (r.status === "lost") return { ok: false, lost: true, refund: r.refund }
+    if (r.status === "other_payment") return { ok: false, duplicate: true, refund: r.refund }
+    return { ok: r.status === "applied" || r.status === "already_applied" }
   } catch (error) {
-    console.error(`confirm booking failed: ${error instanceof Error ? error.message : "unknown"}`)
+    console.error(`confirm booking failed: ${safeErrorMessage(error)}`)
     return { ok: false }
   }
 }

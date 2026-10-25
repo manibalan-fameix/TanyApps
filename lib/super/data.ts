@@ -29,6 +29,7 @@ import {
 import { billingState, effectivePlanKey } from "../billing/state"
 import { PLANS, type PlanKey, getPlan, monthlyPriceFor, yearlyMonthsFor } from "../plans"
 import { tryDecrypt } from "../crypto"
+import { ATTENTION_LABEL, bookingAttention, type RefundAttention } from "../bookings/exceptions"
 import { requireSuperAdmin } from "./guard"
 
 const DAY = 86_400_000
@@ -792,6 +793,10 @@ export type BookingListRow = {
   razorpayOrderId: string
   createdAt: string
   paidAt: string | null
+  /** "", or where a refund stands: owed (not started), pending, processed, failed. */
+  refund: string
+  /** Why the Tany team should look at it, or "". See lib/bookings/exceptions.ts. */
+  attention: string
 }
 
 export async function loadBookings(
@@ -825,5 +830,7 @@ export async function loadBookings(
     razorpayOrderId: b.razorpayOrderId,
     createdAt: b.createdAt.toISOString(),
     paidAt: iso(b.paidAt),
+    refund: b.status === "refund_pending" ? (b.refundStatus ?? "owed") : b.status === "refunded" ? "processed" : "",
+    attention: ATTENTION_LABEL[bookingAttention(b, new Date()) as RefundAttention] ?? "",
   }))
 }

@@ -18,7 +18,7 @@ import {
   User02Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 
 import { optionsFilter } from "@/components/cars/cars-grid"
 import { DataGrid } from "@/components/restaurant/data-grid"

@@ -50,6 +50,7 @@
   ],
   "exclude": [
     "node_modules",
-    "workers/jarvis/ui"
+    "workers/jarvis/ui",
+    "TanyApps"
   ]
 }

@@ -156,7 +156,9 @@ export function PhotosStep({
           ? "ready"
           : video.status === "failed"
             ? "failed"
-            : "processing"
+            : video.status === "uploaded"
+              ? "waiting" // saved, nothing is processing it right now (see docs/release/video-worker-hosting.md)
+              : "processing"
         : null
   const analysis = video?.analysis
   const photoMissingLabels = missing.map((a) => copy.admin.angles[a].label)
@@ -394,6 +396,9 @@ export function PhotosStep({
             <p className="text-sm text-muted-foreground">
               {t.video.processing}
             </p>
+          )}
+          {videoState === "waiting" && (
+            <p className="text-sm text-muted-foreground">{t.video.waiting}</p>
           )}
           {videoState === "ready" && (
             <p className="text-sm font-medium">{t.video.ready}</p>

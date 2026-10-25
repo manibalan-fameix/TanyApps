@@ -7,6 +7,7 @@ import { decrypt } from "@/lib/crypto"
 import { tenantContext } from "@/lib/core/guards"
 import { currentCustomer } from "@/lib/core/login/customer"
 import { enqueue } from "@/lib/core/notifications/outbox"
+import { validCoords } from "@/lib/core/geo/validate"
 import { getPlacesProvider } from "@/lib/core/geo/places-provider"
 import { MAX_QUERY_LENGTH, MIN_QUERY_LENGTH, type PlaceDetail, type PlaceSuggestion, isSessionToken } from "@/lib/core/geo/places"
 import { rateLimit } from "@/lib/core/rate-limit"
@@ -23,7 +24,7 @@ import { quickPickByKey } from "./quick-picks"
 import { parseIst } from "./calculator"
 import { loadPricing } from "./page-data"
 import { type ClassFit, type PlaceInput, type QuoteErrorCode, type TripRequest, checkTiming, quoteForClass, resolveDistance } from "./trip-quote"
-import { cancelTrip, createTrip } from "./trips"
+import { cancelTrip, createTrip, withBookingCodeRetry } from "./trips"
 
 // What the public booking page may do. The business comes from the host, the customer from the session cookie, prices from the fare
 // engine on the server. Nothing the browser sends is believed about price, distance, tax or who the customer is.
@@ -56,7 +57,7 @@ const busy = { ok: false, code: "busy" } as const
 
 // ---------- place search ----------
 
-export async function searchPlacesPublic(query: string, sessionToken: string): Promise<{ ok: true; suggestions: PlaceSuggestion[] } | Fail<"unavailable" | "busy" | "bad_request">> {
+export async function searchPlacesPublic(query: string, sessionToken: string, origin?: { lat: number; lng: number } | null): Promise<{ ok: true; suggestions: PlaceSuggestion[] } | Fail<"unavailable" | "busy" | "bad_request">> {
   const w = await who()
   if (!w) return { ok: false, code: "unavailable" }
   const q = String(query ?? "").trim()
@@ -65,7 +66,9 @@ export async function searchPlacesPublic(query: string, sessionToken: string): P
   const provider = getPlacesProvider()
   if (!provider) return { ok: false, code: "unavailable" }
   if (!(await rateLimit(`pub-places:${w.ip}`, 120, 10 * 60_000)) || !(await rateLimit(`pub-places-dealer:${w.dealer.id}`, 2_000, 60 * 60_000))) return busy
-  return { ok: true, suggestions: await provider.autocomplete(q, sessionToken) }
+  // The customer's position only ranks and measures the suggestions; anything that is not a real coordinate is ignored.
+  const from = origin && validCoords(origin.lat, origin.lng) ? { lat: origin.lat, lng: origin.lng } : undefined
+  return { ok: true, suggestions: await provider.autocomplete(q, sessionToken, from) }
 }
 
 export type SealedPlace = { token: string; name: string; address: string }
@@ -142,6 +145,9 @@ async function prepare(raw: unknown, now: Date): Promise<Prepared> {
   const classRows = await w.db.vehicleClasses.select(eq(vehicleClasses.active, true), { orderBy: [asc(vehicleClasses.sortOrder), asc(vehicleClasses.name)] })
   const minLead = pricing.settingsRow?.minLeadMinutes ?? 0
   const req: TripRequest = { tripType: d.tripType, pickup, drop, startAt, returnAt, pax: d.pax, bags: d.bags, localPackage: d.localPackage ?? null, packageId: d.packageId ?? null }
+  // A package id comes from the browser, so it must be one of THIS business's own packages, whatever the trip type. A foreign or
+  // unknown id is refused the same way, so the answer reveals nothing about other businesses.
+  if (req.packageId && !pricing.calc.packages.some((pk) => pk.id === req.packageId)) return { ok: false, code: "bad_request" }
   const timing = checkTiming(req, minLead, now)
   if (timing) return { ok: false, code: timing }
   return {
@@ -221,7 +227,7 @@ export async function requestBooking(raw: unknown, classId: string, expectedTota
   if (q.result.totalPaise !== expectedTotalPaise) return { ok: false, code: "fare_changed", newTotalPaise: q.result.totalPaise }
 
   const operatorPhone = p.w.dealer.phone
-  const created = await scopedTransaction(p.w.dealer.id, async (db) => {
+  const created = await withBookingCodeRetry(() => scopedTransaction(p.w.dealer.id, async (db) => {
     const trip = await createTrip(db, { customerId: customer.id, req: p.req, quote: q, source: "web", actor: { type: "customer", id: customer.id }, now, respondWindowMinutes: p.respondWindow, notes })
     if (operatorPhone) {
       await enqueue(db, { event: "trip.requested", recipientType: "operator", recipient: operatorPhone, channel: "wa_link", template: "trip_requested", payload: { tripId: trip.id, code: trip.code, text: bookingMessage("en", "operatorReminder", { code: trip.code }) } })
@@ -236,7 +242,7 @@ export async function requestBooking(raw: unknown, classId: string, expectedTota
       payload: { tripId: trip.id, code: trip.code, text: bookingMessage(isLang(customer.language) ? customer.language : "en", "requestedToCustomer", { code: trip.code, operator: p.w.dealer.displayName }) },
     })
     return trip
-  })
+  }))
   return { ok: true, id: created.id, code: created.code }
 }
 

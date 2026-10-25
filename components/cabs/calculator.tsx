@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useMemo, useState } from "react"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 
 import { FareBreakdown } from "@/components/cabs/fare-breakdown"
 import { SelectField, TextField } from "@/components/cabs/kit"

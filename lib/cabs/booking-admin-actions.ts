@@ -20,7 +20,7 @@ import { isLang } from "./lang"
 import { rupeesToPaise } from "./money"
 import { loadPricing } from "./page-data"
 import { type PlaceInput, type QuoteErrorCode, type TripRequest, quoteForClass, resolveDistance } from "./trip-quote"
-import { type MoveResult, acceptTrip, adjustQuote, cancelTrip, createTrip, loadTrip, rejectTrip, upsertCustomer } from "./trips"
+import { type MoveResult, acceptTrip, adjustQuote, cancelTrip, createTrip, loadTrip, rejectTrip, upsertCustomer, withBookingCodeRetry } from "./trips"
 
 // What the operator can do with a booking. The business comes from the signed-in session; every booking id is checked to belong to
 // it (the scoped database cannot see another business's rows at all); every change goes through the trip status graph.
@@ -181,6 +181,8 @@ async function prepareManual(input: unknown, now: Date) {
   const [pricing, classRows] = await Promise.all([loadPricing(db), db.vehicleClasses.select()])
   const cls = classRows.find((k) => k.id === d.classId)
   if (!cls) return { ok: false as const, fail: { ok: false, error: "Choose a vehicle class." } satisfies Fail }
+  // The package must be one of this business's own, whatever the trip type (the id arrives from the browser).
+  if (d.packageId && !pricing.calc.packages.some((pk) => pk.id === d.packageId)) return { ok: false as const, fail: { ok: false, error: "Choose a package from your list." } satisfies Fail }
   const req: TripRequest = {
     tripType: d.tripType,
     pickup: d.pickup as PlaceInput,
@@ -212,13 +214,17 @@ export async function createManualBooking(input: unknown): Promise<Ok<{ id: stri
   const p = await prepareManual(input, now)
   if (!p.ok) return p.fail
   const { c, d, phone, req, q } = p
-  const created = await scopedTransaction(c.dealer.id, async (tx) => {
-    const customer = await upsertCustomer(tx, phone, { verified: false, name: d.name || null, now })
-    if (d.name) await tx.customers.update({ name: d.name }, eq(customers.id, customer.id))
-    const trip = await createTrip(tx, { customerId: customer.id, req, quote: q, source: d.source, actor: c.actor, now, respondWindowMinutes: p.settings?.respondWindowMinutes ?? 30, confirmNow: true, notes: d.notes })
-    await audit(tx, { actorType: "user", actorId: c.actor.id ?? "operator", action: "trip.manual_booking", entity: "trip", entityId: trip.id, diff: { source: d.source, totalPaise: q.result.totalPaise } })
-    return trip
-  })
+  // The customer is found or created BEFORE the booking transaction: upsertCustomer handles a concurrent creation by catching a
+  // unique violation, which would abort a transaction it ran inside. Creating the customer first needs no atomicity with the trip.
+  const customer = await upsertCustomer(scopedDb(c.dealer.id), phone, { verified: false, name: d.name || null, now })
+  if (d.name) await scopedDb(c.dealer.id).customers.update({ name: d.name }, eq(customers.id, customer.id))
+  const created = await withBookingCodeRetry(() =>
+    scopedTransaction(c.dealer.id, async (tx) => {
+      const trip = await createTrip(tx, { customerId: customer.id, req, quote: q, source: d.source, actor: c.actor, now, respondWindowMinutes: p.settings?.respondWindowMinutes ?? 30, confirmNow: true, notes: d.notes })
+      await audit(tx, { actorType: "user", actorId: c.actor.id ?? "operator", action: "trip.manual_booking", entity: "trip", entityId: trip.id, diff: { source: d.source, totalPaise: q.result.totalPaise } })
+      return trip
+    }),
+  )
   refresh(created.id)
   return { ok: true, id: created.id, code: created.code }
 }

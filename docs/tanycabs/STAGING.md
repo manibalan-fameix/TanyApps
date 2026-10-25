@@ -16,7 +16,7 @@ The same code as production on its own domain (**tanystaging.in**, a separate Cl
 | Database | production Neon | its own fresh Neon database |
 | Secrets | `.env.local` | `.env.staging` |
 | Razorpay | live keys | **test** keys (`rzp_test_…`) and a test-mode webhook |
-| Deploy | `pnpm deploy` | `pnpm deploy:staging` |
+| Deploy | `pnpm run deploy production` (guarded: needs `--secrets-file`, `--confirm`, `--migrations-applied`) | `pnpm deploy:staging` (same guard, staging checks) |
 
 **Staging is only a different `ROOT_DOMAIN`.** `classifyHost` and every other piece of code read the domain from the environment; there is no staging special case (`tests/host.test.ts` runs the same host cases with both roots and checks a production host is never treated as a staging business or the reverse). Because `tanystaging.in` is its own zone, Cloudflare's free Universal certificate (the apex plus `*.tanystaging.in`) covers every host, so no paid certificate is needed.
 
@@ -27,6 +27,13 @@ What is in the repository:
 - `pnpm db:migrate:staging`, `pnpm secrets:staging` (`scripts/upload-secrets.sh staging`), `pnpm seed:staging` (`scripts/seed-staging.ts`), and `bash scripts/setup-wildcard-dns.sh staging`.
 
 `predeploy-check.sh staging` **blocks** when: `.env.staging` is missing or a core value is empty; the database is local or is production's (same host and database, whatever the options); `AUTH_SECRET`, `ENCRYPTION_KEY`, `BLIND_INDEX_KEY`, `CRON_SECRET` or `TRACKER_SECRET` equals production's; `R2_PRIVATE_BUCKET` is production's; the Razorpay key is not `rzp_test_`; the Firebase web config is missing or names production's project; `wrangler.jsonc` hard-codes a Firebase value in the staging block; a dev/test-only setting (`GEO_FIXTURE`, `FIREBASE_AUTH_EMULATOR_HOST`, `E2E`, `FIREBASE_TEST_PHONES`, …) is present; the working tree is dirty; or typecheck, lint or tests fail. `upload-secrets.sh staging` repeats the database, Razorpay and shared-secret checks, and `seed-staging.ts` refuses to run against the database named in `.env.local`.
+
+## Live-database tests and Razorpay test-mode runs
+
+Two separate documents cover them, because they carry their own safety rules (a disposable, marked test database; test keys only, nothing run
+without an explicit go-ahead): [`docs/staging/neon-test-database.md`](../staging/neon-test-database.md) and
+[`docs/staging/razorpay-test-mode-runbook.md`](../staging/razorpay-test-mode-runbook.md). The test database is a *separate role and database
+inside the staging project* (never a branch of production, and never the staging app's own database).
 
 ## The order (summary)
 

@@ -9,6 +9,7 @@ import { createUser, fillMissingUserDetails, findMembership, findUsersByContact,
 import { dealerUsers } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
 import { hashPassword } from "@/lib/auth/password"
+import { audit } from "@/lib/core/audit"
 import { rateLimit } from "@/lib/core/rate-limit"
 
 type Result = { ok: true } | { ok: false; error: string }
@@ -64,6 +65,7 @@ export async function addTeammate(input: unknown): Promise<Result> {
   }
   await setUserPasswordHash(userId, await hashPassword(password))
   await scopedDb(ctx.dealer.id).dealerUsers.insert({ userId, role: "staff" })
+  await audit(scopedDb(ctx.dealer.id), { actorType: "user", actorId: ctx.user.id, action: "team.add_staff", entity: "user", entityId: userId, diff: { role: "staff" } })
   revalidatePath("/settings/team")
   return { ok: true }
 }
@@ -77,6 +79,7 @@ export async function removeTeammate(userId: string): Promise<Result> {
   if (!target) return { ok: false, error: "That person is not on your team." }
   if (target.role === "owner") return { ok: false, error: "An owner cannot be removed." }
   await scopedDb(ctx.dealer.id).dealerUsers.delete(and(eq(dealerUsers.userId, userId), eq(dealerUsers.role, "staff"))!)
+  await audit(scopedDb(ctx.dealer.id), { actorType: "user", actorId: ctx.user.id, action: "team.remove_staff", entity: "user", entityId: userId, diff: { role: "staff" } })
   revalidatePath("/settings/team")
   return { ok: true }
 }
@@ -92,5 +95,6 @@ export async function resetTeammatePassword(userId: string, password: unknown): 
   const [target] = await scopedDb(ctx.dealer.id).dealerUsers.select(eq(dealerUsers.userId, userId))
   if (!target || target.role !== "staff") return { ok: false, error: "That person is not on your team." }
   await setUserPasswordHash(userId, await hashPassword(parsed.data))
+  await audit(scopedDb(ctx.dealer.id), { actorType: "user", actorId: ctx.user.id, action: "team.reset_password", entity: "user", entityId: userId })
   return { ok: true }
 }

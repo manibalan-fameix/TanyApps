@@ -8,8 +8,10 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core"
+import { sql } from "drizzle-orm"
 
 import { bookingStatus, carStatus, leadSource, leadStatus, mediaAngle, mediaKind, mediaStatus, priceEventType } from "./enums.ts"
 import { dealers } from "./dealers.ts"
@@ -161,12 +163,31 @@ export const bookings = pgTable(
     amount: integer("amount").notNull(),
     razorpayOrderId: text("razorpay_order_id").notNull().unique(),
     razorpayPaymentId: text("razorpay_payment_id"),
+    /**
+     * created -> paid, or created -> refund_pending when the payment cannot be honoured (the car was taken first). A refund that
+     * is owed or still travelling sits in refund_pending; refunded means Razorpay reports it processed.
+     */
     status: bookingStatus("status").notNull().default("created"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     refundedAt: timestamp("refunded_at", { withTimezone: true }),
+    /** Why a refund is owed: car_unavailable | booking_closed | dealer. */
+    refundReason: text("refund_reason"),
+    /** When the refund became owed. Set in the same statement that leaves paid, before Razorpay is called. */
+    refundRequestedAt: timestamp("refund_requested_at", { withTimezone: true }),
+    /** Razorpay's refund, once created. */
+    refundId: text("refund_id"),
+    /** Razorpay's own status for that refund: pending | processed | failed. Null while the refund is owed but not yet created. */
+    refundStatus: text("refund_status"),
+    /** The last reason a refund attempt did not complete. Short and free of secrets. */
+    refundError: text("refund_error"),
   },
-  (t) => [index("bookings_dealer_idx").on(t.dealerId), index("bookings_car_idx").on(t.carId)],
+  (t) => [
+    index("bookings_dealer_idx").on(t.dealerId),
+    index("bookings_car_idx").on(t.carId),
+    // The database's last word: one car can never have two paid bookings, whatever the application does.
+    uniqueIndex("bookings_one_paid_per_car_uq").on(t.carId).where(sql`${t.status} = 'paid'`),
+  ],
 )
 
 // Append-only (enforced by a trigger in the migration). The future valuation dataset.

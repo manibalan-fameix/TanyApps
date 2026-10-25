@@ -2,10 +2,12 @@
 //   TEST_DATABASE_URL=postgres://... pnpm test
 // It inserts rows (price events are immutable, so they cannot be cleaned up) and must never
 // be pointed at real data.
-import { eq } from "drizzle-orm"
+import { eq, inArray } from "drizzle-orm"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
-const url = process.env.TEST_DATABASE_URL
+import { testDatabaseUrl } from "./support/disposable-db"
+
+const url = testDatabaseUrl()
 
 describe.skipIf(!url)("cross-tenant isolation (live database)", () => {
   let scopedDb: typeof import("../lib/db/scoped").scopedDb
@@ -97,7 +99,8 @@ describe.skipIf(!url)("cross-tenant isolation (live database)", () => {
       }
       return "NOT BLOCKED"
     }
-    expect(await causeOf(unscopedDb.update(s.priceEvents).set({ price: 1 }))).toMatch(/append-only/)
-    expect(await causeOf(unscopedDb.delete(s.priceEvents))).toMatch(/append-only/)
+    // Aimed at this test's own cars, so a missing trigger could never rewrite anyone else's price history.
+    expect(await causeOf(unscopedDb.update(s.priceEvents).set({ price: 1 }).where(inArray(s.priceEvents.carId, [carA, carB])))).toMatch(/append-only/)
+    expect(await causeOf(unscopedDb.delete(s.priceEvents).where(inArray(s.priceEvents.carId, [carA, carB])))).toMatch(/append-only/)
   })
 })

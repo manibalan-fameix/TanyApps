@@ -1,6 +1,7 @@
 import Link from "next/link"
 import type { ReactNode } from "react"
 
+import { CabsBottomNav } from "@/components/cabs/tenant/bottom-nav"
 import { LangToggle } from "@/components/cabs/book/lang-toggle"
 import { SessionKeeper } from "@/components/cabs/book/session-keeper"
 import { DealerMark } from "@/components/dealer-mark"
@@ -13,8 +14,9 @@ import type { DealerProfile } from "@/lib/tenant/dealer"
 export function CabsShell({ dealer, lang, signedIn, children }: { dealer: DealerProfile; lang: Lang; signedIn: boolean; children: ReactNode }) {
   const t = bookingText(lang)
   return (
-    <div className="flex min-h-svh flex-col" lang={lang}>
-      <header className="border-b bg-background/90 backdrop-blur">
+    <div className="cabs-shell flex min-h-svh flex-col" lang={lang}>
+      {/* The home page is a full-screen app view with its own top bar and menu (CabsAppFrame marks itself with data-immersive). */}
+      <header className="cabs-shell-header border-b bg-background/90 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-4">
           <Link href="/" className="flex min-w-0 flex-1 items-center gap-3">
             <DealerMark name={dealer.displayName} logoUrl={dealer.logoUrl} />
@@ -32,8 +34,9 @@ export function CabsShell({ dealer, lang, signedIn, children }: { dealer: Dealer
           )}
         </div>
       </header>
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">{children}</main>
-      {dealer.whiteLabel ? null : <PoweredBy product="cabs" />}
+      <main data-cabs-main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-6 pb-[calc(5rem+var(--safe-area-inset-bottom,0px))] md:pb-6">{children}</main>
+      {dealer.whiteLabel ? null : <div className="cabs-shell-footer pb-[calc(3.5rem+var(--safe-area-inset-bottom,0px))] md:pb-0"><PoweredBy product="cabs" /></div>}
+      <CabsBottomNav lang={lang} signedIn={signedIn} />
     </div>
   )
 }

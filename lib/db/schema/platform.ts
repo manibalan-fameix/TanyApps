@@ -50,3 +50,34 @@ export const auditLog = pgTable(
   },
   (t) => [index("audit_log_entity_idx").on(t.dealerId, t.entity, t.entityId, t.at), index("audit_log_dealer_at_idx").on(t.dealerId, t.at)],
 )
+
+/**
+ * Money that needs a person, in one place: a payment that matches no order, a refund Razorpay failed or that is stuck, a double
+ * charge, a webhook that keeps failing. One row per (kind, ref), updated in place as it recurs and resolved when it clears or a
+ * person closes it. It holds identifiers and counts only: never a name, a phone number or an amount a person typed.
+ * Not tenant data (a payment can arrive before we know whose it is), so it is a global table read only by the Tany team.
+ */
+export const paymentExceptions = pgTable(
+  "payment_exceptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** unmatched_payment | duplicate_payment | refund_failed | refund_stuck | webhook_failed */
+    kind: text("kind").notNull(),
+    /** The Razorpay payment id, or our booking/order id, that the exception is about. */
+    ref: text("ref").notNull(),
+    /** The business, when known. Deliberately not a foreign key named dealer_id: this table is not tenant-scoped. */
+    businessId: uuid("business_id"),
+    /** A short, plain description of what happened and what to do. */
+    detail: text("detail").notNull().default(""),
+    /** open | resolved */
+    status: text("status").notNull().default("open"),
+    occurrences: integer("occurrences").notNull().default(1),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    /** "system" when it cleared by itself, otherwise the Tany team member. */
+    resolvedBy: text("resolved_by"),
+    resolution: text("resolution"),
+  },
+  (t) => [uniqueIndex("payment_exceptions_kind_ref_uq").on(t.kind, t.ref), index("payment_exceptions_status_idx").on(t.status, t.lastSeenAt)],
+)

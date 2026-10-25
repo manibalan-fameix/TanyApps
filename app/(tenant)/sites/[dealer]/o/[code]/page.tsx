@@ -44,7 +44,15 @@ export default async function OrderPage({ params }: { params: Promise<{ dealer: 
       </div>
 
       {status === "pending_payment" ? <PayNow code={order.code} total={order.total} name={order.customerName} phone={order.customerPhone} color={dealer.theme.primary} /> : null}
-      {order.paymentStatus === "refunded" ? <p className="rounded-xl border p-4 text-sm">Your payment of ₹{order.total.toLocaleString("en-IN")} has been refunded. It reaches your account in 5 to 7 working days.</p> : null}
+      {order.paymentStatus === "refunded" ? (
+        <p className="rounded-xl border p-4 text-sm">
+          {order.refundStatus === "failed"
+            ? `We could not complete the refund of your payment of ₹${order.total.toLocaleString("en-IN")} automatically. The restaurant and Tany have been told and will sort it out; you do not need to pay again.`
+            : order.refundStatus === "processed"
+              ? `Your payment of ₹${order.total.toLocaleString("en-IN")} has been refunded. It can take 5 to 7 working days to show in your account.`
+              : `Your payment of ₹${order.total.toLocaleString("en-IN")} is being refunded. It reaches your account in 5 to 7 working days.`}
+        </p>
+      ) : null}
 
       {order.fulfilment === "delivery" && status === "out_for_delivery" ? (
         <TrackLive code={order.code} status={status} initialRider={rider ? { name: rider.name, phone: rider.phone } : null} />

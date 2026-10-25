@@ -13,7 +13,23 @@ import { useEffect, useRef, useState } from "react"
 import { verifyDealerPhone } from "@/app/(admin)/onboarding/actions"
 import type { IndustryKey } from "@/lib/verticals/keys"
 import { Button } from "@/components/ui/button"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import { useIsMobile } from "@/hooks/use-mobile"
 import {
   InputOTP,
   InputOTPGroup,
@@ -128,87 +144,112 @@ export function PhoneVerify({
       const res = await verifyDealerPhone(await user.getIdToken(), industry)
       // This Firebase session only existed to prove the number; the app session is separate.
       await signOut(getFirebaseAuth(config))
-      if (!res.ok) return setProblem(res.error)
+      if (!res.ok) {
+        // The code was right but the number was refused: close the popup and show why under the phone field.
+        setConfirmation(null)
+        return setProblem(res.error)
+      }
       onVerified(res.phone)
       setMessage(res.notice ?? null)
       setConfirmation(null)
       setEditing(false)
     })
 
+  const isMobile = useIsMobile()
+  const onOtpOpenChange = (open: boolean) => {
+    if (!open) setConfirmation(null)
+  }
+  const otpDescription = `We sent a code to +91 ${phone}.`
+  const otpBody = (
+    <>
+      <InputOTP
+        id="phone-otp"
+        maxLength={6}
+        containerClassName="w-full"
+        value={code}
+        onChange={setCode}
+        onComplete={confirmCode}
+        autoFocus
+      >
+        <InputOTPGroup className="w-full">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <InputOTPSlot key={i} index={i} className="h-12 flex-1" />
+          ))}
+        </InputOTPGroup>
+      </InputOTP>
+      {problem ? (
+        <Alert variant="destructive" className="w-full min-w-0">
+          <AlertDescription className="[overflow-wrap:anywhere]">{problem}</AlertDescription>
+        </Alert>
+      ) : null}
+      <Button
+        type="button"
+        className="w-full"
+        disabled={busy || code.length !== 6}
+        onClick={() => confirmCode()}
+      >
+        {busy ? "Checking..." : "Verify number"}
+      </Button>
+      <div className="mt-3 flex w-full justify-between text-sm">
+        <button
+          type="button"
+          className="text-muted-foreground underline underline-offset-4"
+          onClick={() => setConfirmation(null)}
+        >
+          Change number
+        </button>
+        <button
+          type="button"
+          className="underline underline-offset-4 disabled:text-muted-foreground disabled:no-underline"
+          disabled={cooldown > 0 || busy}
+          onClick={sendCode}
+        >
+          {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
+        </button>
+      </div>
+    </>
+  )
+
   if (verified && phone === verified && !editing) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2">
-        <HugeiconsIcon
-          icon={CheckmarkCircle01Icon}
-          strokeWidth={2}
-          className="size-5 shrink-0 text-primary"
-        />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">+91 {phone}</p>
-          <p className="text-xs text-muted-foreground">
-            Verified. Buyers will call this number.
-          </p>
-          {message ? (
-            <p className="text-xs text-muted-foreground">{message}</p>
-          ) : null}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2">
+          <HugeiconsIcon
+            icon={CheckmarkCircle01Icon}
+            strokeWidth={2}
+            className="size-5 shrink-0 text-primary"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">+91 {phone}</p>
+            <p className="text-xs text-muted-foreground">
+              Verified. Buyers will call this number.
+            </p>
+            {message ? (
+              <p className="text-xs text-muted-foreground">{message}</p>
+            ) : null}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => setEditing(true)}
+          >
+            Change
+          </Button>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={() => setEditing(true)}
-        >
-          Change
-        </Button>
+        {error ? (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
       </div>
     )
   }
 
   return (
     <div className="flex flex-col gap-3">
-      <div id="phone-recaptcha" />
-      {confirmation ? (
-        <>
-          <InputOTP
-            id="phone-otp"
-            maxLength={6}
-            value={code}
-            onChange={setCode}
-            onComplete={confirmCode}
-            autoFocus
-          >
-            <InputOTPGroup>
-              {[0, 1, 2, 3, 4, 5].map((i) => (
-                <InputOTPSlot key={i} index={i} className="h-11 w-11" />
-              ))}
-            </InputOTPGroup>
-          </InputOTP>
-          <Button
-            type="button"
-            disabled={busy || code.length !== 6}
-            onClick={() => confirmCode()}
-          >
-            {busy ? "Checking..." : "Verify number"}
-          </Button>
-          <div className="flex justify-between text-sm">
-            <button
-              type="button"
-              className="text-muted-foreground underline underline-offset-4"
-              onClick={() => setConfirmation(null)}
-            >
-              Change number
-            </button>
-            <button
-              type="button"
-              className="underline underline-offset-4 disabled:text-muted-foreground disabled:no-underline"
-              disabled={cooldown > 0 || busy}
-              onClick={sendCode}
-            >
-              {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
-            </button>
-          </div>
-        </>
-      ) : (
+      <div id="phone-recaptcha" className="absolute" />
+      {!confirmation ? (
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">+91</span>
           <Input
@@ -229,8 +270,33 @@ export function PhoneVerify({
             {busy ? "Sending..." : "Send code"}
           </Button>
         </div>
+      ) : null}
+      {isMobile ? (
+        <Sheet open={!!confirmation} onOpenChange={onOtpOpenChange}>
+          <SheetContent side="bottom" className="rounded-t-2xl pb-6">
+            <SheetHeader>
+              <SheetTitle>Enter the 6-digit code</SheetTitle>
+              <SheetDescription>{otpDescription}</SheetDescription>
+            </SheetHeader>
+            <div className="flex w-full min-w-0 flex-col items-center gap-3 px-4">
+              {otpBody}
+            </div>
+          </SheetContent>
+        </Sheet>
+      ) : (
+        <Dialog open={!!confirmation} onOpenChange={onOtpOpenChange}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Enter the 6-digit code</DialogTitle>
+              <DialogDescription>{otpDescription}</DialogDescription>
+            </DialogHeader>
+            <div className="flex w-full min-w-0 flex-col items-center gap-3">
+              {otpBody}
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
-      {message && !problem ? (
+      {message && !problem && !confirmation ? (
         <p className="text-xs text-muted-foreground">{message}</p>
       ) : null}
       {!config ? (
@@ -238,10 +304,12 @@ export function PhoneVerify({
           Phone verification is not set up yet.
         </p>
       ) : null}
-      {(problem ?? error) ? (
-        <p role="alert" className="text-sm text-destructive">
-          {problem ?? error}
-        </p>
+      {(confirmation ? error : (problem ?? error)) ? (
+        <Alert variant="destructive">
+          <AlertDescription>
+            {confirmation ? error : (problem ?? error)}
+          </AlertDescription>
+        </Alert>
       ) : null}
     </div>
   )

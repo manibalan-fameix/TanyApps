@@ -1,4 +1,4 @@
-// Live-location tracker for deliveries. Runs on Cloudflare as its own small Worker (deploy with `pnpm deploy:tracker`).
+// Live-location tracker for deliveries. Runs on Cloudflare as its own small Worker (deploy with `pnpm run deploy:tracker staging|production`).
 //
 // Every order gets one Durable Object. It keeps the rider's latest position (so a page that opens late sees it at once)
 // and relays each new position to everyone watching, over WebSockets. The rider's phone sends tiny messages, the

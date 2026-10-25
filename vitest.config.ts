@@ -6,6 +6,8 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     environment: "node",
+    // Refuses to start live-database tests against anything that is not an explicitly disposable test database.
+    globalSetup: ["tests/support/global-setup.ts"],
     coverage: {
       provider: "v8",
       // `pnpm test:coverage` enforces full coverage of the money code; ordinary `pnpm test` does not collect coverage.

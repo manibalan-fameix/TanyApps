@@ -3,7 +3,10 @@
  * OpenStreetMap services answer. Callers hold a place by its `placeId` (which Google lets us store indefinitely) and ask for
  * details only after the person has chosen.
  */
-export type PlaceSuggestion = { placeId: string; primary: string; secondary: string }
+export type PlaceSuggestion = { placeId: string; primary: string; secondary: string; /** Straight-line metres from the `origin` given to autocomplete, when there was one. */ distanceM?: number }
+
+/** Where the customer is now, to rank and measure suggestions from. */
+export type Origin = { lat: number; lng: number }
 
 export type PlaceDetail = {
   placeId: string
@@ -32,7 +35,7 @@ export type PlaceRef = { placeId: string; lat?: number; lng?: number }
 export interface PlacesProvider {
   readonly name: "google" | "osm"
   /** Suggestions for what the person has typed so far. `sessionToken` groups the typing and the final choice for billing. */
-  autocomplete(query: string, sessionToken: string): Promise<PlaceSuggestion[]>
+  autocomplete(query: string, sessionToken: string, origin?: Origin): Promise<PlaceSuggestion[]>
   /** The chosen place. Passing the same `sessionToken` ends the autocomplete session. */
   details(placeId: string, sessionToken: string): Promise<PlaceDetail | null>
   /** Road distance and time by car. Null when no route could be found or the service is unavailable. */

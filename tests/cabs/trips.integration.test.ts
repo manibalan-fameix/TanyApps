@@ -4,7 +4,9 @@ import { randomBytes, randomUUID } from "node:crypto"
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 
-const url = process.env.TEST_DATABASE_URL
+import { testDatabaseUrl } from "../support/disposable-db"
+
+const url = testDatabaseUrl()
 
 describe.skipIf(!url)("bookings (live database)", () => {
   let db: typeof import("../../lib/db/client")
@@ -387,6 +389,87 @@ describe.skipIf(!url)("bookings (live database)", () => {
       await db2.trips.update({ createdAt: new Date(Date.now() - 40 * 86_400_000) }, drizzle.eq(s.trips.id, ids[1].id))
       expect(await usage.monthlyBookingCount(db2, new Date())).toBe(1)
       expect(await usage.monthlyBookingCount(scoped.scopedDb(await freshDealer("empty")), new Date())).toBe(0)
+    })
+  })
+
+  // ---------- the booking code clashes: the whole transaction is run again ----------
+
+  describe("booking code collision (live database)", () => {
+    const makeTrip = async (dealer: string, customerId: string, codes: string[], before?: (tx: import("../../lib/db/scoped").ScopedDb) => Promise<void>) => {
+      const { req, q } = quoteFor()
+      let attempts = 0
+      const trip = await tr.withBookingCodeRetry(() =>
+        scoped.scopedTransaction(dealer, async (tx) => {
+          attempts++
+          await before?.(tx)
+          return tr.createTrip(tx, { customerId, req, quote: { ...q, classId: await classOf(dealer) }, source: "web", actor: { type: "customer", id: customerId }, now: new Date(), respondWindowMinutes: 30, makeCode: () => codes.shift() as string })
+        }),
+      )
+      return { trip, attempts }
+    }
+    const codeOf = () => `${randomBytes(3).toString("hex")}`.toUpperCase().replace(/[^A-Z0-9]/g, "X").slice(0, 6).padEnd(6, "X")
+    const tripsOf = async (dealer: string, customerId: string) => scoped.scopedDb(dealer).trips.select(drizzle.eq(s.trips.customerId, customerId))
+
+    it("a clash is retried from the start with a new code, and exactly one trip results", async () => {
+      const c = await newCustomer(A)
+      const taken = (await newTrip(A)).code
+      const fresh = codeOf()
+      const { trip, attempts } = await makeTrip(A, c.id, [taken, taken, fresh])
+      expect([trip.code, attempts]).toEqual([fresh, 3])
+      expect(await tripsOf(A, c.id)).toHaveLength(1)
+      const events = await scoped.scopedDb(A).tripEvents.select(drizzle.eq(s.tripEvents.tripId, trip.id))
+      expect(events.filter((e) => e.type === "created")).toHaveLength(1)
+    })
+
+    it("work done earlier in the failed attempt is rolled back, not duplicated (no partial booking)", async () => {
+      const c = await newCustomer(A)
+      const taken = (await newTrip(A)).code
+      const marker = `probe-${randomUUID().slice(0, 8)}`
+      const outbox = await import("../../lib/core/notifications/outbox")
+      const { trip, attempts } = await makeTrip(A, c.id, [taken, codeOf()], async (tx) => {
+        await outbox.enqueue(tx, { event: marker, recipientType: "customer", recipient: "+919876500001", channel: "wa_link", template: "probe", payload: {} })
+      })
+      expect(attempts).toBe(2)
+      expect(await tripsOf(A, c.id)).toHaveLength(1)
+      const sent = await scoped.scopedDb(A).notifications.select(drizzle.eq(s.notifications.event, marker))
+      expect(sent).toHaveLength(1) // the first attempt's notification was rolled back with its transaction
+      expect(trip.code).not.toBe(taken)
+    })
+
+    it("gives up after five clashes and leaves no trip behind", async () => {
+      const c = await newCustomer(A)
+      const taken = (await newTrip(A)).code
+      await expect(makeTrip(A, c.id, Array(10).fill(taken))).rejects.toThrow()
+      expect(await tripsOf(A, c.id)).toHaveLength(0)
+    })
+
+    it("an unrelated database error is thrown at once, not retried", async () => {
+      const c = await newCustomer(A)
+      const { req, q } = quoteFor()
+      let attempts = 0
+      await expect(
+        tr.withBookingCodeRetry(() =>
+          scoped.scopedTransaction(A, async (tx) => {
+            attempts++
+            return tr.createTrip(tx, { customerId: c.id, req, quote: { ...q, classId: randomUUID() }, source: "web", actor: { type: "customer", id: c.id }, now: new Date(), respondWindowMinutes: 30 })
+          }),
+        ),
+      ).rejects.toThrow()
+      expect(attempts).toBe(1)
+      expect(await tripsOf(A, c.id)).toHaveLength(0)
+    })
+
+    it("the same code may exist at two different businesses (the code is unique per business)", async () => {
+      const bCustomer = await newCustomer(B)
+      const a = await newTrip(A)
+      const { trip } = await makeTrip(B, bCustomer.id, [a.code])
+      expect(trip.code).toBe(a.code)
+    })
+
+    it("two requests creating the same customer at once end up with one customer (done outside any booking transaction)", async () => {
+      const phone = `+9198${Math.floor(10_000_000 + Math.random() * 89_999_999)}`
+      const ids = await Promise.all(Array.from({ length: 6 }, () => tr.upsertCustomer(scoped.scopedDb(A), phone, { verified: false, now: new Date() })))
+      expect(new Set(ids.map((i) => i.id)).size).toBe(1)
     })
   })
 })

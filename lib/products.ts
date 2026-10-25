@@ -76,3 +76,9 @@ export const PRODUCT_EXAMPLES: Record<ProductKey, { lead: string; focus: string 
   tanysalon: { lead: "I own a ", focus: "salon" },
   tanysport: { lead: "I run a ", focus: "cricket turf" },
 }
+
+/** Product name (TanyMotos, TanyEats, ...) and brand key for the product behind an industry. */
+export function productForIndustry(industry: IndustryKey) {
+  const key = INDUSTRY_PRODUCT[industry]
+  return { key, name: PRODUCTS.find((p) => p.key === key)?.name ?? "Tany" }
+}

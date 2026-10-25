@@ -36,6 +36,7 @@ const UPDATE_PAYLOAD: Record<string, object> = {
   customers: { name: "x" },
   customerAddresses: { label: "x" },
   customerContacts: { name: "x" },
+  customerIdentities: { provider: "google.com" },
   trips: { notesEnc: "x" },
   tripEvents: { type: "x" },
   dealerUsers: { role: "staff" },

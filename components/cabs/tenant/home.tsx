@@ -2,13 +2,15 @@ import { asc } from "drizzle-orm"
 import { Call02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
-import { BookingFlow, type InitialDraft } from "@/components/cabs/book/booking-flow"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import type { InitialDraft } from "@/components/cabs/book/booking-flow"
+import { CabsAppFrame } from "@/components/cabs/tenant/app-frame"
+import { PoweredBy } from "@/components/tenant/powered-by"
 import { buttonVariants } from "@/components/ui/button"
 import { bookingText } from "@/lib/cabs/booking-copy"
+import { fmtIst } from "@/lib/cabs/customer-page"
 import { currentLang } from "@/lib/cabs/lang-server"
-import { picksFor } from "@/lib/cabs/quick-picks"
-import { loadBookingOptions, repeatDraft } from "@/lib/cabs/trip-data"
+import { mapCentreFor, picksFor } from "@/lib/cabs/quick-picks"
+import { loadBookingOptions, loadCustomerTrips, repeatDraft } from "@/lib/cabs/trip-data"
 import { getPlacesProvider } from "@/lib/core/geo/places-provider"
 import { currentCustomer } from "@/lib/core/login/customer"
 import { vehicleClasses } from "@/lib/db/schema"
@@ -38,54 +40,40 @@ export async function CabsHome({ dealer, search }: { dealer: DealerProfile; sear
   const bookable = offered.length > 0 && billingState(dealer).hasAccess && getPlacesProvider() !== null
   const repeatId = typeof search.repeat === "string" ? search.repeat : null
   const initial: InitialDraft | null = customer && repeatId && /^[0-9a-f-]{36}$/.test(repeatId) ? await repeatDraft(db, repeatId, customer.id) : null
-  const quick = picksFor(cities).map((q) => ({ key: q.key, label: lang === "ta" ? q.ta : q.en }))
+  // The last few rides, for the "Recent" shortcut: tapping one books it again.
+  const recent = customer ? (await loadCustomerTrips(db, customer.id)).slice(0, 5).map((tr) => ({ id: tr.id, route: [tr.pickup, tr.drop].filter(Boolean).join(" → "), when: fmtIst(tr.startAt, lang), lat: tr.pickupAt?.lat ?? null, lng: tr.pickupAt?.lng ?? null })) : []
+  const quick = picksFor(cities).slice(0, 5).map((q) => ({ key: q.key, kind: q.kind, label: lang === "ta" ? q.ta : q.en, lat: q.lat, lng: q.lng }))
+  const mapCentre = mapCentreFor(cities, dealer.city)
+
+  const intro = (
+    <section className="flex flex-col gap-3">
+      <h1 className="text-xl font-semibold tracking-tight">{dealer.displayName}</h1>
+      <p className="text-sm text-muted-foreground">{cities.length > 0 ? t.servesCities.replace("{cities}", cities.join(", ")) : t.servesFrom.replace("{city}", dealer.city)}</p>
+      {dealer.phone ? (
+        <div className="flex flex-wrap gap-2">
+          <a href={`tel:${dealer.phone}`} className={cn(buttonVariants({ size: "lg" }), "rounded-xl")}>
+            <HugeiconsIcon icon={Call02Icon} strokeWidth={2} className="size-5" />
+            {t.callOperator.replace("{operator}", dealer.phone.replace(/^\+91/, "+91 "))}
+          </a>
+          <a href={whatsappLink(dealer.phone, `Hi ${dealer.displayName}, I would like to book a cab.`)} target="_blank" rel="noreferrer" className={cn(buttonVariants({ size: "lg", variant: "outline" }), "rounded-xl")}>
+            {t.whatsapp}
+          </a>
+        </div>
+      ) : null}
+    </section>
+  )
 
   return (
-    <div className="flex flex-col gap-8">
-      <section className="flex flex-col gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{bookable ? t.homeTitle : dealer.displayName}</h1>
-        <p className="text-muted-foreground">{bookable ? t.homeSub : cities.length > 0 ? t.servesCities.replace("{cities}", cities.join(", ")) : t.servesFrom.replace("{city}", dealer.city)}</p>
-        {dealer.phone ? (
-          <div className="flex flex-wrap gap-2">
-            <a href={`tel:${dealer.phone}`} className={cn(buttonVariants({ size: "lg", variant: bookable ? "outline" : "default" }))}>
-              <HugeiconsIcon icon={Call02Icon} strokeWidth={2} className="size-5" />
-              {t.callOperator.replace("{operator}", dealer.phone.replace(/^\+91/, "+91 "))}
-            </a>
-            {bookable ? null : (
-              <a href={whatsappLink(dealer.phone, `Hi ${dealer.displayName}, I would like to book a cab.`)} target="_blank" rel="noreferrer" className={cn(buttonVariants({ size: "lg", variant: "outline" }))}>
-                {t.whatsapp}
-              </a>
-            )}
-          </div>
-        ) : null}
-      </section>
-
-      {bookable ? (
-        <section className="mx-auto w-full max-w-xl">
-          <BookingFlow operator={dealer.displayName} lang={lang} signedIn={Boolean(customer)} minStart={new Date(now.getTime() + 330 * 60_000 + Math.max(settings[0]?.minLeadMinutes ?? 0, 15) * 60_000).toISOString().slice(0, 16)} quick={quick} localPackages={options.localPackages} tours={options.tours} initial={initial} resume={search.resume === "1"} />
-        </section>
-      ) : null}
-
-      {offered.length > 0 ? (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-semibold">{t.ourVehicles}</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {offered.map((c) => (
-              <Card key={c.id}>
-                {c.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={c.imageUrl} alt={c.name} className="aspect-video w-full rounded-t-xl object-cover" />
-                ) : null}
-                <CardHeader>
-                  <CardTitle>{c.name}</CardTitle>
-                  <CardDescription>{[t.seatsN.replace("{n}", String(c.seats)), t.bagsN.replace("{n}", String(c.bags)), c.ac ? t.acLabel : null].filter(Boolean).join(" · ")}</CardDescription>
-                </CardHeader>
-                {c.description ? <CardContent className="text-sm text-muted-foreground">{c.description}</CardContent> : null}
-              </Card>
-            ))}
-          </div>
-        </section>
-      ) : null}
-    </div>
+    <CabsAppFrame
+      dealer={{ name: dealer.displayName, logoUrl: dealer.logoUrl, phone: dealer.phone }}
+      lang={lang}
+      signedIn={Boolean(customer)}
+      customerName={customer?.name ?? null}
+      map={{ centre: mapCentre.centre, zoom: mapCentre.zoom }}
+      flow={bookable ? { operator: dealer.displayName, lang, signedIn: Boolean(customer), minStart: new Date(now.getTime() + 330 * 60_000 + Math.max(settings[0]?.minLeadMinutes ?? 0, 15) * 60_000).toISOString().slice(0, 16), quick, localPackages: options.localPackages, tours: options.tours, initial, resume: search.resume === "1", recent } : null}
+      intro={intro}
+    >
+      {dealer.whiteLabel ? null : <PoweredBy product="cabs" className="mt-auto border-t-0 pt-6 pb-0" />}
+    </CabsAppFrame>
   )
 }

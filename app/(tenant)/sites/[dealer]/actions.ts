@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, eq, inArray, sql } from "drizzle-orm"
+import { asc, eq, inArray } from "drizzle-orm"
 import { z } from "zod"
 
 import { razorpayCredentials } from "@/lib/billing/razorpay"
@@ -10,13 +10,13 @@ import { scopedDb } from "@/lib/db/scoped"
 import { rateLimit } from "@/lib/core/rate-limit"
 import { createFoodOrder, verifyBookingPaymentSignature } from "@/lib/route/razorpay"
 import { applyOrderPayment, expireUnpaidOrders, onlinePaymentsAvailable, payoutAccountFor } from "@/lib/restaurant/payments"
-import { checkoutSchema, coordsToStore, couponDiscount, newOrderCode, priceOrder } from "@/lib/restaurant/orders"
+import { checkoutSchema, coordsToStore, couponDiscount, priceOrder } from "@/lib/restaurant/orders"
 import { paymentOptions, readOrderSettings } from "@/lib/restaurant/settings"
 import { findZone } from "@/lib/restaurant/delivery"
 import { type Place, pincodeCentre, reverseGeocode, searchPlaces } from "@/lib/restaurant/geocode"
 import { validCoords } from "@/lib/restaurant/location"
 import { checkRadius, formatKm, readServiceArea } from "@/lib/restaurant/service-area"
-import { logReserved, releaseOrderStock, releaseStock, reserveStock } from "@/lib/restaurant/stock-server"
+import { cancelAndRestock, placeOrderAtomically } from "@/lib/restaurant/stock-server"
 import { tenantContext } from "@/lib/core/guards"
 import type { DealerProfile } from "@/lib/tenant/dealer"
 
@@ -107,15 +107,14 @@ export async function placeOrder(input: unknown): Promise<{ ok: true; code: stri
   // A fully discounted order has nothing to charge, so it is settled at the counter like any other.
   const online = data.paymentMethod === "online" && priced.total >= 1
 
-  // Take the stock first. It is the step that can lose a race, and it is put back if the order cannot be saved.
-  const taken = await reserveStock(dealer.id, priced.lines)
-  if (!taken.ok) return { ok: false, error: taken.error }
-
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const code = newOrderCode()
-    try {
-      await db.orders.insert({
-        code,
+  // Stock, order and stock log are written in ONE transaction (see placeOrderAtomically): a shortage, a failed insert or a crash
+  // leaves the stock exactly as it was. Razorpay is called only after that has committed.
+  let placed: Awaited<ReturnType<typeof placeOrderAtomically>>
+  try {
+    placed = await placeOrderAtomically(dealer.id, {
+      lines: priced.lines,
+      couponCode: priced.discount > 0 ? data.couponCode : null,
+      order: {
         customerName: data.name,
         customerPhone: data.phone,
         fulfilment: data.fulfilment,
@@ -133,35 +132,28 @@ export async function placeOrder(input: unknown): Promise<{ ok: true; code: stri
         paymentMethod: online ? "online" : "cod",
         // An online order is not on the kitchen's list until the payment is confirmed.
         status: online ? "pending_payment" : "new",
-      })
-    } catch (e) {
-      const pg = (e as { code?: string; cause?: { code?: string } }).cause?.code ?? (e as { code?: string }).code
-      if (pg === "23505") continue
-      console.error("order insert failed")
-      await releaseStock(dealer.id, taken.reserved, null)
-      return { ok: false, error: "Something went wrong. Please try again." }
-    }
-
-    await logReserved(dealer.id, taken.reserved, `Order ${code}`)
-    if (priced.discount > 0)
-      await db.coupons.update({ usedCount: sql`${coupons.usedCount} + 1` as unknown as number }, eq(coupons.code, data.couponCode))
-    if (!online) return { ok: true, code, checkout: null }
-
-    try {
-      const rz = await createFoodOrder({ amount: priced.total, receipt: code, linkedAccountId: payoutAccountFor(dealer), notes: { dealer_id: dealer.id, order_code: code } })
-      const checkout = rz ? checkoutFor(dealer.displayName, code, rz.orderId, priced.total) : null
-      if (!rz || !checkout) throw new Error("payments unavailable")
-      await db.orders.update({ razorpayOrderId: rz.orderId }, eq(orders.code, code))
-      return { ok: true, code, checkout }
-    } catch (error) {
-      console.error(`razorpay order failed: ${error instanceof Error ? error.message : "unknown"}`)
-      await db.orders.update({ status: "cancelled", stockReleased: true }, eq(orders.code, code))
-      await releaseOrderStock(dealer.id, code, "payment could not start")
-      return { ok: false, error: "We could not start the payment. Please try again, or choose pay on delivery." }
-    }
+      },
+    })
+  } catch {
+    console.error("order insert failed")
+    return { ok: false, error: "Something went wrong. Please try again." }
   }
-  await releaseStock(dealer.id, taken.reserved, null)
-  return { ok: false, error: "Something went wrong. Please try again." }
+  if (!placed.ok) return { ok: false, error: placed.error }
+  const code = placed.code
+  if (!online) return { ok: true, code, checkout: null }
+
+  try {
+    const rz = await createFoodOrder({ amount: priced.total, receipt: code, linkedAccountId: payoutAccountFor(dealer), notes: { dealer_id: dealer.id, order_code: code } })
+    const checkout = rz ? checkoutFor(dealer.displayName, code, rz.orderId, priced.total) : null
+    if (!rz || !checkout) throw new Error("payments unavailable")
+    await db.orders.update({ razorpayOrderId: rz.orderId }, eq(orders.code, code))
+    return { ok: true, code, checkout }
+  } catch (error) {
+    console.error(`razorpay order failed: ${error instanceof Error ? error.message : "unknown"}`)
+    // Only while it is still waiting for payment, and the stock goes back with the cancel, once.
+    await cancelAndRestock(dealer.id, { code }, ["pending_payment"], "payment could not start")
+    return { ok: false, error: "We could not start the payment. Please try again, or choose pay on delivery." }
+  }
 }
 
 /** Called after Razorpay Checkout succeeds. The signature proves this order was really paid. */
@@ -173,7 +165,7 @@ export async function confirmOrderPayment(input: { orderId: string; paymentId: s
   try {
     const r = await applyOrderPayment(input.orderId, input.paymentId, new Date(), ctx.dealer.id)
     if (!r.found || !r.code) return { ok: false, error: "We could not find that order." }
-    if (r.refunded) return { ok: false, error: "This order expired before your payment arrived, so it has been refunded." }
+    if (r.refunded) return { ok: false, error: "This order expired before your payment arrived, so your payment is being refunded." }
     return { ok: true, code: r.code }
   } catch (error) {
     console.error(`confirm order payment failed: ${error instanceof Error ? error.message : "unknown"}`)
@@ -200,12 +192,9 @@ export async function cancelPendingOrder(code: string): Promise<{ ok: true } | F
   if (!ctx) return unavailable
   if (!(await rateLimit(`cancel-pending:${ctx.ip}`, 20, 10 * 60_000))) return { ok: false, error: "Too many tries. Please wait a moment." }
   if (!/^[A-Za-z0-9]{6}$/.test(code)) return { ok: false, error: "Order not found." }
-  const db = scopedDb(ctx.dealer.id)
-  const rows = await db.orders
-    .update({ status: "cancelled", stockReleased: true, updatedAt: new Date() }, and(eq(orders.code, code.toUpperCase()), eq(orders.status, "pending_payment"))!)
-    .returning({ code: orders.code })
-  if (rows.length === 0) return { ok: false, error: "This order can no longer be cancelled here." }
-  await releaseOrderStock(ctx.dealer.id, rows[0].code, "cancelled by guest")
+  // The cancel and the stock coming back are one step, and only one caller can win it (a guest double-tap, the expiry job).
+  const cancelled = await cancelAndRestock(ctx.dealer.id, { code: code.toUpperCase() }, ["pending_payment"], "cancelled by guest")
+  if (!cancelled) return { ok: false, error: "This order can no longer be cancelled here." }
   return { ok: true }
 }
 

@@ -50,12 +50,15 @@ Add rows to `data/variants/chennai-top40.csv` (or another file) and run
 
 ```bash
 pnpm typecheck && pnpm lint
-pnpm test                                    # unit tests
-TEST_DATABASE_URL=postgres://... pnpm test   # also runs the live-database tests
+pnpm test                                    # unit tests; the live-database tests skip unless a disposable test database is configured
+pnpm test:db check                           # verify a configured test database is safe (changes nothing)
 ```
 
 The live-database tests need a **disposable** migrated database: they insert rows, and price events
-are append-only so they cannot be cleaned up.
+are append-only so they cannot be cleaned up. They refuse to run against anything that is not explicitly
+marked disposable, uses a superuser or owner role, or looks like production. Setup, the safe commands and the
+Neon driver checks are in [`docs/staging/neon-test-database.md`](docs/staging/neon-test-database.md); there is no way
+to point them at a database by accident.
 
 End-to-end tests (Playwright) run the add-a-car flow on an emulated Android phone, including an
 emulated 3G run and an offline recovery. They need a migrated, seeded database:

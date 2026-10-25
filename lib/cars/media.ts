@@ -57,7 +57,7 @@ export async function requestUpload(dealerId: string, req: UploadRequest): Promi
 export async function confirmUpload(
   dealerId: string,
   p: { carId: string; mediaId: string; width?: number; height?: number; durationSec?: number },
-): Promise<Result<object>> {
+): Promise<Result<{ videoQueued?: boolean }>> {
   const db = scopedDb(dealerId)
   const [row] = await db.carMedia.select(and(eq(carMedia.id, p.mediaId), eq(carMedia.carId, p.carId)), { limit: 1 })
   if (!row) return { ok: false, error: "not_found" }
@@ -91,7 +91,13 @@ export async function confirmUpload(
       await storage.remove(o.r2Key).catch(() => {}) // best effort: an orphaned object is harmless
     }
   } else if (row.kind === "video") {
-    await enqueueVideoJob({ dealerId, carId: p.carId, mediaId: row.id })
+    const queued = await enqueueVideoJob({ dealerId, carId: p.carId, mediaId: row.id })
+    if (!queued.queued) {
+      // Nothing will process it right now. Do not leave it "processing" for ever: the original is safe in storage, and the worker
+      // host picks up videos still waiting. Conditional, so it never overwrites a job that already finished.
+      await db.carMedia.update({ status: "uploaded" }, and(eq(carMedia.id, row.id), eq(carMedia.status, "processing"))!)
+      return { ok: true, videoQueued: false }
+    }
   }
   return { ok: true }
 }

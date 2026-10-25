@@ -14,3 +14,4 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Need a component? Add it with `pnpm dlx shadcn@latest add <component>` — do not hand-roll custom equivalents or introduce other UI libraries (MUI, Chakra, Ant, etc.).
 - Style with the theme's CSS variables/Tailwind tokens in `app/globals.css`; no hard-coded colors or ad-hoc design tokens.
 - Use `hugeicons` for icons; do not add other icon libraries.
+- Toasts: sileo only, through `@/lib/toast` (`toast.success | error | warning | info | message | promise`, with `action` for buttons). Never import `sileo`, `sonner` or any other toast/notification library directly, and never use `alert()`. The `<Toaster />` (top-center, theme-aware) is mounted once per surface layout from `components/ui/toaster.tsx`; a new surface layout must mount it. ESLint enforces the import rule.

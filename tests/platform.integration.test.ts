@@ -1,9 +1,12 @@
 // Live test of audit_log and the notifications outbox. Runs only when TEST_DATABASE_URL points at a DISPOSABLE, migrated
 // database (audit rows are append-only, so they cannot be cleaned up; see tenant-leak.integration.test.ts).
 import { randomBytes } from "node:crypto"
+import { eq } from "drizzle-orm"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
-const url = process.env.TEST_DATABASE_URL
+import { testDatabaseUrl } from "./support/disposable-db"
+
+const url = testDatabaseUrl()
 
 describe.skipIf(!url)("audit log and outbox (live database)", () => {
   let scopedDb: typeof import("../lib/db/scoped").scopedDb
@@ -47,8 +50,9 @@ describe.skipIf(!url)("audit log and outbox (live database)", () => {
   })
 
   it("cannot be edited or deleted, even by code that tries", async () => {
-    await expect(unscopedDb.update(s.auditLog).set({ action: "hacked" })).rejects.toThrow()
-    await expect(unscopedDb.delete(s.auditLog)).rejects.toThrow()
+    // Aimed at this test's own rows, so a missing trigger could never rewrite anyone else's audit trail.
+    await expect(unscopedDb.update(s.auditLog).set({ action: "hacked" }).where(eq(s.auditLog.dealerId, A))).rejects.toThrow()
+    await expect(unscopedDb.delete(s.auditLog).where(eq(s.auditLog.dealerId, A))).rejects.toThrow()
   })
 
   it("queues a notification with the recipient encrypted at rest, and builds the wa.me link from it", async () => {

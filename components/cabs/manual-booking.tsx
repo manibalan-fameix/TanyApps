@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 
 import { FareLines } from "@/components/cabs/book/fare-lines"
 import { SelectField, TextField } from "@/components/cabs/kit"

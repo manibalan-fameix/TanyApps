@@ -9,7 +9,7 @@ import { createHmac } from "node:crypto"
  * Normalise the value first (an E.164 phone, an upper-case registration number with no spaces); different spellings of the
  * same thing would otherwise hash differently.
  */
-export type BlindIndexPurpose = "phone" | "email" | "vehicle_reg" | "licence"
+export type BlindIndexPurpose = "phone" | "email" | "vehicle_reg" | "licence" | "identity"
 
 function getKey(): Buffer {
   const raw = process.env.BLIND_INDEX_KEY
@@ -30,4 +30,6 @@ export function normalizePhone(input: string): string | null {
   return m ? `+91${m[1]}` : null
 }
 
+/** A Firebase uid (a Google, Facebook or email sign-in) as a keyed hash, so the uid itself is never stored. */
+export const identityHash = (uid: string) => blindIndex("identity", uid)
 export const phoneHash = (e164: string) => blindIndex("phone", e164)

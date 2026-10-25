@@ -8,6 +8,8 @@ import { z } from "zod"
 
 import { unscopedDb } from "../db/client"
 import { dealerUsers } from "../db/schema"
+import { getDealerContext } from "./context"
+import { ACTIVE_BUSINESS_COOKIE } from "./active-business"
 
 import { signIn, signOut } from "./index"
 import { rateLimit } from "../core/rate-limit"
@@ -47,6 +49,8 @@ export async function firebaseAccountExists(idToken: string): Promise<boolean> {
 export async function signInWithFirebaseToken(idToken: string): Promise<FirebaseSignInResult> {
   try {
     await signIn("firebase", { idToken, redirect: false })
+    // A new sign-in asks which product to open again.
+    ;(await cookies()).delete(ACTIVE_BUSINESS_COOKIE)
     return { ok: true }
   } catch (error) {
     if (error instanceof AuthError) {
@@ -66,6 +70,7 @@ export async function signInTeammate(email: string, password: string): Promise<b
   if (!(await rateLimit(`teammate-login:${parsed.data.email}`, 10, 10 * 60_000, { failClosed: true }))) return false
   try {
     await signIn("teammate", { email: parsed.data.email, password: parsed.data.password, redirect: false })
+    ;(await cookies()).delete(ACTIVE_BUSINESS_COOKIE)
     return true
   } catch (error) {
     if (error instanceof AuthError) return false
@@ -116,5 +121,20 @@ export async function signOutAction() {
   const cookieStore = await cookies()
   cookieStore.delete(DEV_BYPASS_COOKIE)
   cookieStore.delete(LOCAL_LOGIN_COOKIE)
+  cookieStore.delete(ACTIVE_BUSINESS_COOKIE)
   await signOut({ redirectTo: "/login" })
+}
+
+/**
+ * Opens one of the signed-in user's businesses. The id comes from the client, so it is only ever checked against the
+ * user's own memberships (`businesses`); anything else is ignored and the chooser stays.
+ */
+export async function selectBusiness(businessId: string): Promise<void> {
+  const ctx = await getDealerContext()
+  if (ctx.status !== "ok") redirect("/login")
+  if (ctx.businesses?.some((b) => b.id === businessId)) {
+    ;(await cookies()).set(ACTIVE_BUSINESS_COOKIE, businessId, { httpOnly: true, sameSite: "lax", path: "/", secure: process.env.NODE_ENV === "production" })
+    redirect("/dashboard")
+  }
+  redirect("/choose-product")
 }

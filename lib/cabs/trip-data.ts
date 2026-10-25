@@ -26,6 +26,8 @@ export function placeText(p: TripPlace | null | undefined): { name: string; addr
 
 export type TripView = {
   id: string
+  /** Where the trip starts, when its coordinates are known. */
+  pickupAt: { lat: number; lng: number } | null
   code: string
   status: Trip["status"]
   tripType: Trip["tripType"]
@@ -52,6 +54,7 @@ export type TripView = {
 export function toTripView(t: Trip, className: string): TripView {
   return {
     id: t.id,
+    pickupAt: t.pickup.lat !== null && t.pickup.lng !== null ? { lat: t.pickup.lat, lng: t.pickup.lng } : null,
     code: t.code,
     status: t.status,
     tripType: t.tripType,

@@ -4,7 +4,9 @@ import { createHmac, randomBytes } from "node:crypto"
 import { eq } from "drizzle-orm"
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
-const url = process.env.TEST_DATABASE_URL
+import { testDatabaseUrl } from "./support/disposable-db"
+
+const url = testDatabaseUrl()
 
 const refundPayment = vi.fn()
 vi.mock("../lib/route/razorpay", async (importActual) => ({
@@ -41,12 +43,12 @@ describe.skipIf(!url)("Razorpay order.paid + payment.captured (live database)", 
   })
   beforeEach(() => refundPayment.mockReset().mockResolvedValue({ refundId: "rfnd_1" }))
 
-  async function order(status: "pending_payment" | "cancelled") {
+  async function order(status: "pending_payment" | "cancelled", extra: Partial<typeof import("../lib/db/schema").orders.$inferInsert> = {}) {
     n++
     const rzp = `order_${tag}${n}`
     const [o] = await unscopedDb
       .insert(s.orders)
-      .values({ dealerId, code: randomBytes(4).toString("hex").toUpperCase().slice(0, 6), customerName: "T", customerPhone: "+919999999999", fulfilment: "pickup", lines: [], subtotal: 250, total: 250, paymentMethod: "online", status, razorpayOrderId: rzp })
+      .values({ dealerId, code: randomBytes(4).toString("hex").toUpperCase().slice(0, 6), customerName: "T", customerPhone: "+919999999999", fulfilment: "pickup", lines: [], subtotal: 250, total: 250, paymentMethod: "online", status, razorpayOrderId: rzp, ...extra })
       .returning()
     return { id: o.id, rzp, pay: `pay_${tag}${n}` }
   }
@@ -122,6 +124,60 @@ describe.skipIf(!url)("Razorpay order.paid + payment.captured (live database)", 
     expect((await row(o.id)).paymentStatus).toBe("refunded")
     expect((await send("payment.captured", o)).status).toBe(200) // the other event afterwards: nothing more to do
     expect(refundPayment).toHaveBeenCalledTimes(2) // one failed attempt, one that worked
+  })
+
+  it("recovers a refund claim left behind by a crash, with the same logical refund and no second one", async () => {
+    // The process died after Razorpay accepted the refund but before the order was marked refunded: the claim is stale.
+    const stale = new Date(Date.now() - 6 * 60_000)
+    const o = await order("cancelled", { paymentStatus: "refunding", razorpayPaymentId: "pay_crashed", updatedAt: stale })
+    refundPayment.mockResolvedValue({ refundId: "rfnd_same", status: "processed", reconciled: true })
+    expect((await send("order.paid", { rzp: o.rzp, pay: "pay_crashed" })).status).toBe(200)
+    expect(refundPayment).toHaveBeenCalledTimes(1)
+    expect(refundPayment).toHaveBeenCalledWith("pay_crashed", 250, true) // the wrapper derives the same key from these
+    expect((await row(o.id)).paymentStatus).toBe("refunded")
+    expect((await send("payment.captured", { rzp: o.rzp, pay: "pay_crashed" })).status).toBe(200)
+    expect(refundPayment).toHaveBeenCalledTimes(1)
+  })
+
+  it("leaves a recent refund claim alone: another worker is still refunding", async () => {
+    const o = await order("cancelled", { paymentStatus: "refunding", razorpayPaymentId: "pay_inflight", updatedAt: new Date() })
+    expect((await send("order.paid", { rzp: o.rzp, pay: "pay_inflight" })).status).toBe(200)
+    expect(refundPayment).not.toHaveBeenCalled()
+    expect((await row(o.id)).paymentStatus).toBe("refunding")
+  })
+
+  it("keeps a failed-after-crash retry retryable: the claim returns to pending when the provider refuses", async () => {
+    const o = await order("cancelled", { paymentStatus: "refunding", razorpayPaymentId: "pay_crashed2", updatedAt: new Date(Date.now() - 6 * 60_000) })
+    refundPayment.mockRejectedValueOnce(new Error("Refund outcome unknown (timeout). Retrying is safe.")).mockResolvedValue({ refundId: "rfnd_ok", status: "pending" })
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    expect((await send("order.paid", { rzp: o.rzp, pay: "pay_crashed2" })).status).toBe(500)
+    expect((await row(o.id)).paymentStatus).toBe("pending")
+    expect((await send("order.paid", { rzp: o.rzp, pay: "pay_crashed2" })).status).toBe(200)
+    expect((await row(o.id)).paymentStatus).toBe("refunded") // a pending provider refund counts as initiated
+  })
+
+  it("a second, different payment on a paid order is refunded and recorded, not ignored", async () => {
+    const o = await order("pending_payment")
+    expect((await send("order.paid", o)).status).toBe(200) // the first payment is applied
+    const second = { rzp: o.rzp, pay: `pay_second_${o.pay}` }
+    refundPayment.mockClear()
+    expect((await send("order.paid", second)).status).toBe(200)
+    expect(refundPayment).toHaveBeenCalledWith(second.pay, 250, true) // its own payment id: the provider-side key is per payment
+    const r = await row(o.id)
+    expect([r.status, r.paymentStatus, r.razorpayPaymentId]).toEqual(["new", "paid", o.pay]) // the order still holds the first payment
+    for (const ev of ["payment.captured", "order.paid"] as const) expect((await send(ev, second)).status).toBe(200)
+    const audited = await unscopedDb.select().from(s.auditLog).where(eq(s.auditLog.entityId, o.id))
+    expect(audited.filter((a) => a.action === "payment.duplicate_refunded")).toHaveLength(1)
+  })
+
+  it("a double charge whose refund fails is not acknowledged, so Razorpay retries it", async () => {
+    const o = await order("pending_payment")
+    await send("order.paid", o)
+    const second = { rzp: o.rzp, pay: `pay_second_${o.pay}` }
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    refundPayment.mockRejectedValueOnce(new Error("gateway unreachable")).mockResolvedValue({ refundId: "rfnd_dup", status: "pending" })
+    expect((await send("order.paid", second)).status).toBe(500)
+    expect((await send("order.paid", second)).status).toBe(200)
   })
 
   it("ignores an order.paid carrying a kind this app does not know", async () => {

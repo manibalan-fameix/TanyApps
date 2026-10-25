@@ -32,6 +32,8 @@ export type BookingPaymentResult =
   | "done" // paid and confirmed
   | "dismissed" // the buyer closed the popup, or every attempt failed and they gave up
   | "unconfirmed" // paid, but our server could not confirm yet: the webhook will catch up
+  | "lost" // paid, but another buyer got the car first: the payment is being refunded
+  | "duplicate" // charged a second time for the same booking: the second payment is being refunded
   | "unavailable" // Razorpay could not be loaded
 
 /** Opens Razorpay Checkout to pay a car's booking amount. */
@@ -62,7 +64,7 @@ export async function authoriseBookingPayment(
           signature: r.razorpay_signature,
           carSlug: options.carSlug,
         })
-        resolve(res.ok ? "done" : "unconfirmed")
+        resolve(res.ok ? "done" : res.lost ? "lost" : res.duplicate ? "duplicate" : "unconfirmed")
       },
       modal: { ondismiss: () => resolve("dismissed") },
     })

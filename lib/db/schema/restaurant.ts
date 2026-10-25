@@ -98,6 +98,13 @@ export const orders = pgTable(
     razorpayOrderId: text("razorpay_order_id").unique(),
     razorpayPaymentId: text("razorpay_payment_id"),
     refundedAt: timestamp("refunded_at", { withTimezone: true }),
+    /** Razorpay's refund for this order, once created, and its own status for it: pending | processed | failed. Null until a refund exists. */
+    refundId: text("refund_id"),
+    refundStatus: text("refund_status"),
+    /** The last reason a refund attempt did not complete. Short and free of secrets. */
+    refundError: text("refund_error"),
+    /** Automatic refund attempts that did not complete. The recovery job stops at a limit and leaves the rest to a person. */
+    refundAttempts: integer("refund_attempts").notNull().default(0),
     /** Set once a cancelled order has put its stock back, so it never happens twice. */
     stockReleased: boolean("stock_released").notNull().default(false),
     /** new | confirmed | preparing | ready | out_for_delivery | completed | cancelled */

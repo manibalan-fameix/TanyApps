@@ -3,14 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { refundBookingPayment } from "../lib/route/razorpay"
 
 describe("refundBookingPayment", () => {
-  const calls: { url: string; body: Record<string, unknown> }[] = []
+  const calls: { url: string; body: Record<string, unknown>; headers: Record<string, string> }[] = []
 
   beforeEach(() => {
     calls.length = 0
     vi.stubEnv("RAZORPAY_KEY_ID", "rzp_test_abc")
     vi.stubEnv("RAZORPAY_KEY_SECRET", "secret")
     vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
-      calls.push({ url, body: JSON.parse(String(init.body)) })
+      calls.push({ url, body: JSON.parse(String(init.body)), headers: init.headers as Record<string, string> })
       return new Response(JSON.stringify({ id: "rfnd_1" }), { status: 200 })
     }))
   })
@@ -23,7 +23,19 @@ describe("refundBookingPayment", () => {
     await refundBookingPayment("pay_123", 5000)
     expect(calls).toHaveLength(1)
     expect(calls[0].url).toBe("https://api.razorpay.com/v1/payments/pay_123/refund")
-    expect(calls[0].body).toEqual({ amount: 500000, speed: "normal", reverse_all: 1 })
+    expect(calls[0].body).toMatchObject({ amount: 500000, speed: "normal", reverse_all: 1 })
+  })
+
+  it("returns Razorpay's refund id and status, so callers can tell pending from processed", async () => {
+    await expect(refundBookingPayment("pay_123", 5000)).resolves.toEqual({ refundId: "rfnd_1", status: "pending" })
+  })
+
+  it("sends a stable idempotency key, so a repeated refund is the same refund", async () => {
+    await refundBookingPayment("pay_123", 5000)
+    await refundBookingPayment("pay_123", 5000)
+    expect(calls[0].headers["X-Refund-Idempotency"]).toBe("tany_rf_pay_123_500000")
+    expect(calls[1].headers["X-Refund-Idempotency"]).toBe(calls[0].headers["X-Refund-Idempotency"])
+    expect(calls[1].body).toEqual(calls[0].body)
   })
 
   it("throws when Razorpay refuses, so the booking is not marked refunded", async () => {

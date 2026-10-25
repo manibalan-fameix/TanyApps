@@ -1,15 +1,19 @@
 "use client"
 
+import { Clock01Icon, HistoryIcon, Route01Icon } from "@hugeicons/core-free-icons"
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState, useTransition } from "react"
 
+import { EmptyState } from "@/components/cabs/book/empty-state"
+import { FilledIcon } from "@/components/cabs/book/filled-icon"
 import { FareLines } from "@/components/cabs/book/fare-lines"
+import { ListRow } from "@/components/cabs/book/list-row"
+import { distanceLabel, useLiveLocation } from "@/components/cabs/book/use-live-location"
 import { PlaceField, type PickedPlace, type QuickPickItem } from "@/components/cabs/book/place-field"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { type MessageKey, bookingMessage, bookingText } from "@/lib/cabs/booking-copy"
 import type { Lang } from "@/lib/cabs/lang"
@@ -23,6 +27,8 @@ const TAB_OF = Object.fromEntries(Object.entries(TRIP_OF).map(([k, v]) => [v, k]
 
 export type LocalPackageOption = { hours: number; km: number }
 export type TourOption = { id: string; name: string; days: number }
+
+export type RecentRide = { id: string; route: string; when: string; lat: number | null; lng: number | null }
 
 export type InitialDraft = { tripType: string; pickup: PickedPlace; drop: PickedPlace; pax: number; bags: number; localPackage: string; packageId: string }
 
@@ -58,11 +64,15 @@ function Stepper({ id, label, value, min, max, onChange }: { id: string; label: 
   )
 }
 
-export function BookingFlow({ operator, lang, signedIn, minStart, quick, localPackages, tours, initial, resume }: { operator: string; lang: Lang; signedIn: boolean; minStart: string; quick: QuickPickItem[]; localPackages: LocalPackageOption[]; tours: TourOption[]; initial?: InitialDraft | null; resume: boolean }) {
+export type Section = "rides" | "vacation"
+
+const RIDE_TABS = ["airport", "oneway", "round", "local"] as const
+
+export function BookingFlow({ section, greeting, operator, lang, signedIn, minStart, quick, localPackages, tours, initial, resume, recent }: { section: Section; greeting: string; operator: string; lang: Lang; signedIn: boolean; minStart: string; quick: QuickPickItem[]; localPackages: LocalPackageOption[]; tours: TourOption[]; initial?: InitialDraft | null; resume: boolean; recent: RecentRide[] }) {
   const t = bookingText(lang)
   const router = useRouter()
-  const [step, setStep] = useState<"search" | "vehicles" | "review">("search")
-  const [s, setS] = useState<State>(() => (initial ? { ...blank(), tab: TAB_OF[initial.tripType] ?? "airport", pickup: initial.pickup, drop: initial.drop, pax: initial.pax, bags: initial.bags, localPackage: initial.localPackage, packageId: initial.packageId } : blank()))
+  const [step, setStep] = useState<"search" | "details" | "vehicles" | "review">(initial ? "details" : "search")
+  const [s, setS] = useState<State>(() => (initial ? { ...blank(), tab: section === "vacation" ? "tour" : TAB_OF[initial.tripType] && TAB_OF[initial.tripType] !== "tour" ? TAB_OF[initial.tripType]! : "airport", pickup: initial.pickup, drop: initial.drop, pax: initial.pax, bags: initial.bags, localPackage: initial.localPackage, packageId: initial.packageId } : { ...blank(), tab: section === "vacation" ? "tour" : "airport" }))
   const [options, setOptions] = useState<FareOption[]>([])
   const [meta, setMeta] = useState<{ km: number | null; min: number | null }>({ km: null, min: null })
   const [chosen, setChosen] = useState<FareOption | null>(null)
@@ -70,7 +80,11 @@ export function BookingFlow({ operator, lang, signedIn, minStart, quick, localPa
   const [notes, setNotes] = useState("")
   const [error, setError] = useState("")
   const [loggedIn, setLoggedIn] = useState(signedIn)
+  const [showRecent, setShowRecent] = useState(false)
+  const here = useLiveLocation()
   const [pending, start] = useTransition()
+  // The airport and station list is drawn below the trip-type icons, so the icons stay right under the search.
+  const [quickHost, setQuickHost] = useState<HTMLElement | null>(null)
   const storeKey = "tany-booking-draft"
 
   const needsDrop = s.tab === "airport" || s.tab === "oneway" || s.tab === "round"
@@ -89,6 +103,13 @@ export function BookingFlow({ operator, lang, signedIn, minStart, quick, localPa
     if (s.tab === "tour" && !s.packageId) return t.needPackage
     return ""
   }, [s, needsDrop, t])
+
+  /** The home screen only asks where to. Once the places (and the package, for Local and tours) are in, it moves on to the date and passengers. */
+  function advanceIf(n: State) {
+    const drop = n.tab === "airport" || n.tab === "oneway" || n.tab === "round"
+    const ready = n.pickup && (!drop || n.drop) && (n.tab !== "local" || n.localPackage) && (n.tab !== "tour" || n.packageId)
+    if (ready) setStep("details")
+  }
 
   function search(then: "vehicles" | "review" = "vehicles", pick?: string) {
     setError("")
@@ -247,36 +268,117 @@ export function BookingFlow({ operator, lang, signedIn, minStart, quick, localPa
     )
   }
 
+  if (step === "details") {
+    return (
+      <form
+        className="flex flex-col gap-6"
+        onSubmit={(e) => {
+          e.preventDefault()
+          search()
+        }}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">{t.tripDetails}</h2>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setStep("search")}>{t.changeSearch}</Button>
+        </div>
+        <p className="-mt-3 text-sm text-muted-foreground">{[s.pickup?.name, needsDrop ? s.drop?.name : null].filter(Boolean).join(" → ")}</p>
+        <div className={cn("grid gap-3", s.tab === "round" ? "grid-cols-2" : "grid-cols-1")}>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="start-at" className="text-sm font-medium">{t.when}</label>
+            <Input id="start-at" type="datetime-local" className="h-11 min-w-0 max-w-full appearance-none text-base" min={minStart} value={s.startAt} onChange={(e) => setS({ ...s, startAt: e.target.value })} />
+          </div>
+          {s.tab === "round" ? (
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="return-at" className="text-sm font-medium">{t.returnWhen}</label>
+              <Input id="return-at" type="datetime-local" className="h-11 min-w-0 max-w-full appearance-none text-base" min={s.startAt || minStart} value={s.returnAt} onChange={(e) => setS({ ...s, returnAt: e.target.value })} />
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex gap-8">
+          <Stepper id="pax" label={t.passengers} value={s.pax} min={1} max={20} onChange={(n) => setS({ ...s, pax: n })} />
+          <Stepper id="bags" label={t.bags} value={s.bags} min={0} max={20} onChange={(n) => setS({ ...s, bags: n })} />
+        </div>
+
+        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+        <Button type="submit" className="h-12 rounded-xl text-base" disabled={pending}>{pending ? t.searching : t.seeFares}</Button>
+      </form>
+    )
+  }
+
+  const quickFor = showRecent ? null : needsDrop ? (!s.drop ? "drop" : !s.pickup ? "pickup" : null) : !s.pickup ? "pickup" : null
+
   return (
     <form
-      className="flex flex-col gap-5"
+      className="flex flex-col gap-6"
       onSubmit={(e) => {
         e.preventDefault()
         search()
       }}
     >
-      <Tabs value={s.tab} onValueChange={(v) => setS({ ...s, tab: v as Tab })}>
-        <TabsList className="h-auto w-full flex-wrap justify-start">
-          {(["airport", "oneway", "round", "local", "tour"] as const).map((k) => (
-            <TabsTrigger key={k} value={k} data-testid={`tab-${k}`}>
-              {{ airport: t.tabAirport, oneway: t.tabOneWay, round: t.tabRound, local: t.tabLocal, tour: t.tabTour }[k]}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      <h1 className="sr-only">{greeting}</h1>
 
-      <PlaceField id="pickup" label={t.pickup} placeholder={t.pickupPlaceholder} value={s.pickup} onChange={(p) => setS((x) => ({ ...x, pickup: p }))} quick={needsDrop ? quick : []} lang={lang} />
-      {needsDrop ? <PlaceField id="drop" label={t.drop} placeholder={t.dropPlaceholder} value={s.drop} onChange={(p) => setS((x) => ({ ...x, drop: p }))} quick={quick} lang={lang} /> : null}
-
-      <div className="flex flex-col gap-2">
-        <label htmlFor="start-at" className="text-sm font-medium">{t.when}</label>
-        <Input id="start-at" type="datetime-local" className="h-11 text-base" min={minStart} value={s.startAt} onChange={(e) => setS({ ...s, startAt: e.target.value })} />
+      <div className="flex flex-col gap-3">
+        {/* The "Where to?" box is the destination whenever the trip has one; the pickup box sits under it. */}
+        {needsDrop ? <PlaceField id="drop" label={t.drop} placeholder={greeting} value={s.drop} onChange={(p) => { const n = { ...s, drop: p }; setS(n); if (p) advanceIf(n) }} quick={quickFor === "drop" ? quick : []} quickHost={quickHost} lang={lang} here={here} /> : null}
+        {/* Trips with a destination start with the one "Where to?" box; the pickup box appears once the destination is chosen. */}
+        {!needsDrop || s.drop || s.pickup ? <PlaceField id="pickup" label={t.pickup} placeholder={needsDrop ? t.pickupPlaceholder : greeting} value={s.pickup} onChange={(p) => { const n = { ...s, pickup: p }; setS(n); if (p) advanceIf(n) }} quick={quickFor === "pickup" ? quick : []} quickHost={quickHost} lang={lang} here={here} /> : null}
       </div>
-      {s.tab === "round" ? (
-        <div className="flex flex-col gap-2">
-          <label htmlFor="return-at" className="text-sm font-medium">{t.returnWhen}</label>
-          <Input id="return-at" type="datetime-local" className="h-11 text-base" min={s.startAt || minStart} value={s.returnAt} onChange={(e) => setS({ ...s, returnAt: e.target.value })} />
+
+      {section === "rides" ? (
+        <div role="tablist" aria-label={t.tripKind} className="flex justify-between">
+          {([
+            { key: "recent", label: t.tabRecent, icon: "recent" as const, on: showRecent, go: () => setShowRecent(true) },
+            ...RIDE_TABS.map((k) => ({ key: k, label: { airport: t.tabAirport, oneway: t.tabOneWay, round: t.tabRound, local: t.tabLocal }[k], icon: k === "oneway" ? ("outstation" as const) : k === "round" ? ("round" as const) : k === "local" ? ("local" as const) : ("airport" as const), on: !showRecent && s.tab === k, go: () => (setShowRecent(false), setS({ ...s, tab: k })) })),
+          ]).map((c) => (
+            <button key={c.key} type="button" role="tab" aria-selected={c.on} data-testid={`tab-${c.key}`} onClick={c.go} className="flex w-11 flex-col items-center gap-1 text-[11px]">
+              <span className={cn("flex size-11 items-center justify-center rounded-full transition-colors", c.on ? "bg-primary/15 text-primary" : "bg-muted text-foreground")}>
+                <FilledIcon glyph={c.icon} className="size-5" />
+              </span>
+              <span className={cn("w-max whitespace-nowrap", c.on ? "font-semibold text-primary" : "text-muted-foreground")}>{c.label}</span>
+            </button>
+          ))}
         </div>
+      ) : (
+        <p className="-mt-3 text-sm text-muted-foreground">{t.vacationHint}</p>
+      )}
+
+
+      {showRecent ? (
+        <div className="flex flex-col gap-3" data-testid="recent-rides">
+          {loggedIn && recent.length === 0 ? null : <h2 className="text-sm font-semibold">{t.recentTitle}</h2>}
+          {!loggedIn ? (
+            <>
+              <p className="text-sm text-muted-foreground">{t.recentSignIn}</p>
+              <a href={`/api/t/auth/start?next=${encodeURIComponent("/")}&lang=${lang}`} className={cn(buttonVariants(), "h-11 rounded-xl")}>{t.signIn}</a>
+            </>
+          ) : recent.length === 0 ? (
+            <EmptyState icon={HistoryIcon} title={t.recentEmptyTitle} description={t.recentEmpty} />
+          ) : (
+            <ul className="flex flex-col">
+              {recent.map((r) => (
+                <li key={r.id}>
+                  <ListRow icon={HistoryIcon} title={r.route} subtitle={r.when} trailing={distanceLabel(here, r)} onClick={() => router.push(`/?repeat=${r.id}`)} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
+
+      <div ref={setQuickHost} />
+
+      {s.tab === "tour" ? (
+        tours.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t.noTours}</p>
+        ) : (
+          <div className="flex flex-col gap-2" role="radiogroup" aria-label={t.tourPackage}>
+            <span className="text-sm font-medium">{t.tourPackage}</span>
+            {tours.map((p) => (
+              <ListRow key={p.id} role="radio" aria-checked={s.packageId === p.id} icon={Route01Icon} title={p.name} subtitle={t.tourDays.replace("{n}", String(p.days))} selected={s.packageId === p.id} onClick={() => { const n = { ...s, packageId: p.id }; setS(n); advanceIf(n) }} />
+            ))}
+          </div>
+        )
       ) : null}
 
       {s.tab === "local" ? (
@@ -285,43 +387,16 @@ export function BookingFlow({ operator, lang, signedIn, minStart, quick, localPa
         ) : (
           <div className="flex flex-col gap-2" role="radiogroup" aria-label={t.localPackage}>
             <span className="text-sm font-medium">{t.localPackage}</span>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col">
               {localPackages.map((p) => {
                 const v = `${p.hours}:${p.km}`
-                return (
-                  <Button key={v} type="button" role="radio" aria-checked={s.localPackage === v} variant={s.localPackage === v ? "default" : "outline"} className="h-11" onClick={() => setS({ ...s, localPackage: v })}>
-                    {t.localPackageOption.replace("{hours}", String(p.hours)).replace("{km}", String(p.km))}
-                  </Button>
-                )
+                return <ListRow key={v} role="radio" aria-checked={s.localPackage === v} icon={Clock01Icon} title={t.localPackageOption.replace("{hours}", String(p.hours)).replace("{km}", String(p.km))} selected={s.localPackage === v} onClick={() => { const n = { ...s, localPackage: v }; setS(n); advanceIf(n) }} />
               })}
             </div>
           </div>
         )
       ) : null}
-      {s.tab === "tour" ? (
-        tours.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t.noTours}</p>
-        ) : (
-          <div className="flex flex-col gap-2" role="radiogroup" aria-label={t.tourPackage}>
-            <span className="text-sm font-medium">{t.tourPackage}</span>
-            <div className="flex flex-wrap gap-2">
-              {tours.map((p) => (
-                <Button key={p.id} type="button" role="radio" aria-checked={s.packageId === p.id} variant={s.packageId === p.id ? "default" : "outline"} className="h-11" onClick={() => setS({ ...s, packageId: p.id })}>
-                  {p.name} · {t.tourDays.replace("{n}", String(p.days))}
-                </Button>
-              ))}
-            </div>
-          </div>
-        )
-      ) : null}
 
-      <div className="flex gap-8">
-        <Stepper id="pax" label={t.passengers} value={s.pax} min={1} max={20} onChange={(n) => setS({ ...s, pax: n })} />
-        <Stepper id="bags" label={t.bags} value={s.bags} min={0} max={20} onChange={(n) => setS({ ...s, bags: n })} />
-      </div>
-
-      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-      <Button type="submit" className="h-12 text-base" disabled={pending}>{pending ? t.searching : t.seeFares}</Button>
     </form>
   )
 }

@@ -353,6 +353,24 @@ export const customers = pgTable(
   (t) => [uniqueIndex("customers_dealer_phone_uq").on(t.dealerId, t.phoneHash), check("customers_language_ck", sql`${t.language} in ('en','ta')`)],
 )
 
+/**
+ * How a customer got in at one business besides their phone: a Google, Facebook or email sign-in that has already been tied to a
+ * verified phone there. It makes the phone step a one-time thing at THAT business. The Firebase uid is stored only as a keyed hash,
+ * and the row carries dealer_id, so the same Google account at another business is a different, unrelated identity.
+ */
+export const customerIdentities = pgTable(
+  "customer_identities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    dealerId: dealerId(),
+    customerId: uuid("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    subjectHash: text("subject_hash").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("customer_identities_dealer_subject_uq").on(t.dealerId, t.subjectHash), index("customer_identities_customer_idx").on(t.customerId), check("customer_identities_provider_ck", sql`${t.provider} in ('google.com','facebook.com','password')`)],
+)
+
 /** Saved places ("Home", "Office"). The address is encrypted. */
 export const customerAddresses = pgTable(
   "customer_addresses",
@@ -451,6 +469,8 @@ export const trips = pgTable(
     index("trips_dealer_status_idx").on(t.dealerId, t.status, t.startAt),
     index("trips_customer_idx").on(t.dealerId, t.customerId, t.createdAt),
     index("trips_hold_idx").on(t.status, t.holdExpiresAt),
+    // Finds requests whose half-way nudge is due, without reading every open request (the nudge is sent once, hence the filter).
+    index("trips_hold_alert_idx").on(t.holdAlertAt).where(sql`${t.status} = 'requested' and ${t.holdAlertedAt} is null and ${t.holdAlertAt} is not null`),
     check("trips_code_ck", sql`${t.code} ~ '^[A-Z0-9]{6}$'`),
     check("trips_money_ck", sql`${t.quoteTotalPaise} >= 0 and ${t.advanceDuePaise} between 0 and ${t.quoteTotalPaise} and ${t.advancePaidPaise} >= 0 and coalesce(${t.adjustedTotalPaise},0) >= 0`),
     check("trips_pax_ck", sql`${t.pax} between 1 and 60 and ${t.bags} between 0 and 60`),

@@ -32,6 +32,12 @@ const eslintConfig = defineConfig([
       "no-restricted-imports": [
         "error",
         {
+          paths: [
+            ...["sonner", "react-hot-toast", "react-toastify", "notistack", "sileo"].map((name) => ({
+              name,
+              message: 'Toasts: import { toast } from "@/lib/toast" (sileo). The Toaster lives in components/ui/toaster.tsx only.',
+            })),
+          ],
           patterns: [
             {
               group: ["**/db/client", "**/db/client.*"],
@@ -41,6 +47,11 @@ const eslintConfig = defineConfig([
         },
       ],
     },
+  },
+  // The one place that may mount sileo's Toaster.
+  {
+    files: ["components/ui/toaster.tsx"],
+    rules: { "no-restricted-imports": "off" },
   },
 ]);
 

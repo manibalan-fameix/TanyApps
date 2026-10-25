@@ -30,7 +30,7 @@ const inHours = (h: number) => new Date(Date.now() + h * 3600_000 + 330 * 60_000
 
 async function fillTrip(page: Page) {
   await page.goto(`${SUB}/`)
-  await expect(page.getByRole("heading", { name: "Book your cab" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: /where to/i })).toBeVisible()
   await page.locator("#pickup").fill("T Nagar")
   await page.getByRole("button", { name: /T Nagar/ }).first().click()
   // The drop is an airport: tap the quick pick under the drop field.
@@ -153,7 +153,7 @@ test("the operator can reject with a reason, and the customer sees it; the custo
 
   await page.goto(`${SUB}/my`)
   await page.getByTestId("sign-out-everywhere").click()
-  await expect(page.getByRole("heading", { name: "Book your cab" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: /where to/i })).toBeVisible()
   await p2.goto(`${SUB}/my/bookings`)
   await expect(p2).toHaveURL(new RegExp(`^http://app\\.localhost:${PORT}/id\\?`)) // sent back to log in
   await opCtx.close()

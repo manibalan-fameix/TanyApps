@@ -20,7 +20,6 @@ import {
 import { cn } from "cn"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { toast } from "sonner"
 import { useActionState, useEffect, useRef, useState } from "react"
 
 import { Logo } from "@/components/logo"
@@ -99,12 +98,17 @@ export function DealerLoginForm({
     // Unknown to Tany: a login attempt becomes sign-up, so they land in onboarding instead of a dead end.
     if (forMode === "signin" && !(await firebaseAccountExists(idToken))) {
       forMode = "signup"
-      toast.info("You're new to Tany. Create your account to get started.")
+      // Onboarding shows the "new to Tany" notice (the login page is replaced too quickly for it to be read).
+      try {
+        sessionStorage.setItem("tany:new-user", "1")
+      } catch {}
     }
     const result = await signInWithFirebaseToken(idToken)
     await firebaseSignOut(auth)
     if (!result.ok) return setError(result.error)
-    router.replace(forMode === "signup" ? "/onboarding" : "/dashboard")
+    // A full navigation for a new user: the fresh session cookie is picked up.
+    if (forMode === "signup") return void window.location.assign("/onboarding")
+    router.replace("/dashboard")
     router.refresh()
   }
 
@@ -319,6 +323,7 @@ export function DealerLoginForm({
 
   const message = (local ? localState.error : null) ?? error
   const enabled = !!config
+  const methodLabel = `${mode === "signup" ? "Sign up" : "Login"} with ${method === "phone" ? "Email" : "Phone"}`
 
   const card = (
     <Card>
@@ -347,8 +352,10 @@ export function DealerLoginForm({
           action={local ? localAction : undefined}
         >
           <FieldGroup>
-            <Field>
+            <Field className="grid grid-cols-3 gap-3">
               <Button
+                aria-label={mode === "signup" ? "Sign up with Google" : "Login with Google"}
+                title={mode === "signup" ? "Sign up with Google" : "Login with Google"}
                 variant="outline"
                 type="button"
                 className="h-11 text-base"
@@ -377,11 +384,10 @@ export function DealerLoginForm({
                     d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
                   />
                 </svg>
-                {mode === "signup"
-                  ? "Sign up with Google"
-                  : "Login with Google"}
               </Button>
               <Button
+                aria-label={mode === "signup" ? "Sign up with Facebook" : "Login with Facebook"}
+                title={mode === "signup" ? "Sign up with Facebook" : "Login with Facebook"}
                 variant="outline"
                 type="button"
                 className="h-11 text-base"
@@ -398,11 +404,10 @@ export function DealerLoginForm({
                     d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.7 4.53-4.7 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.26h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z"
                   />
                 </svg>
-                {mode === "signup"
-                  ? "Sign up with Facebook"
-                  : "Login with Facebook"}
               </Button>
               <Button
+                aria-label={methodLabel}
+                title={methodLabel}
                 variant="outline"
                 type="button"
                 className="h-11 text-base"
@@ -412,13 +417,6 @@ export function DealerLoginForm({
                 disabled={busy || !enabled}
               >
                 <HugeiconsIcon icon={SmartPhone01Icon} strokeWidth={2} />
-                {method === "phone"
-                  ? mode === "signup"
-                    ? "Sign up with Email"
-                    : "Login with Email"
-                  : mode === "signup"
-                    ? "Sign up with Phone"
-                    : "Login with Phone"}
               </Button>
             </Field>
             <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
@@ -534,17 +532,18 @@ export function DealerLoginForm({
                       <InputOTP
                         id="otp"
                         maxLength={6}
+                        containerClassName="w-full"
                         value={code}
                         onChange={setCode}
                         onComplete={verifyCode}
                         autoFocus
                       >
-                        <InputOTPGroup>
+                        <InputOTPGroup className="w-full">
                           {[0, 1, 2, 3, 4, 5].map((i) => (
                             <InputOTPSlot
                               key={i}
                               index={i}
-                              className="h-11 w-11"
+                              className="h-11 flex-1"
                             />
                           ))}
                         </InputOTPGroup>

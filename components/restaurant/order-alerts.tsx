@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 import { Notification01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 
 import { type OrderAlert, fetchOrderAlerts } from "@/lib/restaurant/admin-actions"
 

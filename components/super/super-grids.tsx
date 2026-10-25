@@ -810,7 +810,23 @@ export function BookingsGrid({
           "failed",
           "refunded",
           "cancelled",
+          "refund_pending",
         ]),
+      },
+      {
+        field: "refund",
+        headerName: "Refund",
+        headerClass: h("status"),
+        width: 120,
+        valueFormatter: dash,
+      },
+      {
+        field: "attention",
+        headerName: "Needs attention",
+        headerClass: h("status"),
+        minWidth: 240,
+        flex: 1.5,
+        valueFormatter: dash,
       },
       {
         field: "razorpayOrderId",
@@ -844,6 +860,7 @@ export function BookingsGrid({
         ["paid", "Paid"],
         ["created", "Created"],
         ["refunded", "Refunded"],
+        ["refund_pending", "Refund pending"],
         ["failed", "Failed"]
       )}
       search="Search bookings"

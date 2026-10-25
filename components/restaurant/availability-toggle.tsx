@@ -1,7 +1,7 @@
 "use client"
 
 import { useTransition } from "react"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 
 import { setMenuItemAvailable } from "@/app/(admin)/(shell)/menu/actions"
 import { Button } from "@/components/ui/button"

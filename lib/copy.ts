@@ -528,6 +528,7 @@ export const copy = {
           add: "Add video",
           replace: "Replace video",
           processing: "Processing video…",
+          waiting: "Video saved. It will be processed as soon as our video service is available. Your listing does not need it, and your original video is safe.",
           ready: "Video ready",
           covers: (n: number, total: number) => `The video shows ${n} of ${total} angles.`,
           notShown: "Not in the video:",

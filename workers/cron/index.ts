@@ -2,7 +2,7 @@
 // (app/api/internal/cron/[job]/route.ts). The app does the work and keeps the lock, so this worker holds no state and a
 // double-fired schedule cannot run a job twice.
 //
-// Deploy with `pnpm deploy:cron`. Secret: pnpm exec wrangler secret put CRON_SECRET -c workers/cron/wrangler.jsonc
+// Deploy with `pnpm run deploy:cron staging|production` (the environment is always explicit; see scripts/deploy.ts). Secret: pnpm exec wrangler secret put CRON_SECRET -c workers/cron/wrangler.jsonc
 // (the main app needs the very same value, see .env.example).
 
 type Env = { CRON_SECRET?: string; CRON_TARGET_URL?: string }
@@ -13,7 +13,7 @@ export const SCHEDULE: Record<string, string[]> = {
   // Every minute: cab booking holds (an operator's answer window can be as short as 10 minutes, so five-minute steps are too coarse).
   // Safe because the lock keeps one run per (job, minute) and the job only touches rows past their deadline.
   "* * * * *": ["expire-trip-holds"],
-  "*/5 * * * *": ["expire-unpaid-orders"],
+  "*/5 * * * *": ["expire-unpaid-orders", "retry-booking-refunds", "retry-order-refunds"],
   // 08:00 IST every day (02:30 UTC).
   "30 2 * * *": ["daily"],
   // 06:00 IST on the 1st of the month (00:30 UTC).

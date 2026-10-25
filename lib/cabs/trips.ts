@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, isNull, lte } from "drizzle-orm"
+import { and, asc, eq, inArray, isNotNull, isNull, lte } from "drizzle-orm"
 
 import { decrypt, encrypt } from "../crypto"
 import { phoneHash } from "../crypto/blind-index"
@@ -9,7 +9,7 @@ import type { ScopedDb } from "../db/scoped"
 import { newBookingCode, newShareToken } from "./booking-code"
 import { bookingMessage } from "./booking-copy"
 import { paymentHoldExpiry, requestHold } from "./holds"
-import { isUniqueViolation } from "./pg"
+import { isUniqueViolation, pgConstraint } from "./pg"
 import { snapshotOf, type PlaceInput, type TripQuote, type TripRequest } from "./trip-quote"
 import { type TripStatus, tripGraph } from "./trip-status"
 
@@ -34,13 +34,36 @@ export type CreateTripInput = {
   /** Operator-made bookings are confirmed on the spot, since the operator has already agreed. */
   confirmNow?: boolean
   notes?: string
+  /** Only for tests that need a deterministic booking code. */
+  makeCode?: () => string
+}
+
+/** The unique index on (business, booking code). */
+export const BOOKING_CODE_CONSTRAINT = "trips_dealer_code_uq"
+/** True only for a clash of the booking code itself, not for any other unique violation. */
+export const isBookingCodeCollision = (e: unknown) => isUniqueViolation(e) && pgConstraint(e) === BOOKING_CODE_CONSTRAINT
+
+/**
+ * Runs a whole booking transaction, and runs it again (from the start, in a new transaction) if the booking code clashed. A failed
+ * statement aborts a PostgreSQL transaction, so a clash can never be retried inside the transaction that hit it: that one is rolled
+ * back completely, trip, events and notifications included, before the next attempt. Any other error is thrown at once.
+ */
+export async function withBookingCodeRetry<T>(run: () => Promise<T>, attempts = 5): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run()
+    } catch (error) {
+      if (!isBookingCodeCollision(error) || attempt >= attempts) throw error
+    }
+  }
 }
 
 export type CreatedTrip = { id: string; code: string; status: TripStatus; shareToken: string }
 
 /**
  * Writes a booking: the trip, its immutable quote, its first event, and (for a customer's request) the alert to the operator.
- * Call inside a transaction. The booking code is retried on the rare clash.
+ * Call inside a transaction, wrapped in withBookingCodeRetry: a clash of the booking code throws, and the caller runs the whole
+ * transaction again with a new code (it cannot be retried inside the transaction that failed).
  */
 export async function createTrip(db: ScopedDb, input: CreateTripInput): Promise<CreatedTrip> {
   const { req, quote: q, now } = input
@@ -48,43 +71,36 @@ export async function createTrip(db: ScopedDb, input: CreateTripInput): Promise<
   const confirmed = input.confirmNow === true
   const hold = confirmed ? null : requestHold({ now, startAt: req.startAt, maxMinutes: input.respondWindowMinutes })
 
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const code = newBookingCode()
-    try {
-      const [row] = await db.trips
-        .insert({
-          code,
-          customerId: input.customerId,
-          tripType: req.tripType,
-          status: confirmed ? "confirmed" : "requested",
-          source: input.source,
-          bookedByType: input.actor.type,
-          bookedById: input.actor.id,
-          pickup: toPlace(req.pickup),
-          drop: req.drop ? toPlace(req.drop) : null,
-          startAt: req.startAt,
-          returnAt: req.returnAt,
-          pax: req.pax,
-          bags: req.bags,
-          notesEnc: input.notes?.trim() ? encrypt(input.notes.trim().slice(0, 500)) : null,
-          vehicleClassId: q.classId,
-          packageId: req.packageId ?? null,
-          quote: snapshotOf(q, now),
-          quoteTotalPaise: q.result.totalPaise,
-          advanceDuePaise: q.result.advanceDuePaise ?? 0,
-          holdExpiresAt: hold?.expiresAt ?? null,
-          holdAlertAt: hold?.alertAt ?? null,
-          shareTokenHash: share.hash,
-          confirmedAt: confirmed ? now : null,
-        })
-        .returning({ id: trips.id, code: trips.code, status: trips.status })
-      await event(db, row.id, { type: "created", to: row.status, actor: input.actor, data: { source: input.source, totalPaise: q.result.totalPaise } })
-      return { id: row.id, code: row.code, status: row.status, shareToken: share.token }
-    } catch (e) {
-      if (!isUniqueViolation(e) || attempt === 4) throw e
-    }
-  }
-  throw new Error("unreachable")
+  const code = (input.makeCode ?? newBookingCode)()
+  const [row] = await db.trips
+    .insert({
+      code,
+      customerId: input.customerId,
+      tripType: req.tripType,
+      status: confirmed ? "confirmed" : "requested",
+      source: input.source,
+      bookedByType: input.actor.type,
+      bookedById: input.actor.id,
+      pickup: toPlace(req.pickup),
+      drop: req.drop ? toPlace(req.drop) : null,
+      startAt: req.startAt,
+      returnAt: req.returnAt,
+      pax: req.pax,
+      bags: req.bags,
+      notesEnc: input.notes?.trim() ? encrypt(input.notes.trim().slice(0, 500)) : null,
+      vehicleClassId: q.classId,
+      packageId: req.packageId ?? null,
+      quote: snapshotOf(q, now),
+      quoteTotalPaise: q.result.totalPaise,
+      advanceDuePaise: q.result.advanceDuePaise ?? 0,
+      holdExpiresAt: hold?.expiresAt ?? null,
+      holdAlertAt: hold?.alertAt ?? null,
+      shareTokenHash: share.hash,
+      confirmedAt: confirmed ? now : null,
+    })
+    .returning({ id: trips.id, code: trips.code, status: trips.status })
+  await event(db, row.id, { type: "created", to: row.status, actor: input.actor, data: { source: input.source, totalPaise: q.result.totalPaise } })
+  return { id: row.id, code: row.code, status: row.status, shareToken: share.token }
 }
 
 export type MoveResult = { ok: true; trip: Trip } | { ok: false; reason: "not_found" | "changed" | "illegal" }
@@ -188,11 +204,11 @@ export type HoldSweep = { alerted: number; expired: number }
  *  - a request past its deadline, or an accepted booking whose advance was not paid in time, expires.
  * Every change is a conditional update, so a trip the operator just answered is left alone.
  */
-export async function sweepHolds(db: ScopedDb, now: Date, opts: { operatorPhone: string | null; operatorName: string }): Promise<HoldSweep> {
+export async function sweepHolds(db: ScopedDb, now: Date, opts: { operatorPhone: string | null; operatorName: string; /** At most this many of each kind per call, oldest first; the rest wait for the next run. */ limit?: number }): Promise<HoldSweep> {
   let alerted = 0
   let expired = 0
 
-  const toAlert = await db.trips.select(and(eq(trips.status, "requested"), isNull(trips.holdAlertedAt), isNotNull(trips.holdAlertAt), lte(trips.holdAlertAt, now)))
+  const toAlert = await db.trips.select(and(eq(trips.status, "requested"), isNull(trips.holdAlertedAt), isNotNull(trips.holdAlertAt), lte(trips.holdAlertAt, now)), { orderBy: [asc(trips.holdAlertAt)], limit: opts.limit })
   for (const t of toAlert) {
     const claimed = await db.trips.update({ holdAlertedAt: now }, and(eq(trips.id, t.id), eq(trips.status, "requested"), isNull(trips.holdAlertedAt)) as never).returning({ id: trips.id })
     if (claimed.length !== 1) continue
@@ -203,7 +219,7 @@ export async function sweepHolds(db: ScopedDb, now: Date, opts: { operatorPhone:
     alerted++
   }
 
-  const due = await db.trips.select(and(inArray(trips.status, ["requested", "confirmed"]), isNotNull(trips.holdExpiresAt), lte(trips.holdExpiresAt, now)))
+  const due = await db.trips.select(and(inArray(trips.status, ["requested", "confirmed"]), isNotNull(trips.holdExpiresAt), lte(trips.holdExpiresAt, now)), { orderBy: [asc(trips.holdExpiresAt)], limit: opts.limit })
   for (const t of due) {
     const reason = t.status === "requested" ? "no_response" : "advance_unpaid"
     const res = await moveTrip(db, t.id, "expired", { type: "system", id: null }, { expectFrom: t.status, type: "expired", set: { holdExpiresAt: null, holdAlertAt: null }, data: { reason } })

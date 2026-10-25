@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 
 import { tripAct } from "@/app/(tenant)/sites/[dealer]/delivery/t/actions"
 import { LiveMap, type MapMarker } from "@/components/restaurant/live-map"

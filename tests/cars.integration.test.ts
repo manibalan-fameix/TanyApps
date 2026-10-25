@@ -9,7 +9,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { getPlan } from "../lib/plans"
 
-const url = process.env.TEST_DATABASE_URL
+import { testDatabaseUrl } from "./support/disposable-db"
+
+const url = testDatabaseUrl()
 
 // The pool is shared by every block in this file, so it is closed once, at the very end.
 let closeDb: (() => Promise<void>) | undefined

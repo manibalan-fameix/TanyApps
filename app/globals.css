@@ -259,3 +259,19 @@
     animation: scroll-hint-nudge 1.8s ease-in-out infinite;
   }
 }
+
+/* Toast body text sits centred under its title. */
+/* Higher specificity than sileo/styles.css, which loads after this file. */
+[data-sileo-viewport] [data-sileo-toast] [data-sileo-description] {
+  text-align: center !important;
+}
+
+/* The cab operator's home is a full-screen app view: it marks itself with data-immersive, and the shell's header, footer and page padding step aside. */
+.cabs-shell:has([data-immersive]) .cabs-shell-header,
+.cabs-shell:has([data-immersive]) .cabs-shell-footer {
+  display: none;
+}
+.cabs-shell:has([data-immersive]) [data-cabs-main] {
+  max-width: none;
+  padding: 0;
+}

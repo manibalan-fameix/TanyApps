@@ -1,0 +1,1 @@
+CREATE INDEX "trips_hold_alert_idx" ON "trips" USING btree ("hold_alert_at") WHERE "trips"."status" = 'requested' and "trips"."hold_alerted_at" is null and "trips"."hold_alert_at" is not null;

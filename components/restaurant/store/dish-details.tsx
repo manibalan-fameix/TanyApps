@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useState } from "react"
 import { Add01Icon, MinusSignIcon, ShoppingCart01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 
 import { useCart } from "@/components/restaurant/cart-provider"
 import { DishImage, PriceBlock, VegMark } from "@/components/restaurant/store/dish-card"

@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { getDealerContext } from "@/lib/auth/context"
+import { canRefund } from "@/lib/core/permissions"
 import { getShareKit } from "@/lib/cars/publish"
 import { getCarState } from "@/lib/cars/state"
 import { copy } from "@/lib/copy"
@@ -34,6 +35,13 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 // A car's page. Non-id paths under /cars (e.g. /cars/sold) fall through to the coming-soon screen.
+/** What a refund that is not finished looks like to the dealer. Refunded appears only once Razorpay says it was sent. */
+function refundLabel(status: string | null): string {
+  if (status === "pending") return "Refund in progress"
+  if (status === "failed") return "Refund failed"
+  return "Refund owed (will retry)"
+}
+
 export default async function CarPage({
   params,
 }: {
@@ -59,7 +67,9 @@ export default async function CarPage({
   if (car.status === "draft") redirect(`/cars/new?car=${car.id}`)
   const kit =
     car.status === "live" ? await getShareKit(ctx.dealer.id, car.id) : null
-  const [booking] = await scopedDb(ctx.dealer.id).bookings.select(eq(bookings.carId, car.id), { orderBy: [desc(bookings.createdAt)], limit: 1 })
+  // The booking that holds the car comes first: a buyer who lost the race has a newer, refunded booking on the same car.
+  const carBookings = await scopedDb(ctx.dealer.id).bookings.select(eq(bookings.carId, car.id), { orderBy: [desc(bookings.createdAt)], limit: 10 })
+  const booking = carBookings.find((b) => b.status === "paid") ?? carBookings.find((b) => b.status === "refund_pending") ?? carBookings[0]
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
@@ -85,12 +95,15 @@ export default async function CarPage({
               <Row label="Buyer" value={booking.buyerName} />
               <Row label="Phone" value={tryDecrypt(booking.buyerPhone)} />
               <Row label="Amount" value={`₹${formatInr(booking.amount)}`} />
-              <Row label="Status" value={<span className="capitalize">{booking.status}</span>} />
+              <Row label="Status" value={<span className="capitalize">{booking.status === "refund_pending" ? refundLabel(booking.refundStatus) : booking.status}</span>} />
             </dl>
-            {booking.status === "paid" ? (
+            {canRefund(ctx.role) && (booking.status === "paid" || (booking.status === "refund_pending" && booking.refundStatus !== "pending" && booking.refundStatus !== "failed")) ? (
               <div className="mt-3">
-                <BookingRefundButton bookingId={booking.id} />
+                <BookingRefundButton bookingId={booking.id} retry={booking.status === "refund_pending"} />
               </div>
+            ) : null}
+            {booking.status === "refund_pending" && booking.refundStatus === "failed" ? (
+              <p className="mt-3 text-sm text-destructive">Razorpay could not complete this refund. Please contact support.</p>
             ) : null}
           </CardContent>
         </Card>

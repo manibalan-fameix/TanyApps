@@ -4,6 +4,7 @@ import { notFound } from "next/navigation"
 import { CabsShell } from "@/components/cabs/tenant/shell"
 import { StoreShell } from "@/components/restaurant/store/shell"
 import { PullToRefresh } from "@/components/pull-to-refresh"
+import { Toaster } from "@/components/ui/toaster"
 import { TenantMobileNav } from "@/components/tenant/mobile-nav"
 import { currentLang } from "@/lib/cabs/lang-server"
 import { currentCustomer } from "@/lib/core/login/customer"
@@ -68,6 +69,7 @@ export default async function TenantLayout({
         )}
       </div>
       <PullToRefresh />
+      <Toaster />
       {vertical.tenantMobileNav ? <TenantMobileNav phone={dealer.phone} /> : null}
     </div>
   )

@@ -45,13 +45,13 @@ export function assertSameTenant(rowDealerId: string, ctxDealerId: string): void
   if (rowDealerId !== ctxDealerId) throw new Error("tenant mismatch")
 }
 
-export type AdminSession = { dealer: NonNullable<Extract<Awaited<ReturnType<typeof getDealerContext>>, { status: "ok" }>["dealer"]>; owner: boolean }
+export type AdminSession = { dealer: NonNullable<Extract<Awaited<ReturnType<typeof getDealerContext>>, { status: "ok" }>["dealer"]>; owner: boolean; /** Who is acting, for the audit log. */ userId: string }
 
 /** For admin server actions: the signed-in owner/staff of an `industry` business that exists in the database, or null. */
 export async function industrySession(industry: IndustryKey): Promise<AdminSession | null> {
   const ctx = await getDealerContext()
   if (ctx.status !== "ok" || !ctx.dealerInDb || ctx.dealer.industry !== industry) return null
-  return { dealer: ctx.dealer, owner: ctx.role === "owner" }
+  return { dealer: ctx.dealer, owner: ctx.role === "owner", userId: ctx.user.id }
 }
 
 /** For admin pages: sends everyone else (signed out, no business, or another industry) away. */
@@ -60,5 +60,5 @@ export async function requireIndustry(industry: IndustryKey): Promise<AdminSessi
   if (ctx.status === "anonymous") redirect("/login")
   if (ctx.status === "no-dealer") redirect("/onboarding")
   if (ctx.dealer.industry !== industry || !ctx.dealerInDb) redirect("/dashboard")
-  return { dealer: ctx.dealer, owner: ctx.role === "owner" }
+  return { dealer: ctx.dealer, owner: ctx.role === "owner", userId: ctx.user.id }
 }

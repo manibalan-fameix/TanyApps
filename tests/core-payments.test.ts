@@ -63,6 +63,21 @@ describe("dispatchPaymentEvent: order.paid (primary)", () => {
   })
 })
 
+describe("dispatchPaymentEvent: a captured payment that belongs to no order", () => {
+  it("is counted as unmatched on the fallback path, whichever event carried it", async () => {
+    const none = handlers({ eats: { found: false }, motors: { found: false } })
+    expect(await dispatchPaymentEvent(captured(), none.set)).toBe("unmatched")
+    expect(countMetric).toHaveBeenCalledWith("razorpay_webhook_unmatched", { event: "payment.captured", reason: "no_order" })
+    countMetric.mockClear()
+    expect(await dispatchPaymentEvent({ ...paid(), orderNotes: {} }, none.set)).toBe("unmatched")
+    expect(countMetric).toHaveBeenCalledWith("razorpay_webhook_unmatched", { event: "order.paid", reason: "no_order" })
+  })
+  it("is not counted when some flow owns the order", async () => {
+    await dispatchPaymentEvent(captured(), handlers({ eats: { found: false }, motors: { found: true, applied: false } }).set)
+    expect(countMetric).not.toHaveBeenCalledWith("razorpay_webhook_unmatched", expect.anything())
+  })
+})
+
 describe("dispatchPaymentEvent: payment.captured (fallback)", () => {
   it("looks the order up the old way, and counts a hit only when it did the work", async () => {
     const first = handlers()

@@ -10,7 +10,9 @@ import { hashPassword } from "@/lib/auth/password"
 import { nextPartnerCode, parsePincodes, partnerSchema, pinSchema, zoneSchema } from "@/lib/restaurant/delivery"
 import { adjustQuantity } from "@/lib/restaurant/stock"
 import { refundOrder } from "@/lib/restaurant/payments"
-import { releaseOrderStock } from "@/lib/restaurant/stock-server"
+import { audit } from "@/lib/core/audit"
+import { canRefund, REFUND_DENIED } from "@/lib/core/permissions"
+import { cancelAndRestock } from "@/lib/restaurant/stock-server"
 import { scopedDb } from "@/lib/db/scoped"
 import { ORDER_STATUSES, type OrderStatus, nextStatuses } from "@/lib/restaurant/orders"
 import { type Fulfilment, orderSettingsSchema } from "@/lib/restaurant/settings"
@@ -57,25 +59,34 @@ export async function setOrderStatus(id: string, status: string): Promise<Result
     return { ok: false, error: "Assign a delivery partner before sending this order out." }
   // Cancelling an order the guest already paid for online sends the money back first. If that fails, nothing changes.
   if (status === "cancelled" && order.paymentMethod === "online" && order.paymentStatus === "paid") {
+    // Cancelling a paid online order refunds the guest, so it is the owner's decision (checked before anything changes).
+    if (!canRefund(s.owner ? "owner" : "staff")) return { ok: false, error: REFUND_DENIED }
+    // Who asked for the money to go back is recorded before it is sent, so even a failed attempt is attributable.
+    await audit(db, { actorType: "user", actorId: s.userId, action: "payment.refund", entity: "order", entityId: order.id, diff: { amountRupees: order.total, reason: "order cancelled by staff" } })
     const refunded = await refundOrder(s.dealer.id, order)
     if (!refunded.ok) return refunded
   }
-  await db.orders.update(
-    {
-      status,
-      updatedAt: new Date(),
-      ...(status === "out_for_delivery" && !order.pickedUpAt ? { pickedUpAt: new Date() } : {}),
-      ...(status === "completed" ? { deliveredAt: new Date() } : {}),
-    },
-    eq(orders.id, id),
-  )
+  const changedByAnother: Result = { ok: false, error: "This order was just changed by someone else. Refresh and try again." }
+  if (status === "cancelled") {
+    // Cancelling and giving the stock back is one transaction that only one of several simultaneous staff members can win.
+    if (!(await cancelAndRestock(s.dealer.id, { id }, [order.status], "cancelled"))) return changedByAnother
+  } else {
+    // Conditional on the status this person saw, so two people acting at once cannot both apply their change.
+    const moved = await db.orders
+      .update(
+        {
+          status,
+          updatedAt: new Date(),
+          ...(status === "out_for_delivery" && !order.pickedUpAt ? { pickedUpAt: new Date() } : {}),
+          ...(status === "completed" ? { deliveredAt: new Date() } : {}),
+        },
+        and(eq(orders.id, id), eq(orders.status, order.status))!,
+      )
+      .returning({ id: orders.id })
+    if (moved.length !== 1) return changedByAnother
+  }
   // A finished or cancelled trip no longer shows where the rider is.
   if (status === "completed" || status === "cancelled") await dropFix(s.dealer.id, id)
-  // A cancelled order gives its stock back, once.
-  if (status === "cancelled" && !order.stockReleased) {
-    await releaseOrderStock(s.dealer.id, order.code, "cancelled")
-    await db.orders.update({ stockReleased: true }, eq(orders.id, id))
-  }
   refresh("/orders", `/orders/${id}`, "/inventory", "/live-deliveries")
   return { ok: true }
 }

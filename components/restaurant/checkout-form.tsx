@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useRef, useState, useTransition } from "react"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 
 import { type DeliveryQuote, placeOrder, previewCoupon, previewDelivery } from "@/app/(tenant)/sites/[dealer]/actions"
 import { useCart } from "@/components/restaurant/cart-provider"

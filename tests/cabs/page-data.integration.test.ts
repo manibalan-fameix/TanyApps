@@ -4,7 +4,9 @@ import { randomBytes, randomUUID } from "node:crypto"
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 
-const url = process.env.TEST_DATABASE_URL
+import { testDatabaseUrl } from "../support/disposable-db"
+
+const url = testDatabaseUrl()
 
 vi.mock("@/lib/core/guards", () => ({ industrySession: async () => session }))
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }))

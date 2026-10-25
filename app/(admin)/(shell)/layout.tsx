@@ -12,6 +12,7 @@ import type { RecentCar } from "@/components/nav-projects"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { addableProducts } from "@/lib/auth/businesses"
 import { copy } from "@/lib/copy"
 import { getDealerContext } from "@/lib/auth/context"
 import { cars } from "@/lib/db/schema"
@@ -35,6 +36,8 @@ export default async function ShellLayout({ children }: { children: React.ReactN
   const ctx = await getDealerContext()
   if (ctx.status === "anonymous") redirect("/login")
   if (ctx.status === "no-dealer") redirect("/onboarding")
+  // One phone number can run several products: confirm which one to open before showing any dashboard.
+  if (ctx.needsProductChoice) redirect("/choose-product")
 
   const dealerName = ctx.status === "ok" ? ctx.dealer.displayName : copy.brand.name
   const planLabel = ctx.status === "ok" ? ctx.plan.label : ""
@@ -79,9 +82,17 @@ export default async function ShellLayout({ children }: { children: React.ReactN
   }
 
   const restaurant = ctx.status === "ok" && ctx.dealer.industry === "restaurants"
+  const switcher =
+    ctx.status === "ok" && ctx.businesses
+      ? {
+          active: { id: ctx.dealer.id, name: ctx.dealer.displayName, industry: ctx.dealer.industry, logoUrl: ctx.dealer.logoUrl },
+          businesses: ctx.businesses,
+          addable: addableProducts(ctx.businesses, ctx.user.email),
+        }
+      : undefined
   const shell = (
     <SidebarProvider>
-      <AppSidebar dealerName={dealerName} dealerLogoUrl={ctx.status === "ok" ? ctx.dealer.logoUrl : null} planLabel={planLabel} publicUrl={publicUrl} user={user} recentCars={recentCars} industry={ctx.status === "ok" ? (ctx.dealer.industry as IndustryKey) : undefined} />
+      <AppSidebar switcher={switcher} dealerName={dealerName} dealerLogoUrl={ctx.status === "ok" ? ctx.dealer.logoUrl : null} planLabel={planLabel} publicUrl={publicUrl} user={user} recentCars={recentCars} industry={ctx.status === "ok" ? (ctx.dealer.industry as IndustryKey) : undefined} />
       <SidebarInset>
         <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 bg-background/90 pt-[var(--safe-area-inset-top)] backdrop-blur max-md:border-b max-md:border-border md:static md:h-16 md:bg-transparent md:pt-0 md:backdrop-blur-none">
           <div className="flex items-center gap-2 px-4 md:px-10">

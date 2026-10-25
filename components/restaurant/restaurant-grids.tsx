@@ -18,7 +18,7 @@ import {
   Tag01Icon,
   User02Icon,
 } from "@hugeicons/core-free-icons"
-import { toast } from "sonner"
+import { toast } from "@/lib/toast"
 
 import { optionsFilter } from "@/components/cars/cars-grid"
 import { MenuItemForm, type CategoryOption } from "@/components/restaurant/menu-item-form"

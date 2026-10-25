@@ -21,6 +21,8 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { DealerMark } from "@/components/dealer-mark"
+import { ProductSwitcher } from "@/components/product-switcher"
+import type { BusinessSummary } from "@/lib/auth/active-business"
 
 // shadcn "sidebar-08" block, populated with the signed-in dealer's data.
 export function AppSidebar({
@@ -31,6 +33,7 @@ export function AppSidebar({
   user,
   recentCars,
   industry,
+  switcher,
   ...props
 }: {
   dealerName: string
@@ -40,29 +43,35 @@ export function AppSidebar({
   user: { name: string; email: string }
   recentCars: RecentCar[]
   industry?: IndustryKey
+  /** The user's businesses and the products they could add. Absent for sessions that cannot switch (dev demo). */
+  switcher?: { active: BusinessSummary; businesses: BusinessSummary[]; addable: IndustryKey[] }
 } & React.ComponentProps<typeof Sidebar>) {
   const nav = ADMIN_NAV[industry ?? DEFAULT_INDUSTRY]
   return (
     <Sidebar variant="inset" {...props}>
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<Link href="/dashboard" />}>
-              <DealerMark name={dealerName} logoUrl={dealerLogoUrl} />
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">{dealerName}</span>
-                <span className="truncate text-xs">{planLabel}</span>
-              </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        {switcher ? (
+          <ProductSwitcher {...switcher} planLabel={planLabel} />
+        ) : (
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton size="lg" render={<Link href="/dashboard" />}>
+                <DealerMark name={dealerName} logoUrl={dealerLogoUrl} />
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-medium">{dealerName}</span>
+                  <span className="truncate text-xs">{planLabel}</span>
+                </div>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
       </SidebarHeader>
       <SidebarContent>
-        <div className="px-2 pt-1">
+        <div className="px-2 pt-0.5 pb-1">
           <Link
             href={nav.addItem.href}
             title={nav.addItem.label}
-            className="group/add relative flex h-10 items-center justify-center gap-2 overflow-hidden rounded-lg bg-[linear-gradient(135deg,color-mix(in_oklab,var(--primary),white_28%),color-mix(in_oklab,var(--primary),black_28%))] text-sm font-semibold text-primary-foreground shadow-md shadow-primary/30 transition-all group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:px-0 hover:shadow-lg hover:shadow-primary/40 active:scale-[0.98]"
+            className="group/add relative flex h-8 items-center justify-center gap-2 overflow-hidden rounded-lg bg-[linear-gradient(135deg,color-mix(in_oklab,var(--primary),white_28%),color-mix(in_oklab,var(--primary),black_28%))] text-sm font-semibold text-primary-foreground shadow-md shadow-primary/30 transition-all group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:px-0 hover:shadow-lg hover:shadow-primary/40 active:scale-[0.98]"
           >
             <span
               aria-hidden
@@ -71,7 +80,7 @@ export function AppSidebar({
             <HugeiconsIcon
               icon={AddCircleIcon}
               strokeWidth={2}
-              className="relative size-5 shrink-0 transition-transform group-hover/add:rotate-90"
+              className="relative size-4 shrink-0 transition-transform group-hover/add:rotate-90"
             />
             <span className="relative truncate group-data-[collapsible=icon]:hidden">
               {nav.addItem.label}

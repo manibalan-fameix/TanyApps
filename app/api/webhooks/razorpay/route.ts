@@ -4,14 +4,18 @@ import { verifyWebhookSignature, type RazorpaySubscription } from "@/lib/billing
 import { applySubscription } from "@/lib/billing/service"
 import { applyAccountStatus, applyBookingPayment } from "@/lib/bookings/service"
 import { dispatchPaymentEvent, type PaymentHandlers } from "@/lib/core/payments/webhook"
+import { countMetric } from "@/lib/core/metrics"
+import { clearException, recordException } from "@/lib/core/payment-exceptions"
+import { safeErrorMessage } from "@/lib/core/safe-error"
 import { applyOrderPayment } from "@/lib/restaurant/payments"
 
 const paymentHandlers: PaymentHandlers = {
   eats_order: async (orderId, paymentId) => applyOrderPayment(orderId, paymentId),
-  // applyBookingPayment is idempotent and reports only whether it changed anything, so a miss is not an error here.
+  // applyBookingPayment is idempotent. A buyer who lost the car is refunded; if that refund cannot be created now it answers
+  // refundFailed, so the webhook returns non-2xx and Razorpay retries (the cron job also picks the refund up).
   motors_booking: async (orderId, paymentId) => {
-    const { applied } = await applyBookingPayment(orderId, paymentId)
-    return { found: true, applied }
+    const { applied, status, refundFailed } = await applyBookingPayment(orderId, paymentId)
+    return { found: status !== "not_found", applied, refundFailed }
   },
 }
 
@@ -44,6 +48,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "bad_body" }, { status: 400 })
   }
 
+  let outcome: string | null = null
+  const paymentRef = event.payload?.payment?.entity?.id ?? event.payload?.payment?.entity?.order_id ?? null
   try {
     const sub = event.payload?.subscription?.entity
     const payment = event.payload?.payment?.entity
@@ -52,17 +58,24 @@ export async function POST(req: Request) {
       await applySubscription(sub)
     } else if (event.event === "order.paid" && payment?.order_id) {
       const notes = event.payload?.order?.entity?.notes
-      await dispatchPaymentEvent({ source: "order.paid", orderId: payment.order_id, paymentId: payment.id, orderNotes: Array.isArray(notes) ? null : notes }, paymentHandlers) // Razorpay sends [] for no notes
+      outcome = await dispatchPaymentEvent({ source: "order.paid", orderId: payment.order_id, paymentId: payment.id, orderNotes: Array.isArray(notes) ? null : notes }, paymentHandlers) // Razorpay sends [] for no notes
     } else if (event.event === "payment.captured" && payment?.order_id) {
-      await dispatchPaymentEvent({ source: "payment.captured", orderId: payment.order_id, paymentId: payment.id }, paymentHandlers)
+      outcome = await dispatchPaymentEvent({ source: "payment.captured", orderId: payment.order_id, paymentId: payment.id }, paymentHandlers)
     } else if (event.event?.startsWith("account.") && account?.id) {
       await applyAccountStatus(account.id, account.status)
     } else {
       return NextResponse.json({ ok: true, ignored: true })
     }
+    // A captured payment that belongs to no order or booking of ours: money taken that nothing will act on, so a person is told.
+    if (outcome === "unmatched" && paymentRef) {
+      await recordException({ kind: "unmatched_payment", ref: paymentRef, detail: `Razorpay order ${event.payload?.payment?.entity?.order_id ?? "unknown"} matches no booking or order of ours.` })
+    }
+    if (paymentRef) await clearException("webhook_failed", paymentRef)
   } catch (error) {
     // A non-2xx makes Razorpay retry, which is what we want for a transient database error.
-    console.error(`webhook ${event.event} failed: ${error instanceof Error ? error.message : "unknown"}`)
+    console.error(`webhook ${event.event} failed: ${safeErrorMessage(error)}`)
+    countMetric("razorpay_webhook_failed", { event: String(event.event ?? "unknown").slice(0, 40) })
+    await recordException({ kind: "webhook_failed", ref: paymentRef ?? String(event.event ?? "unknown").slice(0, 60), detail: `${String(event.event ?? "event").slice(0, 40)} failed: ${safeErrorMessage(error, 160)}` })
     return NextResponse.json({ error: "failed" }, { status: 500 })
   }
   return NextResponse.json({ ok: true })

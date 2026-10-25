@@ -46,18 +46,18 @@ export function createGoogleProvider(opts: GoogleOptions): PlacesProvider {
   return {
     name: "google",
 
-    async autocomplete(query, sessionToken): Promise<PlaceSuggestion[]> {
+    async autocomplete(query, sessionToken, origin): Promise<PlaceSuggestion[]> {
       const json = (await call(`${PLACES}/places:autocomplete`, {
         method: "POST",
-        fieldMask: "suggestions.placePrediction.placeId,suggestions.placePrediction.structuredFormat,suggestions.placePrediction.text",
+        fieldMask: "suggestions.placePrediction.placeId,suggestions.placePrediction.structuredFormat,suggestions.placePrediction.text,suggestions.placePrediction.distanceMeters",
         // India only; the session token is what makes the typing and the final choice one billed session.
-        body: JSON.stringify({ input: query, sessionToken, includedRegionCodes: ["in"], languageCode: "en" }),
-      })) as { suggestions?: { placePrediction?: { placeId?: string; text?: { text?: string }; structuredFormat?: { mainText?: { text?: string }; secondaryText?: { text?: string } } } }[] } | null
+        body: JSON.stringify({ input: query, sessionToken, includedRegionCodes: ["in"], languageCode: "en", ...(origin ? { origin: { latitude: origin.lat, longitude: origin.lng } } : {}) }),
+      })) as { suggestions?: { placePrediction?: { placeId?: string; distanceMeters?: number; text?: { text?: string }; structuredFormat?: { mainText?: { text?: string }; secondaryText?: { text?: string } } } }[] } | null
       const out: PlaceSuggestion[] = []
       for (const s of json?.suggestions ?? []) {
         const p = s.placePrediction
         if (!p?.placeId) continue
-        out.push({ placeId: p.placeId, primary: p.structuredFormat?.mainText?.text ?? p.text?.text ?? "", secondary: p.structuredFormat?.secondaryText?.text ?? "" })
+        out.push({ placeId: p.placeId, primary: p.structuredFormat?.mainText?.text ?? p.text?.text ?? "", secondary: p.structuredFormat?.secondaryText?.text ?? "", ...(origin && typeof p.distanceMeters === "number" ? { distanceM: p.distanceMeters } : {}) })
       }
       return out
     },

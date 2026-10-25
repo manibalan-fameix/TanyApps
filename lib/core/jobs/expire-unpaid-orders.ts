@@ -12,7 +12,7 @@ export const expireUnpaidOrdersJob: Job = {
   async run() {
     let released = 0
     const dealerIds = await listDealerIdsByIndustry("restaurants")
-    for (const id of dealerIds) released += await expireUnpaidOrders(id)
+    for (const id of dealerIds) released += await expireUnpaidOrders(id, new Date(), { verifyWithProvider: true })
     return `${released} order(s) released across ${dealerIds.length} restaurant(s)`
   },
 }

@@ -1,9 +1,10 @@
-import { and, eq } from "drizzle-orm"
+import { asc, eq } from "drizzle-orm"
 import { cookies } from "next/headers"
 import { cache } from "react"
 
 import { unscopedDb } from "../db/client"
 import { dealerUsers, dealers } from "../db/schema"
+import { ACTIVE_BUSINESS_COOKIE, type BusinessSummary } from "./active-business"
 import { auth } from "./index"
 import { DEV_BYPASS_COOKIE, DEV_DEALER, DEV_USER, isDevBypassEnabled } from "./dev-bypass"
 import { LOCAL_LOGIN_COOKIE, emailFromLocalLoginCookie, getLocalDealerContext, isLocalPasswordLoginEnabled } from "./local-login"
@@ -24,6 +25,10 @@ export type DealerContext =
       devBypass?: boolean
       /** False only for the in-memory demo dealer: it has no database row, so never write against its id. */
       dealerInDb: boolean
+      /** Every business the user belongs to, oldest first. Absent for the dev demo and local-login sessions. */
+      businesses?: BusinessSummary[]
+      /** True when the user has several businesses and has not picked one in this session. */
+      needsProductChoice?: boolean
     }
 
 /**
@@ -31,7 +36,7 @@ export type DealerContext =
  * the lookup is scoped to that product so one Tany account can own one dealer
  * per product. Everything downstream must use
  * `scopedDb(ctx.dealer.id)`; the dealer id never comes from the request.
- * Without an industry, if several memberships exist the earliest link wins.
+ * Without an industry, the business picked this session (see `ACTIVE_BUSINESS_COOKIE`) wins, else the oldest one.
  */
 export const getDealerContext = cache(async (industry?: IndustryKey): Promise<DealerContext> => {
   const cookieStore = await cookies()
@@ -68,16 +73,29 @@ export const getDealerContext = cache(async (industry?: IndustryKey): Promise<De
   if (!session?.user || !id) return { status: "anonymous" }
   const user = { id, name: session.user.name, email: session.user.email }
 
-  const membershipWhere = industry
-    ? and(eq(dealerUsers.userId, user.id), eq(dealers.industry, industry))
-    : eq(dealerUsers.userId, user.id)
-  const [row] = await unscopedDb
+  // Every business this user belongs to. A phone number can sign in to several products, so more than one is normal.
+  const memberships = await unscopedDb
     .select({ dealer: dealers, role: dealerUsers.role })
     .from(dealerUsers)
     .innerJoin(dealers, eq(dealers.id, dealerUsers.dealerId))
-    .where(membershipWhere)
-    .limit(1)
+    .where(eq(dealerUsers.userId, user.id))
+    .orderBy(asc(dealers.createdAt))
+
+  const businesses: BusinessSummary[] = memberships.map((m) => ({ id: m.dealer.id, name: m.dealer.displayName, industry: m.dealer.industry, logoUrl: m.dealer.logoUrl }))
+  const chosenId = cookieStore.get(ACTIVE_BUSINESS_COOKIE)?.value
+  const chosen = industry ? undefined : memberships.find((m) => m.dealer.id === chosenId)
+  const row = industry ? memberships.find((m) => m.dealer.industry === industry) : (chosen ?? memberships[0])
 
   if (!row) return { status: "no-dealer", user }
-  return { status: "ok", user, dealer: row.dealer, role: row.role, plan: getPlan(effectivePlanKey(row.dealer)), dealerInDb: true }
+  return {
+    status: "ok",
+    user,
+    dealer: row.dealer,
+    role: row.role,
+    plan: getPlan(effectivePlanKey(row.dealer)),
+    dealerInDb: true,
+    businesses,
+    // Several products and none picked yet this session: the admin sends them to the chooser before the dashboard.
+    needsProductChoice: !industry && !chosen && memberships.length > 1,
+  }
 })

@@ -13,6 +13,6 @@ export const mediaStatus = pgEnum("media_status", ["pending", "uploaded", "proce
 export const leadSource = pgEnum("lead_source", ["test_drive", "enquiry", "hold"])
 export const leadStatus = pgEnum("lead_status", ["new", "contacted", "visited", "won", "lost"])
 export const priceEventType = pgEnum("price_event_type", ["listed", "price_changed", "sold"])
-export const bookingStatus = pgEnum("booking_status", ["created", "paid", "failed", "refunded", "cancelled"])
+export const bookingStatus = pgEnum("booking_status", ["created", "paid", "failed", "refunded", "cancelled", "refund_pending"])
 
 export const mediaAngle = pgEnum("media_angle", CAR_ANGLES)
