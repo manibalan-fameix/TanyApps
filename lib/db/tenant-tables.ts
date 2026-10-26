@@ -41,7 +41,12 @@ import {
   rcTransfers,
   reviews,
   routeDistances,
+  securityAuditEvents,
   stockAdjustments,
+  teamInvites,
+  usageCounters,
+  usageEvents,
+  usageLimits,
   users,
   userProductPhones,
   variants,
@@ -59,7 +64,7 @@ import {
  */
 
 /** Tables every industry uses. */
-const PLATFORM_DIRECT = { dealerUsers, dealerDomains, coupons, reviews, enquiries, banners, notifications, notificationOptins, auditLog } as const
+const PLATFORM_DIRECT = { dealerUsers, dealerDomains, coupons, reviews, enquiries, banners, notifications, notificationOptins, auditLog, teamInvites } as const
 
 /** TanyMotos. */
 const MOTORS_DIRECT = { cars, leads, bookings } as const
@@ -80,4 +85,4 @@ export const CHILD_TENANT_TABLES = { carMedia, rcLookups, carViews, rcTransfers,
  * Tables that are deliberately not tenant-scoped: the tenant root itself, authentication, and shared reference data. Code
  * reads them only through lib/tenant, lib/auth and lib/variants (the raw client is blocked everywhere else by ESLint).
  */
-export const GLOBAL_TABLES = { dealers, users, accounts, userProductPhones, variants, cronRuns, routeDistances, paymentExceptions } as const
+export const GLOBAL_TABLES = { dealers, users, accounts, userProductPhones, variants, cronRuns, routeDistances, paymentExceptions, securityAuditEvents, usageEvents, usageCounters, usageLimits } as const

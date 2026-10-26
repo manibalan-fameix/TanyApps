@@ -18,11 +18,11 @@ describe("migration files, journal and snapshots agree", () => {
   })
   it("the release migrations 0029 onward are the ones this release expects, in this order", () => {
     expect(journal.entries.slice(29).map((e) => e.tag.replace(/^\d{4}_/, "").replace(/_[a-z]+_[a-z]+$/, "")).length).toBeGreaterThanOrEqual(4)
-    expect(files.slice(30)).toEqual(["0030_booking_single_paid_and_refund_state.sql", "0031_trips_hold_alert_index.sql", "0032_eats_refund_state_and_payment_exceptions.sql"])
+    expect(files.slice(30)).toEqual(["0030_booking_single_paid_and_refund_state.sql", "0031_trips_hold_alert_index.sql", "0032_eats_refund_state_and_payment_exceptions.sql", "0033_team_invites.sql", "0034_security_audit_events.sql", "0035_usage_accounting.sql", "0036_trips_idempotency_key.sql"])
   })
 })
 
-describe("the release migrations (0030-0032) are additive: nothing is dropped, rewritten, renamed or deleted", () => {
+describe("the release migrations (0030 onward) are additive: nothing is dropped, rewritten, renamed or deleted", () => {
   const statements = (f: string) =>
     readFileSync(`drizzle/${f}`, "utf8")
       .replace(/--[^\n>]*\n/g, "\n") // SQL comments (not the drizzle breakpoint markers)
@@ -32,7 +32,11 @@ describe("the release migrations (0030-0032) are additive: nothing is dropped, r
   for (const f of files.slice(30)) {
     it(`${f}`, () => {
       for (const st of statements(f)) {
-        expect(st, st).not.toMatch(/\bDROP\b|\bRENAME\b|\bTRUNCATE\b|\bDELETE\b|\bUPDATE\b\s+"?\w+"?\s+SET|ALTER COLUMN|SET NOT NULL|\bTYPE\b\s+\w+\s*USING/i)
+        // A foreign key's "ON DELETE cascade / set null" is a referential rule on a new table, not a statement that deletes data.
+        // Creating a protective trigger or its function is additive: its text necessarily names the UPDATE/DELETE/TRUNCATE it blocks.
+        if (/^CREATE (OR REPLACE )?(FUNCTION|TRIGGER)\b/i.test(st)) continue
+        const stmt = st.replace(/\bON (DELETE|UPDATE) (cascade|set null|no action|restrict)\b/gi, "")
+        expect(stmt, st).not.toMatch(/\bDROP\b|\bRENAME\b|\bTRUNCATE\b|\bDELETE\b|\bUPDATE\b\s+"?\w+"?\s+SET|ALTER COLUMN|SET NOT NULL|\bTYPE\b\s+\w+\s*USING/i)
         // A column added NOT NULL must have a default, or existing rows would make the statement fail or rewrite the table.
         if (/ADD COLUMN/i.test(st) && /NOT NULL/i.test(st)) expect(st, st).toMatch(/DEFAULT/i)
       }

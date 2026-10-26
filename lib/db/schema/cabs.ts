@@ -456,6 +456,12 @@ export const trips = pgTable(
     holdAlertedAt: timestamp("hold_alerted_at", { withTimezone: true }),
     /** SHA-256 of a 128-bit random token for the tracking link. The token itself is never stored. */
     shareTokenHash: text("share_token_hash").notNull(),
+    /**
+     * A client-generated key for one submission of the booking form, so a double tap, a retry after a dropped connection or a second open
+     * tab returns the request that already exists instead of creating a second one. Valid for 24 hours (see lib/cabs/idempotency.ts);
+     * null for operator-made and older bookings.
+     */
+    idempotencyKey: text("idempotency_key"),
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
     rejectReason: text("reject_reason"),
     cancelledReason: text("cancelled_reason"),
@@ -466,6 +472,7 @@ export const trips = pgTable(
   (t) => [
     uniqueIndex("trips_dealer_code_uq").on(t.dealerId, t.code),
     uniqueIndex("trips_share_token_uq").on(t.shareTokenHash),
+    uniqueIndex("trips_customer_op_key_uq").on(t.dealerId, t.customerId, t.idempotencyKey).where(sql`${t.idempotencyKey} is not null`),
     index("trips_dealer_status_idx").on(t.dealerId, t.status, t.startAt),
     index("trips_customer_idx").on(t.dealerId, t.customerId, t.createdAt),
     index("trips_hold_idx").on(t.status, t.holdExpiresAt),

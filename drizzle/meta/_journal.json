@@ -232,6 +232,34 @@
       "when": 1792860678479,
       "tag": "0032_eats_refund_state_and_payment_exceptions",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793013079503,
+      "tag": "0033_team_invites",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793013809638,
+      "tag": "0034_security_audit_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793014308602,
+      "tag": "0035_usage_accounting",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793014780435,
+      "tag": "0036_trips_idempotency_key",
+      "breakpoints": true
     }
   ]
 }

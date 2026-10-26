@@ -1,4 +1,5 @@
-import { index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core"
+import { sql } from "drizzle-orm"
+import { check, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core"
 
 import { dealers } from "./dealers.ts"
 
@@ -80,4 +81,49 @@ export const paymentExceptions = pgTable(
     resolution: text("resolution"),
   },
   (t) => [uniqueIndex("payment_exceptions_kind_ref_uq").on(t.kind, t.ref), index("payment_exceptions_status_idx").on(t.status, t.lastSeenAt)],
+)
+
+/**
+ * The platform security trail: privileged and identity-sensitive events across ALL businesses (Tany team sign-ins and exports, payment
+ * exception resolutions, staff invitations, role removals, business creation). Business-level history (fare edits, refunds, reassignments)
+ * stays in `audit_log` above; an investigation reads both (docs/release/operational-security.md).
+ *
+ * Append-only at the database: triggers in the migration block UPDATE, DELETE and TRUNCATE, so application code and an ordinary
+ * application role cannot rewrite history. That is tamper RESISTANCE, not tamper-proofing: whoever owns the database can drop the
+ * triggers. Stronger guarantees need a separate database role without those rights and an off-database copy (see the audit ADR).
+ * `business_id` is deliberately not a foreign key, so deleting a business can never delete its trail. No secret, token, OTP, payment
+ * detail or export content is ever stored: `metadata` is redacted and capped by lib/core/security-audit.ts.
+ */
+export const securityAuditEvents = pgTable(
+  "security_audit_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    /** super_admin | owner | staff | user | system | webhook | anonymous */
+    actorType: text("actor_type").notNull(),
+    actorId: text("actor_id"),
+    /** The verified email of a Tany team member; null for everyone else. */
+    actorLabel: text("actor_label"),
+    /** The business the event concerns, when there is one. Not named dealer_id on purpose: this table is not tenant-scoped (see tenant-tables.ts). */
+    businessId: uuid("business_id"),
+    /** Dotted verb: super.export, super.sign_in, payment_exception.resolve, team.invite_created, ... */
+    action: text("action").notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id"),
+    /** success | denied | failed */
+    outcome: text("outcome").notNull(),
+    /** Correlates with Cloudflare's request id (cf-ray) in the edge logs. */
+    requestId: text("request_id"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    /** Makes recording idempotent for retried operations: the same key records once. */
+    dedupeKey: text("dedupe_key"),
+  },
+  (t) => [
+    index("security_audit_at_idx").on(t.at),
+    index("security_audit_action_idx").on(t.action, t.at),
+    index("security_audit_business_idx").on(t.businessId, t.at),
+    index("security_audit_actor_idx").on(t.actorId, t.at),
+    uniqueIndex("security_audit_dedupe_uq").on(t.dedupeKey).where(sql`${t.dedupeKey} is not null`),
+    check("security_audit_outcome_ck", sql`${t.outcome} in ('success','denied','failed')`),
+  ],
 )

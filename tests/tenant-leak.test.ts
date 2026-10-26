@@ -40,6 +40,7 @@ const UPDATE_PAYLOAD: Record<string, object> = {
   trips: { notesEnc: "x" },
   tripEvents: { type: "x" },
   dealerUsers: { role: "staff" },
+  teamInvites: { revokedBy: "x" },
   menuCategories: { name: "x" },
   menuItems: { name: "x" },
   orders: { note: "x" },
