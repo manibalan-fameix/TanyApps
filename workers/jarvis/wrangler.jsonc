@@ -7,6 +7,12 @@
   //   GEMINI_API_KEY      Google AI Studio (or Vertex) key: answers and the spoken voice
   //   JARVIS_PASSPHRASE   the password the page asks for, so only you can use it
   //   SLACK_BOT_TOKEN / SLACK_USER_TOKEN / SLACK_CHANNEL / SLACK_SIGNING_SECRET   Slack (messages, and replies via /api/slack/events)
+  // Optional hardening (owner actions; see docs/release/operational-security.md section 4):
+  //   ACCESS_TEAM_DOMAIN + ACCESS_AUD   (both, as vars or secrets) make the Worker require Cloudflare Access's signed JWT on every /api/ call
+  //                                     except /api/slack/events. Setting only one answers 503 on purpose. Create the Access application first.
+  //   RATE_LIMITER                      a Durable Object binding to the tracker Worker's RateLimiter class, giving one rate limit shared by
+  //                                     every isolate: "durable_objects": { "bindings": [{ "name": "RATE_LIMITER", "class_name": "RateLimiter",
+  //                                     "script_name": "tanyapps-tracker" }] }. Add it only after that Worker is deployed in the same account.
     "name": "tany-jarvis",
   "main": "index.mjs",
   "compatibility_date": "2026-09-21",

@@ -17,7 +17,9 @@ import { getCarState, type CarState } from "@/lib/cars/state"
 import { marketplaceDetailsSchema, type MarketplaceDetails } from "@/lib/cars/marketplace"
 import { cars } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
+import { clientIp } from "@/lib/core/guards"
 import { rateLimit } from "@/lib/core/rate-limit"
+import { meterUsage } from "@/lib/core/usage"
 import { getCachedRcRecord, lookupRcForCar } from "@/lib/rc/lookup"
 import { RcError, type RcErrorCode } from "@/lib/rc/types"
 import { getAllVariants, getVariantById } from "@/lib/variants/repo"
@@ -32,9 +34,9 @@ async function dealer() {
   return ctx.status === "ok" && ctx.dealerInDb ? ctx.dealer : null
 }
 
-async function clientIp() {
-  const h = await headers()
-  return h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || undefined
+async function callerIp() {
+  const ip = clientIp(await headers())
+  return ip === "unknown" ? undefined : ip
 }
 
 const uuid = z.string().uuid()
@@ -52,6 +54,7 @@ export async function ocrPlateAction(input: z.infer<typeof plateInput>) {
   const parsed = plateInput.safeParse(input)
   if (!parsed.success) return fail("invalid")
   if (!(await rateLimit(`ocr:${d.id}`, 40, 3_600_000))) return fail("rate_limited")
+  if (!(await meterUsage({ dealerId: d.id, feature: "vision_ocr_request" })).allowed) return fail("rate_limited")
   const reading = await readPlate(getVisionClient(), parsed.data)
   return { ok: true as const, ...reading }
 }
@@ -79,7 +82,7 @@ export async function startCarAction(input: z.infer<typeof regInput>): Promise<S
   }
   // An RC problem never blocks the dealer: they can fill the facts in by hand.
   try {
-    const { record } = await lookupRcForCar(d.id, carId, { ip: await clientIp() })
+    const { record } = await lookupRcForCar(d.id, carId, { ip: await callerIp() })
     return { ok: true, carId, rc: toRcSummary(record), rcError: null }
   } catch (e) {
     return { ok: true, carId, rc: null, rcError: e instanceof RcError ? e.code : "provider_error" }
@@ -90,7 +93,7 @@ export async function retryRcAction(carId: string) {
   const d = await dealer()
   if (!d || !uuid.safeParse(carId).success) return fail("unauthorised")
   try {
-    const { record } = await lookupRcForCar(d.id, carId, { ip: await clientIp() })
+    const { record } = await lookupRcForCar(d.id, carId, { ip: await callerIp() })
     return { ok: true as const, rc: toRcSummary(record), rcError: null }
   } catch (e) {
     return { ok: true as const, rc: null, rcError: e instanceof RcError ? e.code : ("provider_error" as RcErrorCode) }

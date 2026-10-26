@@ -22,6 +22,10 @@ describe("clientIp", () => {
     expect(clientIp(h({ "x-forwarded-for": "6.6.6.6, 7.7.7.7" }))).toBe("6.6.6.6")
     expect(clientIp(h({}))).toBe("unknown")
   })
+  it("in production trusts only the edge header and never a forwarded one", () => {
+    expect(clientIp(h({ "cf-connecting-ip": "1.1.1.1", "x-forwarded-for": "6.6.6.6" }), true)).toBe("1.1.1.1")
+    expect(clientIp(h({ "x-forwarded-for": "6.6.6.6", "x-real-ip": "5.5.5.5" }), true)).toBe("unknown")
+  })
 })
 
 describe("tenantFrom", () => {

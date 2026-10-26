@@ -34,6 +34,8 @@ export type CreateTripInput = {
   /** Operator-made bookings are confirmed on the spot, since the operator has already agreed. */
   confirmNow?: boolean
   notes?: string
+  /** One submission of the booking form; see lib/cabs/idempotency.ts. */
+  idempotencyKey?: string
   /** Only for tests that need a deterministic booking code. */
   makeCode?: () => string
 }
@@ -96,6 +98,7 @@ export async function createTrip(db: ScopedDb, input: CreateTripInput): Promise<
       holdExpiresAt: hold?.expiresAt ?? null,
       holdAlertAt: hold?.alertAt ?? null,
       shareTokenHash: share.hash,
+      idempotencyKey: input.idempotencyKey ?? null,
       confirmedAt: confirmed ? now : null,
     })
     .returning({ id: trips.id, code: trips.code, status: trips.status })

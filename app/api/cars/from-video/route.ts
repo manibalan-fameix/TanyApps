@@ -6,11 +6,16 @@ import { getVisionClient, type VisionAudio, type VisionImage } from "@/lib/ai/vi
 import { getDealerContext } from "@/lib/auth/context"
 import { createCarFromVideo, videoSearchText } from "@/lib/cars/from-video"
 import { rateLimit } from "@/lib/core/rate-limit"
+import { meterUsage } from "@/lib/core/usage"
+import { readBodyUpTo } from "@/lib/media/read-body"
 import { getAllVariants } from "@/lib/variants/repo"
 
 const MAX_FRAMES = 16
 const MAX_FRAME_BYTES = 400_000
 const MAX_AUDIO_BYTES = 8_000_000 // ~4 minutes of 16 kHz mono 16-bit
+
+// Every frame at its cap, the audio at its cap, plus multipart framing. The whole body is bounded before it is parsed.
+const MAX_BODY_BYTES = MAX_FRAMES * MAX_FRAME_BYTES + MAX_AUDIO_BYTES + 256_000
 
 const meta = z.object({ frames: z.number().int().min(1).max(MAX_FRAMES), audio: z.boolean() })
 
@@ -29,7 +34,11 @@ export async function POST(req: Request) {
   const vision = getVisionClient()
   if (!vision) return NextResponse.json({ error: "no_ai" }, { status: 503 })
 
-  const form = await req.formData().catch(() => null)
+  const declared = Number(req.headers.get("content-length") ?? 0)
+  if (declared > MAX_BODY_BYTES) return NextResponse.json({ error: "too_large" }, { status: 413 })
+  const raw = await readBodyUpTo(req, MAX_BODY_BYTES)
+  if (!raw) return NextResponse.json({ error: "too_large" }, { status: 413 })
+  const form = await new Response(raw as BodyInit, { headers: { "content-type": req.headers.get("content-type") ?? "" } }).formData().catch(() => null)
   const parsed = meta.safeParse({ frames: Number(form?.get("frameCount")), audio: form?.get("audio") instanceof Blob })
   if (!form || !parsed.success) return NextResponse.json({ error: "invalid" }, { status: 400 })
 
@@ -46,6 +55,7 @@ export async function POST(req: Request) {
     audio = { mediaType: "audio/wav", base64: await toBase64(a) }
   }
 
+  if (!(await meterUsage({ dealerId: ctx.dealer.id, feature: "llm_video_listing" })).allowed) return NextResponse.json({ error: "rate_limited" }, { status: 429 })
   const listing = await extractListingFromVideo(vision, { frames, audio })
   if (!listing) return NextResponse.json({ error: "not_read" }, { status: 422 })
 

@@ -7,6 +7,7 @@ import { post as slackPost, sendMessage, validateMessage } from "../../scripts/j
 import { PERSONAS, cleanCallMe, recoverDraft, writeDetails, withoutActions, cardFromBody, askGemini, cfg, currentSprint, loadBoard, overdue, speakable, sprintReport, streamGemini, streamHear, hearEvents, showEvents, pingGemini, briefingFacts } from "../../scripts/jarvis/lib.mjs"
 import cards from "../../scripts/jarvis/task-cards.json" with { type: "json" }
 import { speakStream } from "./tts.mjs"
+import { accessState, overSharedLimit, verifyAccess } from "./access.mjs"
 
 const SECURITY = {
   "content-security-policy": "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
@@ -116,6 +117,19 @@ function limited(ip) {
   return recent.length > 40
 }
 
+// Wrong-passphrase attempts per caller. Checked BEFORE the passphrase is compared, so guessing is throttled (the limiter above only
+// ever saw callers who already knew the passphrase). Per isolate, like the limiter above: it slows a guesser, it is not a perfect wall.
+const FAIL_LIMIT = 10, FAIL_WINDOW_MS = 60_000
+const failures = new Map()
+function lockedOut(ip, now = Date.now()) {
+  return (failures.get(ip) ?? []).filter((t) => now - t < FAIL_WINDOW_MS).length >= FAIL_LIMIT
+}
+function noteFailure(ip, now = Date.now()) {
+  const recent = (failures.get(ip) ?? []).filter((t) => now - t < FAIL_WINDOW_MS)
+  recent.push(now); failures.set(ip, recent)
+  if (failures.size > 500) failures.clear()
+}
+
 /** Server-sent events: one JSON object per event, then {"done": true}. `events` is an async iterable of objects. */
 function sse(events) {
   const enc = new TextEncoder()
@@ -212,9 +226,18 @@ export default {
     if (request.method !== "POST") return json({ error: "Use POST." }, 405)
 
     if (!env.JARVIS_PASSPHRASE) return json({ error: "JARVIS_PASSPHRASE is not set on the server." }, 500)
+    // Cloudflare Access, when configured: the request must carry Access's signed JWT for this application. (The Slack events path above is
+    // exempt: it is called by Slack and protected by Slack's signature.) The passphrase below is still required.
+    const access = accessState(env)
+    if (access === "misconfigured") return json({ error: "Access is half configured (set both ACCESS_TEAM_DOMAIN and ACCESS_AUD, or neither)." }, 503)
+    if (access === "on" && !(await verifyAccess(request, env))) return json({ error: "Unauthorised." }, 401)
+    const caller = request.headers.get("cf-connecting-ip") ?? "x"
+    // A limit shared by every isolate when the rate limiter is bound; counts every attempt, right or wrong, before the passphrase is compared.
+    if (await overSharedLimit(env, `jarvis:${caller}`, 60, 60_000)) return json({ error: "Too many attempts. Wait a minute." }, 429)
+    if (lockedOut(caller)) return json({ error: "Too many wrong attempts. Wait a minute." }, 429)
     const given = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "")
-    if (!same(given, env.JARVIS_PASSPHRASE)) return json({ error: "Unauthorised." }, 401)
-    if (limited(request.headers.get("cf-connecting-ip") ?? "x")) return json({ error: "Too many questions. Wait a minute." }, 429)
+    if (!same(given, env.JARVIS_PASSPHRASE)) { noteFailure(caller); return json({ error: "Unauthorised." }, 401) }
+    if (limited(caller)) return json({ error: "Too many questions. Wait a minute." }, 429)
 
     // The page calls this as soon as it opens, so the first question does not wait for the GitHub board to load.
     if (url.pathname === "/api/warm") {

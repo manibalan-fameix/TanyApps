@@ -3,6 +3,8 @@ import { NextResponse } from "next/server"
 import { getDealerContext } from "@/lib/auth/context"
 import { MAX_DOC_BYTES, parsePrivateKey, sniffDocType } from "@/lib/media/documents"
 import { MAX_PHOTO_BYTES, PHOTO_TYPES } from "@/lib/media/keys"
+import { checkPhotoBytes } from "@/lib/media/photo-check"
+import { readBodyUpTo } from "@/lib/media/read-body"
 import { getPrivateStorage, getStorage } from "@/lib/storage"
 
 // Photos are uploaded through the app instead of straight to R2. The browser then only talks to its own
@@ -23,11 +25,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ key:
 
   const declared = Number(request.headers.get("content-length") ?? 0)
   if (declared > MAX_PHOTO_BYTES) return new NextResponse(null, { status: 413 })
-  const body = Buffer.from(await request.arrayBuffer())
-  if (body.length === 0 || body.length > MAX_PHOTO_BYTES) return new NextResponse(null, { status: 413 })
+  const body = await readBodyUpTo(request, MAX_PHOTO_BYTES)
+  if (!body || body.length === 0) return new NextResponse(null, { status: 413 })
+  // The browser's Content-Type is a claim; the file's own first bytes decide. Public photos are served from our bucket's origin.
+  const rejection = checkPhotoBytes(body, contentType)
+  if (rejection) return new NextResponse(null, { status: 415, headers: { "x-reject-reason": rejection } })
 
   try {
-    await getStorage().put(key, body, contentType)
+    await getStorage().put(key, Buffer.from(body.buffer, body.byteOffset, body.byteLength), contentType)
   } catch (error) {
     console.error(`photo upload failed: ${error instanceof Error ? error.message : "unknown"}`)
     return new NextResponse(null, { status: 502 })
@@ -48,12 +53,12 @@ async function putPrivate(request: Request, dealer: { id: string; industry: stri
 
   const declared = Number(request.headers.get("content-length") ?? 0)
   if (declared > MAX_DOC_BYTES) return new NextResponse(null, { status: 413 })
-  const body = Buffer.from(await request.arrayBuffer())
-  if (body.length === 0 || body.length > MAX_DOC_BYTES) return new NextResponse(null, { status: 413 })
+  const body = await readBodyUpTo(request, MAX_DOC_BYTES)
+  if (!body || body.length === 0) return new NextResponse(null, { status: 413 })
   if (sniffDocType(body) !== parsed.type) return new NextResponse(null, { status: 415 })
 
   try {
-    await getPrivateStorage().put(key, body, parsed.type)
+    await getPrivateStorage().put(key, Buffer.from(body.buffer, body.byteOffset, body.byteLength), parsed.type)
   } catch (error) {
     console.error(`private upload failed: ${error instanceof Error ? error.message : "unknown"}`)
     return new NextResponse(null, { status: 503 })

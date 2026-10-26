@@ -17,7 +17,9 @@ import { cars } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
 import { deviceOf, isBot } from "@/lib/analytics/events"
 import { recordEvent } from "@/lib/analytics/track"
+import { clientIp } from "@/lib/core/guards"
 import { rateLimit } from "@/lib/core/rate-limit"
+import { meterUsage } from "@/lib/core/usage"
 import { TENANT_HEADER } from "@/lib/tenant/host"
 import { getDealerBySlug } from "@/lib/tenant/dealer"
 import { getAllVariants, getVariantById } from "@/lib/variants/repo"
@@ -31,10 +33,6 @@ const requestSchema = z.object({
   carSlug: z.string().trim().max(200).optional(),
   messages: z.unknown(),
 })
-
-function clientIp(req: Request): string {
-  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "unknown"
-}
 
 async function loadCarContext(dealerId: string, carSlug: string): Promise<CarChatContext | null> {
   const db = scopedDb(dealerId)
@@ -109,7 +107,7 @@ export async function POST(req: Request) {
   if (!dealer) return NextResponse.json({ error: "unknown_dealer" }, { status: 404 })
   if (dealer.suspended) return NextResponse.json({ error: "chat_unavailable" }, { status: 503 })
 
-  const ip = clientIp(req)
+  const ip = clientIp(req.headers)
   if (!(await rateLimit(`chat:ip:${ip}`, PER_IP_LIMIT, WINDOW_MS))) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 })
   }
@@ -146,6 +144,8 @@ export async function POST(req: Request) {
     system = buildGeneralSystemPrompt(dealer.displayName, dealer.phone, inventory)
   }
 
+  // Counted once per answered question. A configured abuse ceiling stops runaway use; with none set this only measures.
+  if (!(await meterUsage({ dealerId: dealer.id, feature: "llm_chat_request", product: dealer.industry })).allowed) return NextResponse.json({ error: "rate_limited" }, { status: 429 })
   const stream = client.stream({
     model: getChatModel(),
     maxTokens: 1024,

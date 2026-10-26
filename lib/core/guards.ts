@@ -17,13 +17,9 @@ import type { IndustryKey } from "../verticals"
 
 type HeaderReader = Pick<Headers, "get">
 
-/**
- * The caller's IP for rate limiting. On Cloudflare `cf-connecting-ip` is set by the edge and cannot be forged by the
- * client, so it comes first; the first `x-forwarded-for` entry is client-controllable and is only a fallback for local use.
- */
-export function clientIp(h: HeaderReader): string {
-  return h.get("cf-connecting-ip")?.trim() || h.get("x-real-ip")?.trim() || h.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
-}
+import { clientIp } from "./client-ip"
+
+export { clientIp }
 
 export type TenantContext = { dealer: DealerProfile; ip: string }
 

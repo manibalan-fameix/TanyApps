@@ -2,7 +2,7 @@
 
 import { Clock01Icon, HistoryIcon, Route01Icon } from "@hugeicons/core-free-icons"
 import { useRouter } from "next/navigation"
-import { useEffect, useMemo, useState, useTransition } from "react"
+import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 
 import { EmptyState } from "@/components/cabs/book/empty-state"
 import { FilledIcon } from "@/components/cabs/book/filled-icon"
@@ -72,6 +72,13 @@ export function BookingFlow({ section, greeting, operator, lang, signedIn, minSt
   const t = bookingText(lang)
   const router = useRouter()
   const [step, setStep] = useState<"search" | "details" | "vehicles" | "review">(initial ? "details" : "search")
+  // One key per visit to the review screen, sent with every attempt from it: a double tap or a retry returns the booking already made, while a
+  // new route, a new vehicle or a fresh visit gets a new key and so a genuinely new request.
+  const opKeyRef = useRef("")
+  const goStep = (next: typeof step) => {
+    if (next !== "review") opKeyRef.current = ""
+    setStep(next)
+  }
   const [s, setS] = useState<State>(() => (initial ? { ...blank(), tab: section === "vacation" ? "tour" : TAB_OF[initial.tripType] && TAB_OF[initial.tripType] !== "tour" ? TAB_OF[initial.tripType]! : "airport", pickup: initial.pickup, drop: initial.drop, pax: initial.pax, bags: initial.bags, localPackage: initial.localPackage, packageId: initial.packageId } : { ...blank(), tab: section === "vacation" ? "tour" : "airport" }))
   const [options, setOptions] = useState<FareOption[]>([])
   const [meta, setMeta] = useState<{ km: number | null; min: number | null }>({ km: null, min: null })
@@ -108,7 +115,7 @@ export function BookingFlow({ section, greeting, operator, lang, signedIn, minSt
   function advanceIf(n: State) {
     const drop = n.tab === "airport" || n.tab === "oneway" || n.tab === "round"
     const ready = n.pickup && (!drop || n.drop) && (n.tab !== "local" || n.localPackage) && (n.tab !== "tour" || n.packageId)
-    if (ready) setStep("details")
+    if (ready) goStep("details")
   }
 
   function search(then: "vehicles" | "review" = "vehicles", pick?: string) {
@@ -121,7 +128,7 @@ export function BookingFlow({ section, greeting, operator, lang, signedIn, minSt
       setMeta({ km: res.distanceKm, min: res.durationMin })
       const match = pick ? res.options.find((o) => o.classId === pick) : null
       setChosen(match ?? null)
-      setStep(match && then === "review" ? "review" : "vehicles")
+      goStep(match && then === "review" ? "review" : "vehicles")
     })
   }
 
@@ -138,12 +145,12 @@ export function BookingFlow({ section, greeting, operator, lang, signedIn, minSt
       setNotes(saved.notes)
       start(async () => {
         const res = await getQuotes(toDraft(saved.s))
-        if (!res.ok) return void (setStep("search"), setError(errorText(res.code)))
+        if (!res.ok) return void (goStep("search"), setError(errorText(res.code)))
         setOptions(res.options)
         setMeta({ km: res.distanceKm, min: res.durationMin })
         const match = res.options.find((o) => o.classId === saved.classId) ?? null
         setChosen(match)
-        setStep(match ? "review" : "vehicles")
+        goStep(match ? "review" : "vehicles")
       })
     } catch {
       /* private mode or blocked storage: start again */
@@ -166,7 +173,7 @@ export function BookingFlow({ section, greeting, operator, lang, signedIn, minSt
     if (!chosen) return
     setError("")
     start(async () => {
-      const res = await requestBooking(toDraft(s), chosen.classId, chosen.totalPaise, notes)
+      const res = await requestBooking(toDraft(s), chosen.classId, chosen.totalPaise, notes, (opKeyRef.current ||= crypto.randomUUID()))
       if (res.ok) {
         router.push(`/my/bookings/${res.id}?new=1`)
         return
@@ -184,7 +191,7 @@ export function BookingFlow({ section, greeting, operator, lang, signedIn, minSt
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-lg font-semibold">{t.vehiclesTitle}</h2>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setStep("search")}>{t.changeSearch}</Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => goStep("search")}>{t.changeSearch}</Button>
         </div>
         <p className="text-sm text-muted-foreground">
           {[s.pickup?.name, needsDrop ? s.drop?.name : null].filter(Boolean).join(" → ")} · {when(s.startAt)}
@@ -207,7 +214,7 @@ export function BookingFlow({ section, greeting, operator, lang, signedIn, minSt
                 </div>
                 <div className="flex gap-2">
                   <Button type="button" variant="outline" className="h-11 flex-1" onClick={() => setSheet(o)}>{t.fareDetails}</Button>
-                  <Button type="button" className="h-11 flex-1" onClick={() => { setChosen(o); setStep("review") }}>{t.selectVehicle}</Button>
+                  <Button type="button" className="h-11 flex-1" onClick={() => { setChosen(o); goStep("review") }}>{t.selectVehicle}</Button>
                 </div>
               </CardContent>
             </Card>
@@ -236,7 +243,7 @@ export function BookingFlow({ section, greeting, operator, lang, signedIn, minSt
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-lg font-semibold">{t.reviewTitle}</h2>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setStep("vehicles")}>{t.back}</Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => goStep("vehicles")}>{t.back}</Button>
         </div>
         <Card>
           <CardContent className="flex flex-col gap-1 p-4 text-sm">
@@ -279,7 +286,7 @@ export function BookingFlow({ section, greeting, operator, lang, signedIn, minSt
       >
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-lg font-semibold">{t.tripDetails}</h2>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setStep("search")}>{t.changeSearch}</Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => goStep("search")}>{t.changeSearch}</Button>
         </div>
         <p className="-mt-3 text-sm text-muted-foreground">{[s.pickup?.name, needsDrop ? s.drop?.name : null].filter(Boolean).join(" → ")}</p>
         <div className={cn("grid gap-3", s.tab === "round" ? "grid-cols-2" : "grid-cols-1")}>

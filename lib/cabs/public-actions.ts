@@ -11,6 +11,7 @@ import { validCoords } from "@/lib/core/geo/validate"
 import { getPlacesProvider } from "@/lib/core/geo/places-provider"
 import { MAX_QUERY_LENGTH, MIN_QUERY_LENGTH, type PlaceDetail, type PlaceSuggestion, isSessionToken } from "@/lib/core/geo/places"
 import { rateLimit } from "@/lib/core/rate-limit"
+import { meterUsage } from "@/lib/core/usage"
 import { customerAddresses, customerContacts, customers, vehicleClasses } from "@/lib/db/schema"
 import { scopedDb, scopedTransaction } from "@/lib/db/scoped"
 import { billingState } from "@/lib/billing/state"
@@ -24,6 +25,7 @@ import { quickPickByKey } from "./quick-picks"
 import { parseIst } from "./calculator"
 import { loadPricing } from "./page-data"
 import { type ClassFit, type PlaceInput, type QuoteErrorCode, type TripRequest, checkTiming, quoteForClass, resolveDistance } from "./trip-quote"
+import { cleanOperationKey, createTripOnce, findByOperationKey } from "./idempotency"
 import { cancelTrip, createTrip, withBookingCodeRetry } from "./trips"
 
 // What the public booking page may do. The business comes from the host, the customer from the session cookie, prices from the fare
@@ -66,6 +68,7 @@ export async function searchPlacesPublic(query: string, sessionToken: string, or
   const provider = getPlacesProvider()
   if (!provider) return { ok: false, code: "unavailable" }
   if (!(await rateLimit(`pub-places:${w.ip}`, 120, 10 * 60_000)) || !(await rateLimit(`pub-places-dealer:${w.dealer.id}`, 2_000, 60 * 60_000))) return busy
+  if (!(await meterUsage({ dealerId: w.dealer.id, feature: "maps_places_request" })).allowed) return busy
   // The customer's position only ranks and measures the suggestions; anything that is not a real coordinate is ignored.
   const from = origin && validCoords(origin.lat, origin.lng) ? { lat: origin.lat, lng: origin.lng } : undefined
   return { ok: true, suggestions: await provider.autocomplete(q, sessionToken, from) }
@@ -82,6 +85,7 @@ export async function placeDetailsPublic(placeId: string, sessionToken: string):
   const provider = getPlacesProvider()
   if (!provider) return { ok: false, code: "unavailable" }
   if (!(await rateLimit(`pub-place-details:${w.ip}`, 120, 10 * 60_000))) return busy
+  if (!(await meterUsage({ dealerId: w.dealer.id, feature: "maps_places_request" })).allowed) return busy
   const detail = await provider.details(placeId, sessionToken)
   if (!detail) return { ok: false, code: "not_found" }
   const input = toInput(detail)
@@ -169,6 +173,9 @@ export async function getQuotes(raw: unknown): Promise<QuotesResult> {
   const p = await prepare(raw, now)
   if (!p.ok) return p
   if (!(await rateLimit(`pub-quotes:${p.w.ip}`, 60, 10 * 60_000)) || !(await rateLimit(`pub-quotes-dealer:${p.w.dealer.id}`, 1_500, 60 * 60_000))) return busy
+  // One route lookup per quote request. Approximate: a distance served from the shared route cache is still counted, so this slightly
+  // over-states real provider calls (an upper bound, which is the safe direction for a cost estimate).
+  if (!(await meterUsage({ dealerId: p.w.dealer.id, feature: "maps_route_request" })).allowed) return busy
   const dist = await resolveDistance(p.req, getPlacesProvider())
   if (!dist.ok) return { ok: false, code: dist.code }
 
@@ -209,12 +216,19 @@ export type RequestResult =
   | Fail<QuoteErrorCode | "unavailable" | "bad_request" | "busy" | "signed_out" | "fare_changed" | "class_gone"> & { newTotalPaise?: number }
 
 /** The customer asks for the booking. OTP login is required: no trip is ever created for an unverified phone. */
-export async function requestBooking(raw: unknown, classId: string, expectedTotalPaise: number, notes: string): Promise<RequestResult> {
+export async function requestBooking(raw: unknown, classId: string, expectedTotalPaise: number, notes: string, operationKey?: string): Promise<RequestResult> {
   const now = new Date()
   const p = await prepare(raw, now)
   if (!p.ok) return p
   const customer = await currentCustomer(p.w.dealer.id)
   if (!customer) return { ok: false, code: "signed_out" }
+  // The same submission again (double tap, retry, second tab) gets the request it already made. Checked first, so a repeat costs no map
+  // lookup and uses none of the customer's booking allowance.
+  const opKey = cleanOperationKey(operationKey)
+  if (opKey) {
+    const existing = await findByOperationKey(p.w.db, customer.id, opKey, now)
+    if (existing) return { ok: true, id: existing.id, code: existing.code }
+  }
   if (!(await rateLimit(`pub-book:c:${customer.id}`, 10, 60 * 60_000)) || !(await rateLimit(`pub-book:ip:${p.w.ip}`, 30, 60 * 60_000))) return busy
 
   const cls = p.classes.find((c) => c.id === classId)
@@ -227,8 +241,8 @@ export async function requestBooking(raw: unknown, classId: string, expectedTota
   if (q.result.totalPaise !== expectedTotalPaise) return { ok: false, code: "fare_changed", newTotalPaise: q.result.totalPaise }
 
   const operatorPhone = p.w.dealer.phone
-  const created = await withBookingCodeRetry(() => scopedTransaction(p.w.dealer.id, async (db) => {
-    const trip = await createTrip(db, { customerId: customer.id, req: p.req, quote: q, source: "web", actor: { type: "customer", id: customer.id }, now, respondWindowMinutes: p.respondWindow, notes })
+  const created = await createTripOnce(p.w.db, customer.id, opKey, now, () => withBookingCodeRetry(() => scopedTransaction(p.w.dealer.id, async (db) => {
+    const trip = await createTrip(db, { customerId: customer.id, req: p.req, quote: q, source: "web", actor: { type: "customer", id: customer.id }, now, respondWindowMinutes: p.respondWindow, notes, idempotencyKey: opKey })
     if (operatorPhone) {
       await enqueue(db, { event: "trip.requested", recipientType: "operator", recipient: operatorPhone, channel: "wa_link", template: "trip_requested", payload: { tripId: trip.id, code: trip.code, text: bookingMessage("en", "operatorReminder", { code: trip.code }) } })
     }
@@ -242,7 +256,7 @@ export async function requestBooking(raw: unknown, classId: string, expectedTota
       payload: { tripId: trip.id, code: trip.code, text: bookingMessage(isLang(customer.language) ? customer.language : "en", "requestedToCustomer", { code: trip.code, operator: p.w.dealer.displayName }) },
     })
     return trip
-  }))
+  })))
   return { ok: true, id: created.id, code: created.code }
 }
 
