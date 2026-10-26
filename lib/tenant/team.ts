@@ -1,54 +1,36 @@
-import { eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 
-import { unscopedDb } from "../db/client"
-import { accounts, dealerUsers, users } from "../db/schema"
-
-type UserRow = typeof users.$inferSelect
+import { audit } from "../core/audit"
+import { recordSecurityEvent } from "../core/security-audit"
+import { unscopedDb, type Db } from "../db/client"
+import { dealerUsers, users } from "../db/schema"
+import { scopedDb } from "../db/scoped"
 
 /** People on one dealer's team. Joins `users` (a global table), so it lives here with the other raw-client reads. */
 export async function listTeamMembers(dealerId: string) {
   return unscopedDb
-    .select({ id: users.id, name: users.name, email: users.email, phone: users.phone, role: dealerUsers.role })
+    .select({ id: users.id, name: users.name, email: users.email, phone: users.phone, role: dealerUsers.role, legacyPassword: sql<boolean>`${users.passwordHash} is not null` })
     .from(dealerUsers)
     .innerJoin(users, eq(users.id, dealerUsers.userId))
     .where(eq(dealerUsers.dealerId, dealerId))
 }
 
-/** The existing users that already own this email and this number (either may be undefined). */
-export async function findUsersByContact(email: string, phone: string): Promise<{ byEmail?: UserRow; byPhone?: UserRow }> {
-  const [byEmail] = await unscopedDb.select().from(users).where(eq(users.email, email)).limit(1)
-  const [byPhone] = await unscopedDb.select().from(users).where(eq(users.phone, phone)).limit(1)
-  return { byEmail, byPhone }
-}
-
-export async function createUser(input: { name: string; email: string; phone: string }): Promise<string> {
-  const [row] = await unscopedDb.insert(users).values(input).returning({ id: users.id })
-  return row.id
-}
-
-/** Fills in what is missing on a user without overwriting details the person already has. */
-export async function fillMissingUserDetails(existing: UserRow, input: { name: string; email: string; phone: string }): Promise<void> {
-  await unscopedDb
-    .update(users)
-    .set({ name: existing.name ?? input.name, email: existing.email ?? input.email, phone: existing.phone ?? input.phone })
-    .where(eq(users.id, existing.id))
-}
-
-/** The dealer a user belongs to, if any. A user belongs to one dealer, so this is deliberately not scoped. */
-export async function findMembership(userId: string) {
-  const [row] = await unscopedDb.select().from(dealerUsers).where(eq(dealerUsers.userId, userId)).limit(1)
-  return row
-}
-
-export async function setUserPasswordHash(userId: string, passwordHash: string): Promise<void> {
-  await unscopedDb.update(users).set({ passwordHash }).where(eq(users.id, userId))
-}
+export type RemoveStaffResult = { ok: true } | { ok: false; error: "not_on_team" | "owner" | "self" }
 
 /**
- * Whether this person has ever signed in to Tany themselves (a linked Firebase account). Such a row is their own identity, not one an
- * owner provisioned, so an owner must never be able to set its password.
+ * Removes a staff member from ONE business. Owners cannot be removed and nobody removes themselves. The removal, the business's own
+ * audit entry and the platform security trail commit together or not at all. Touches nothing else about the person's account.
  */
-export async function hasOwnSignIn(userId: string): Promise<boolean> {
-  const [row] = await unscopedDb.select({ id: accounts.userId }).from(accounts).where(eq(accounts.userId, userId)).limit(1)
-  return Boolean(row)
+export async function removeStaff(dealerId: string, actorId: string, userId: string): Promise<RemoveStaffResult> {
+  if (userId === actorId) return { ok: false, error: "self" }
+  return unscopedDb.transaction(async (tx) => {
+    const db = scopedDb(dealerId, tx as unknown as Db)
+    const [target] = await db.dealerUsers.select(eq(dealerUsers.userId, userId))
+    if (!target) return { ok: false as const, error: "not_on_team" as const }
+    if (target.role === "owner") return { ok: false as const, error: "owner" as const }
+    await db.dealerUsers.delete(and(eq(dealerUsers.userId, userId), eq(dealerUsers.role, "staff"))!)
+    await audit(db, { actorType: "user", actorId, action: "team.remove_staff", entity: "user", entityId: userId, diff: { role: "staff" } })
+    await recordSecurityEvent({ actorType: "owner", actorId, businessId: dealerId, action: "team.remove_staff", targetType: "user", targetId: userId, outcome: "success", metadata: { role: "staff" } }, tx)
+    return { ok: true as const }
+  })
 }

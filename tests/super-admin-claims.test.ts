@@ -72,20 +72,20 @@ describe("a genuine team member", () => {
   })
 })
 
-describe("only a verified Firebase identity reaches the guard", () => {
-  it("a team email that Firebase has NOT verified carries no claim", async () => {
+describe("identity claims", () => {
+  it("an email Firebase has not verified carries no claim", async () => {
     session = await signInWith(await token({ email_verified: false }))
     await expect((await guard()).requireSuperAdmin()).rejects.toThrow("redirect:/super/login")
   })
-  it("a phone sign-in is refused even when the users row carries a team email", async () => {
+  it("a phone sign-in carries no email claim", async () => {
     session = await signInWith(await token({ email: undefined, email_verified: undefined, phone_number: "+919876543210", firebase: { sign_in_provider: "phone" } }), TEAM)
     await expect((await guard()).requireSuperAdmin()).rejects.toThrow("redirect:/super/login")
   })
-  it("a verified non-team Google account whose users row carries a team email is refused", async () => {
+  it("the claim comes from the token, not from the profile row", async () => {
     session = await signInWith(await token({ email: "dealer@shop.test" }, { uid: "uid-dealer" }), TEAM)
     await expect((await guard()).requireSuperAdmin()).rejects.toThrow("notFound")
   })
-  it("a teammate password session (no Firebase identity) has null claims and is refused", async () => {
+  it("a password session carries no Firebase claims", async () => {
     const jwt = applySignInClaims({ sub: "user-2" }, { id: "user-2", email: TEAM }) // what the teammate provider returns: no claims
     session = exposeClaims({ user: { id: "user-2", email: TEAM } }, jwt)
     await expect((await guard()).requireSuperAdmin()).rejects.toThrow("redirect:/super/login")

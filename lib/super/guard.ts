@@ -59,3 +59,10 @@ export async function currentSuperAdmin() {
   const id = await sessionIdentity()
   return id && allowed(id) ? id.email : null
 }
+
+/** Who is acting, for the security trail: the verified team email and the Firebase uid (null for a development sign-in). Requires the guard. */
+export async function superAdminActor(): Promise<{ email: string; uid: string | null }> {
+  const { email } = await requireSuperAdmin()
+  const id = await sessionIdentity()
+  return { email, uid: id?.uid ?? null }
+}

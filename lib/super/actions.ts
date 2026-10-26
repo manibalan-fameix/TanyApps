@@ -14,6 +14,7 @@ import {
   localLoginPassword,
 } from "../auth/local-login"
 import { rateLimit } from "../core/rate-limit"
+import { recordSecurityEventBestEffort } from "../core/security-audit"
 import { superAdminEmails, superAdminUids } from "./emails"
 
 export type SuperSignInResult = { ok: true } | { ok: false; error: string }
@@ -29,20 +30,29 @@ export async function signInSuperAdmin(
 ): Promise<SuperSignInResult> {
   const identity = await verifyFirebaseIdToken(idToken)
   const email = identity?.emailVerified ? identity.email?.toLowerCase() : null
-  if (!email || !superAdminEmails().has(email))
-    return { ok: false, error: NOT_ALLOWED }
   const uids = superAdminUids()
-  if (uids.size > 0 && !(identity && uids.has(identity.uid)))
+  const refused = !email || !superAdminEmails().has(email) || (uids.size > 0 && !(identity && uids.has(identity.uid)))
+  if (refused) {
+    // Who tried is recorded as a short keyed fingerprint, never the address a stranger typed.
+    await recordSecurityEventBestEffort({ actorType: "anonymous", action: "super.sign_in", targetType: "super_admin", outcome: "denied", metadata: { who: await fingerprint(identity?.email ?? identity?.uid ?? "unknown"), verified: Boolean(identity?.emailVerified) } })
     return { ok: false, error: NOT_ALLOWED }
+  }
   try {
     await signIn("firebase", { idToken, redirect: false })
+    await recordSecurityEventBestEffort({ actorType: "super_admin", actorId: identity!.uid, actorLabel: email, action: "super.sign_in", targetType: "super_admin", outcome: "success" })
     return { ok: true }
   } catch {
+    await recordSecurityEventBestEffort({ actorType: "super_admin", actorId: identity!.uid, actorLabel: email, action: "super.sign_in", targetType: "super_admin", outcome: "failed" })
     return {
       ok: false,
       error: "We could not verify your sign-in. Please try again.",
     }
   }
+}
+
+async function fingerprint(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value.toLowerCase()))
+  return Array.from(new Uint8Array(digest).slice(0, 6), (b) => b.toString(16).padStart(2, "0")).join("")
 }
 
 const schema = z.object({

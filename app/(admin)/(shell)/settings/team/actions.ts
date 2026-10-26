@@ -1,19 +1,15 @@
 "use server"
 
-import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { z } from "zod"
 
 import { getDealerContext } from "@/lib/auth/context"
-import { createUser, fillMissingUserDetails, findMembership, findUsersByContact, hasOwnSignIn, setUserPasswordHash } from "@/lib/tenant/team"
-import { dealerUsers } from "@/lib/db/schema"
-import { scopedDb } from "@/lib/db/scoped"
-import { hashPassword } from "@/lib/auth/password"
-import { audit } from "@/lib/core/audit"
 import { rateLimit } from "@/lib/core/rate-limit"
-import { superAdminEmails } from "@/lib/super/emails"
+import { adminUrl } from "@/lib/env"
+import { createInvite, revokeInvite } from "@/lib/tenant/invites"
+import { removeStaff } from "@/lib/tenant/team"
 
 type Result = { ok: true } | { ok: false; error: string }
+export type InviteResult = { ok: true; link: string; expiresAt: string } | { ok: false; error: string }
 
 /** Team changes are owner-only, and never run for the in-memory demo dealer. */
 async function owner() {
@@ -24,84 +20,38 @@ async function owner() {
   return { ctx, error: null }
 }
 
-// Ownership is never shared: the only role that can be given is staff.
-const teammateSchema = z.object({
-  role: z.literal("staff", "Ownership cannot be shared."),
-  name: z.string().trim().min(2, "Enter their name.").max(80),
-  email: z.string().trim().toLowerCase().pipe(z.email("Enter a valid email address.")),
-  password: z.string().min(8, "Use a password with at least 8 characters.").max(128),
-  phone: z
-    .string()
-    .trim()
-    .transform((v) => v.replace(/[\s-]/g, ""))
-    .pipe(z.string().regex(/^(\+91|91|0)?[6-9][0-9]{9}$/, "Enter a valid 10-digit mobile number."))
-    .transform((v) => `+91${v.slice(-10)}`),
-})
-
 /**
- * Gives a teammate staff access. They sign in with this email or mobile number (Firebase links the
- * verified one to this user row), and land in this dealership. One person belongs to one dealership.
+ * Invites someone to join as staff. The owner chooses who and the role (staff); the person joins by signing in with their own
+ * account, so the owner never creates an account or sets anyone's password. The answer is the same whether or not that email or number
+ * already has an account anywhere, so the form cannot be used to find out who uses Tany.
  */
-export async function addTeammate(input: unknown): Promise<Result> {
+export async function inviteTeammate(contact: unknown): Promise<InviteResult> {
   const who = await owner()
   if (!who.ctx) return { ok: false, error: who.error }
   const { ctx } = who
   if (!(await rateLimit(`team:${ctx.user.id}`, 20, 10 * 60_000, { failClosed: true }))) return { ok: false, error: "Too many attempts. Try again in a few minutes." }
-  const parsed = teammateSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the details." }
-  const { name, email, phone, password } = parsed.data
-  // Addresses reserved for the Tany team cannot be used for a business teammate.
-  if (superAdminEmails().has(email)) return { ok: false, error: "That email cannot be used for a teammate." }
-
-  const { byEmail, byPhone } = await findUsersByContact(email, phone)
-  if (byEmail && byPhone && byEmail.id !== byPhone.id) return { ok: false, error: "That email and mobile number belong to different people." }
-  const existing = byEmail ?? byPhone
-  const userId = existing?.id ?? (await createUser({ name, email, phone }))
-  if (existing) await fillMissingUserDetails(existing, { name, email, phone })
-
-  const membership = await findMembership(userId)
-  if (membership) {
-    return {
-      ok: false,
-      error: membership.dealerId === ctx.dealer.id ? "That person is already on your team." : "That person already belongs to another dealership.",
-    }
-  }
-  // A person who already signed in themselves keeps their own credentials: they join with the same Google/phone/email they use now.
-  // Only an account this owner is creating (or one an owner provisioned earlier) gets the password the owner just set.
-  if (!(existing && (await hasOwnSignIn(existing.id)))) await setUserPasswordHash(userId, await hashPassword(password))
-  await scopedDb(ctx.dealer.id).dealerUsers.insert({ userId, role: "staff" })
-  await audit(scopedDb(ctx.dealer.id), { actorType: "user", actorId: ctx.user.id, action: "team.add_staff", entity: "user", entityId: userId, diff: { role: "staff" } })
+  const made = await createInvite(ctx.dealer.id, ctx.user.id, contact)
+  if (!made.ok) return { ok: false, error: made.error === "too_many" ? "You have too many open invitations. Revoke some first." : "Enter a valid email address or 10-digit mobile number." }
   revalidatePath("/settings/team")
-  return { ok: true }
+  return { ok: true, link: adminUrl(`/invite/${made.token}`), expiresAt: made.expiresAt.toISOString() }
+}
+
+export async function revokeInvitation(inviteId: string): Promise<Result> {
+  const who = await owner()
+  if (!who.ctx) return { ok: false, error: who.error }
+  const done = await revokeInvite(who.ctx.dealer.id, who.ctx.user.id, inviteId)
+  revalidatePath("/settings/team")
+  return done ? { ok: true } : { ok: false, error: "That invitation is no longer open." }
 }
 
 export async function removeTeammate(userId: string): Promise<Result> {
   const who = await owner()
   if (!who.ctx) return { ok: false, error: who.error }
   const { ctx } = who
-  if (userId === ctx.user.id) return { ok: false, error: "You cannot remove yourself." }
-  const [target] = await scopedDb(ctx.dealer.id).dealerUsers.select(eq(dealerUsers.userId, userId))
-  if (!target) return { ok: false, error: "That person is not on your team." }
-  if (target.role === "owner") return { ok: false, error: "An owner cannot be removed." }
-  await scopedDb(ctx.dealer.id).dealerUsers.delete(and(eq(dealerUsers.userId, userId), eq(dealerUsers.role, "staff"))!)
-  await audit(scopedDb(ctx.dealer.id), { actorType: "user", actorId: ctx.user.id, action: "team.remove_staff", entity: "user", entityId: userId, diff: { role: "staff" } })
+  const removed = await removeStaff(ctx.dealer.id, ctx.user.id, userId)
+  if (!removed.ok) {
+    return { ok: false, error: removed.error === "self" ? "You cannot remove yourself." : removed.error === "owner" ? "An owner cannot be removed." : "That person is not on your team." }
+  }
   revalidatePath("/settings/team")
-  return { ok: true }
-}
-
-/** Owner sets a new password for a staff member. The old one stops working at once. */
-export async function resetTeammatePassword(userId: string, password: unknown): Promise<Result> {
-  const who = await owner()
-  if (!who.ctx) return { ok: false, error: who.error }
-  const { ctx } = who
-  if (!(await rateLimit(`team:${ctx.user.id}`, 20, 10 * 60_000, { failClosed: true }))) return { ok: false, error: "Too many attempts. Try again in a few minutes." }
-  const parsed = teammateSchema.shape.password.safeParse(password)
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the password." }
-  const [target] = await scopedDb(ctx.dealer.id).dealerUsers.select(eq(dealerUsers.userId, userId))
-  if (!target || target.role !== "staff") return { ok: false, error: "That person is not on your team." }
-  // Someone who signs in with their own account has no owner-set password to reset.
-  if (await hasOwnSignIn(userId)) return { ok: false, error: "That person signs in with their own account, so there is no password to reset." }
-  await setUserPasswordHash(userId, await hashPassword(parsed.data))
-  await audit(scopedDb(ctx.dealer.id), { actorType: "user", actorId: ctx.user.id, action: "team.reset_password", entity: "user", entityId: userId })
   return { ok: true }
 }

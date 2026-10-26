@@ -32,7 +32,7 @@ describe("requireSuperAdmin", () => {
     await expect(requireSuperAdmin()).resolves.toEqual({ email: TEAM })
   })
 
-  it("rejects a teammate-password session that only carries a matching users.email", async () => {
+  it("rejects a session with only a profile email", async () => {
     session = { user: { email: TEAM }, verifiedEmail: null }
     const { requireSuperAdmin } = await guard()
     await expect(requireSuperAdmin()).rejects.toThrow("redirect:/super/login")
@@ -135,18 +135,18 @@ const files = (dir: string, re: RegExp, out: string[] = []): string[] => {
 describe("every /super entry point enforces the guard on the server", () => {
   it("each exported async function in lib/super/data.ts and queries.ts calls requireSuperAdmin first", () => {
     const bad: string[] = []
-    for (const rel of ["lib/super/data.ts", "lib/super/queries.ts"]) {
+    for (const rel of ["lib/super/data.ts", "lib/super/queries.ts", "lib/super/usage.ts"]) {
       const s = readFileSync(path.join(ROOT, rel), "utf8")
       for (const m of s.matchAll(/export async function (\w+)[^{]*\{/g)) {
         const head = s.slice(m.index! + m[0].length, m.index! + m[0].length + 300)
-        if (!/await requireSuperAdmin\(\)/.test(head)) bad.push(`${rel}:${m[1]}`)
+        if (!/await (requireSuperAdmin|superAdminActor)\(\)/.test(head)) bad.push(`${rel}:${m[1]}`)
       }
     }
     expect(bad).toEqual([])
   })
 
   it("server actions and route handlers under app/(super) call the guard", () => {
-    const bad = files(path.join(ROOT, "app/(super)"), /^(actions|route)\.ts$/).filter((f) => !/requireSuperAdmin/.test(readFileSync(f, "utf8"))).map((f) => path.relative(ROOT, f))
+    const bad = files(path.join(ROOT, "app/(super)"), /^(actions|route)\.ts$/).filter((f) => !/requireSuperAdmin|superAdminActor/.test(readFileSync(f, "utf8"))).map((f) => path.relative(ROOT, f))
     expect(bad).toEqual([])
   })
 
