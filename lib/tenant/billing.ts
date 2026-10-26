@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm"
+import { and, eq, isNull, lt, or } from "drizzle-orm"
 
 import { unscopedDb } from "../db/client"
 import { dealers } from "../db/schema"
@@ -34,4 +34,15 @@ export type BillingUpdate = Partial<Pick<DealerBilling, "plan" | "billingCycle" 
 
 export async function updateDealerBilling(dealerId: string, update: BillingUpdate): Promise<void> {
   await unscopedDb.update(dealers).set(update).where(eq(dealers.id, dealerId))
+}
+
+/**
+ * Moves the paid-through date forward, never back, in ONE statement. The comparison happens in the database, so two events processed
+ * at the same time (webhook plus checkout confirmation, or Razorpay retries) can never leave an older date over a newer one.
+ */
+export async function advancePaidThrough(dealerId: string, to: Date): Promise<void> {
+  await unscopedDb
+    .update(dealers)
+    .set({ paidThrough: to })
+    .where(and(eq(dealers.id, dealerId), or(isNull(dealers.paidThrough), lt(dealers.paidThrough, to))))
 }

@@ -1,6 +1,6 @@
 import { type BillingCycle, type SellablePlanKey, BILLING_CYCLES, FREE_PLAN_KEY, PLANS, SELLABLE_PLAN_KEYS } from "../plans"
-import { billingState } from "./state"
-import { getDealerBilling, updateDealerBilling } from "../tenant/billing"
+import { billingState, nextSubscriptionStatus } from "./state"
+import { advancePaidThrough, getDealerBilling, updateDealerBilling } from "../tenant/billing"
 import { type RazorpaySubscription, cancelSubscription } from "./razorpay"
 
 const ADOPTABLE = new Set(["authenticated", "active"])
@@ -32,14 +32,14 @@ export async function applySubscription(sub: RazorpaySubscription, dealerIdCheck
   if (isCurrent) {
     const charged = paidThrough && (!dealer.paidThrough || paidThrough > dealer.paidThrough)
     await updateDealerBilling(dealerId, {
-      subscriptionStatus: sub.status,
-      // Never move the paid-through date backwards.
-      ...(charged ? { paidThrough } : {}),
+      subscriptionStatus: nextSubscriptionStatus(dealer.subscriptionStatus, sub.status),
       // A new charge means the period the old plan covered is over: a waiting plan change takes over now.
       ...(charged && dealer.nextPlan
         ? { plan: dealer.nextPlan, billingCycle: dealer.nextBillingCycle ?? dealer.billingCycle, nextPlan: null, nextBillingCycle: null, nextPlanStartsAt: null }
         : {}),
     })
+    // Never move the paid-through date backwards: compared inside the database, so concurrent events cannot undo each other.
+    if (paidThrough) await advancePaidThrough(dealerId, paidThrough)
     return { applied: true }
   }
 
@@ -61,8 +61,8 @@ export async function applySubscription(sub: RazorpaySubscription, dealerIdCheck
     ...(defer
       ? { nextPlan: plan, nextBillingCycle: cycle, nextPlanStartsAt: state.accessUntil }
       : { plan, billingCycle: cycle, nextPlan: null, nextBillingCycle: null, nextPlanStartsAt: null }),
-    ...(paidThrough && (!dealer.paidThrough || paidThrough > dealer.paidThrough) ? { paidThrough } : {}),
   })
+  if (paidThrough) await advancePaidThrough(dealerId, paidThrough)
   if (previous) {
     // A downgrade keeps the old plan running until its paid period ends; an upgrade replaces it now.
     await cancelSubscription(previous, dealer.subscriptionStatus === "active" && !upgrade).catch(() => undefined)

@@ -15,7 +15,7 @@ export const SCHEDULE: Record<string, string[]> = {
   "* * * * *": ["expire-trip-holds"],
   "*/5 * * * *": ["expire-unpaid-orders", "retry-booking-refunds", "retry-order-refunds"],
   // 08:00 IST every day (02:30 UTC).
-  "30 2 * * *": ["daily"],
+  "30 2 * * *": ["daily", "reconcile-subscriptions"],
   // 06:00 IST on the 1st of the month (00:30 UTC).
   "30 0 1 * *": ["monthly"],
 }

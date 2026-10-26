@@ -35,6 +35,17 @@ const DAY = 86_400_000
 // Razorpay statuses where the owner has authorised a payment method and it has not been cancelled or halted.
 const LIVE_STATUSES = new Set(["authenticated", "active", "pending"])
 
+/** Razorpay never reopens a subscription in one of these states (a new plan means a new subscription id). */
+const TERMINAL_STATUSES = new Set(["cancelled", "completed", "expired"])
+
+/**
+ * The status to store for a subscription after an event. Webhooks arrive late and out of order, so a delayed `authenticated`
+ * or `active` must not bring a cancelled, completed or expired subscription back to life. Everything else follows the event.
+ */
+export function nextSubscriptionStatus(current: string | null, incoming: string): string {
+  return current && TERMINAL_STATUSES.has(current) && !TERMINAL_STATUSES.has(incoming) ? current : incoming
+}
+
 /**
  * Whether a showroom is allowed to be online. Dealers with no trial date were created before billing
  * existed and are never suspended.
