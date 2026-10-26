@@ -42,7 +42,7 @@
     "@aws-sdk/client-s3": "^3.1136.0",
     "@aws-sdk/s3-request-presigner": "^3.1136.0",
     "@base-ui/react": "^1.8.0",
-    "@hugeicons/core-free-icons": "^4.3.4",
+    "@hugeicons/core-free-icons": "^4.3.5",
     "@hugeicons/react": "^1.1.10",
     "@neondatabase/serverless": "^1.1.0",
     "@opennextjs/cloudflare": "^1.20.13",
