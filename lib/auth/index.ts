@@ -6,6 +6,7 @@ import { unscopedDb } from "../db/client"
 import { accounts, users } from "../db/schema"
 import { firebaseProjectId, verifyFirebaseIdToken } from "./firebase"
 import { findOrCreateFirebaseUser } from "./firebase-user"
+import { applySignInClaims, exposeClaims, identityMaySignIn, withVerifiedClaims } from "./session-claims"
 import { authenticateTeammate } from "./teammate-login"
 
 // Sign-in happens in the browser with Firebase (Google, phone OTP, email + password). The browser
@@ -23,9 +24,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials) {
         const identity = await verifyFirebaseIdToken(String(credentials?.idToken ?? ""))
         if (!identity) return null
-        // Email + password accounts must prove they own the address before they get a session.
-        if (identity.provider === "password" && !identity.emailVerified) return null
-        return findOrCreateFirebaseUser(identity)
+        if (!identityMaySignIn(identity)) return null
+        const user = await findOrCreateFirebaseUser(identity)
+        return user ? withVerifiedClaims(user, identity) : null
       },
     }),
     Credentials({
@@ -36,9 +37,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   pages: { signIn: "/login" },
   callbacks: {
+    // Claims are written only at sign-in (see ./session-claims.ts). Sessions that predate them have none and must sign in again
+    // before they can use the super admin.
+    jwt: ({ token, user }) => applySignInClaims(token, user),
     session({ session, token }) {
       if (token.sub) session.user.id = token.sub
-      return session
+      return exposeClaims(session, token)
     },
   },
 })

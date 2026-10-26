@@ -14,7 +14,7 @@ import {
   localLoginPassword,
 } from "../auth/local-login"
 import { rateLimit } from "../core/rate-limit"
-import { superAdminEmails } from "./guard"
+import { superAdminEmails, superAdminUids } from "./emails"
 
 export type SuperSignInResult = { ok: true } | { ok: false; error: string }
 
@@ -30,6 +30,9 @@ export async function signInSuperAdmin(
   const identity = await verifyFirebaseIdToken(idToken)
   const email = identity?.emailVerified ? identity.email?.toLowerCase() : null
   if (!email || !superAdminEmails().has(email))
+    return { ok: false, error: NOT_ALLOWED }
+  const uids = superAdminUids()
+  if (uids.size > 0 && !(identity && uids.has(identity.uid)))
     return { ok: false, error: NOT_ALLOWED }
   try {
     await signIn("firebase", { idToken, redirect: false })

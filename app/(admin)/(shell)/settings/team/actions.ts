@@ -5,12 +5,13 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { getDealerContext } from "@/lib/auth/context"
-import { createUser, fillMissingUserDetails, findMembership, findUsersByContact, setUserPasswordHash } from "@/lib/tenant/team"
+import { createUser, fillMissingUserDetails, findMembership, findUsersByContact, hasOwnSignIn, setUserPasswordHash } from "@/lib/tenant/team"
 import { dealerUsers } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
 import { hashPassword } from "@/lib/auth/password"
 import { audit } from "@/lib/core/audit"
 import { rateLimit } from "@/lib/core/rate-limit"
+import { superAdminEmails } from "@/lib/super/emails"
 
 type Result = { ok: true } | { ok: false; error: string }
 
@@ -49,6 +50,8 @@ export async function addTeammate(input: unknown): Promise<Result> {
   const parsed = teammateSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the details." }
   const { name, email, phone, password } = parsed.data
+  // Addresses reserved for the Tany team cannot be used for a business teammate.
+  if (superAdminEmails().has(email)) return { ok: false, error: "That email cannot be used for a teammate." }
 
   const { byEmail, byPhone } = await findUsersByContact(email, phone)
   if (byEmail && byPhone && byEmail.id !== byPhone.id) return { ok: false, error: "That email and mobile number belong to different people." }
@@ -63,7 +66,9 @@ export async function addTeammate(input: unknown): Promise<Result> {
       error: membership.dealerId === ctx.dealer.id ? "That person is already on your team." : "That person already belongs to another dealership.",
     }
   }
-  await setUserPasswordHash(userId, await hashPassword(password))
+  // A person who already signed in themselves keeps their own credentials: they join with the same Google/phone/email they use now.
+  // Only an account this owner is creating (or one an owner provisioned earlier) gets the password the owner just set.
+  if (!(existing && (await hasOwnSignIn(existing.id)))) await setUserPasswordHash(userId, await hashPassword(password))
   await scopedDb(ctx.dealer.id).dealerUsers.insert({ userId, role: "staff" })
   await audit(scopedDb(ctx.dealer.id), { actorType: "user", actorId: ctx.user.id, action: "team.add_staff", entity: "user", entityId: userId, diff: { role: "staff" } })
   revalidatePath("/settings/team")
@@ -94,6 +99,8 @@ export async function resetTeammatePassword(userId: string, password: unknown): 
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the password." }
   const [target] = await scopedDb(ctx.dealer.id).dealerUsers.select(eq(dealerUsers.userId, userId))
   if (!target || target.role !== "staff") return { ok: false, error: "That person is not on your team." }
+  // Someone who signs in with their own account has no owner-set password to reset.
+  if (await hasOwnSignIn(userId)) return { ok: false, error: "That person signs in with their own account, so there is no password to reset." }
   await setUserPasswordHash(userId, await hashPassword(parsed.data))
   await audit(scopedDb(ctx.dealer.id), { actorType: "user", actorId: ctx.user.id, action: "team.reset_password", entity: "user", entityId: userId })
   return { ok: true }

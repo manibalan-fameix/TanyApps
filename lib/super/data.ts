@@ -276,6 +276,7 @@ export type Overview = {
 }
 
 export async function loadOverview(): Promise<Overview> {
+  await requireSuperAdmin()
   const rows = await loadBusinesses()
   const since30 = new Date(Date.now() - 30 * DAY)
   const [

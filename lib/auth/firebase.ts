@@ -60,3 +60,7 @@ export async function verifyFirebaseIdToken(
     return null
   }
 }
+
+/** The address Firebase itself vouches for in this token: the email only when `email_verified` is true, otherwise nothing. */
+export const verifiedEmailOf = (identity: Pick<FirebaseIdentity, "email" | "emailVerified">): string | null =>
+  identity.emailVerified && identity.email ? identity.email : null

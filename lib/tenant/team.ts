@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm"
 
 import { unscopedDb } from "../db/client"
-import { dealerUsers, users } from "../db/schema"
+import { accounts, dealerUsers, users } from "../db/schema"
 
 type UserRow = typeof users.$inferSelect
 
@@ -42,4 +42,13 @@ export async function findMembership(userId: string) {
 
 export async function setUserPasswordHash(userId: string, passwordHash: string): Promise<void> {
   await unscopedDb.update(users).set({ passwordHash }).where(eq(users.id, userId))
+}
+
+/**
+ * Whether this person has ever signed in to Tany themselves (a linked Firebase account). Such a row is their own identity, not one an
+ * owner provisioned, so an owner must never be able to set its password.
+ */
+export async function hasOwnSignIn(userId: string): Promise<boolean> {
+  const [row] = await unscopedDb.select({ id: accounts.userId }).from(accounts).where(eq(accounts.userId, userId)).limit(1)
+  return Boolean(row)
 }
