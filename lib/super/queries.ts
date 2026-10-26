@@ -18,6 +18,7 @@ import {
   banners,
   bookings,
   cars,
+  cronRuns,
   coupons,
   deliveryPartners,
   deliveryZones,
@@ -28,6 +29,7 @@ import {
   menuItems,
   orders,
   reviews,
+  securityAuditEvents,
   users,
   variants,
 } from "../db/schema"
@@ -1114,4 +1116,56 @@ export async function loadSystemHealth(): Promise<SystemHealth> {
     }))
   )
   return { dbMs, counts }
+}
+
+export type SecurityEventRow = {
+  id: string
+  at: Date
+  actorType: string
+  actorLabel: string | null
+  actorId: string | null
+  businessId: string | null
+  action: string
+  targetType: string
+  targetId: string | null
+  outcome: string
+  requestId: string | null
+  metadata: Record<string, unknown>
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** The platform security trail, newest first, read-only. Tany team only (the guard is the first statement). Reading is not itself recorded. */
+export async function loadSecurityEvents(opts: { action?: string; businessId?: string; outcome?: string; actor?: string; limit?: number } = {}): Promise<SecurityEventRow[]> {
+  await requireSuperAdmin()
+  const conditions = [
+    opts.action ? ilike(securityAuditEvents.action, `${opts.action.replace(/[%_\\]/g, "")}%`) : undefined,
+    opts.businessId && UUID_RE.test(opts.businessId) ? eq(securityAuditEvents.businessId, opts.businessId) : undefined,
+    opts.outcome && ["success", "denied", "failed"].includes(opts.outcome) ? eq(securityAuditEvents.outcome, opts.outcome) : undefined,
+    opts.actor ? or(eq(securityAuditEvents.actorId, opts.actor), eq(securityAuditEvents.actorLabel, opts.actor.toLowerCase())) : undefined,
+  ].filter((c): c is NonNullable<typeof c> => c !== undefined)
+  return db
+    .select()
+    .from(securityAuditEvents)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(securityAuditEvents.at))
+    .limit(Math.min(Math.max(opts.limit ?? 100, 1), 500))
+}
+
+export type CronStatus = { job: string; status: string; slot: Date; startedAt: Date; finishedAt: Date | null; result: string | null; attempts: number; stuck: boolean }
+
+/** The latest run of every scheduled job, with failed and stuck runs flagged. A run still "running" after 10 minutes is stuck (the scheduler will re-claim it). */
+export async function loadCronStatus(now = new Date()): Promise<CronStatus[]> {
+  await requireSuperAdmin()
+  const rows = await db
+    .select()
+    .from(cronRuns)
+    .where(gte(cronRuns.startedAt, new Date(now.getTime() - 2 * DAY)))
+    .orderBy(desc(cronRuns.startedAt))
+    .limit(500)
+  const latest = new Map<string, (typeof rows)[number]>()
+  for (const r of rows) if (!latest.has(r.job)) latest.set(r.job, r)
+  return [...latest.values()]
+    .map((r) => ({ job: r.job, status: r.status, slot: r.slot, startedAt: r.startedAt, finishedAt: r.finishedAt, result: r.result, attempts: r.attempts, stuck: r.status === "running" && now.getTime() - r.startedAt.getTime() > 10 * 60_000 }))
+    .sort((a, b) => Number(b.status === "failed" || b.stuck) - Number(a.status === "failed" || a.stuck) || a.job.localeCompare(b.job))
 }

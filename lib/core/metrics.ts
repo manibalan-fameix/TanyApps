@@ -5,20 +5,20 @@ type Dataset = { writeDataPoint(point: { indexes?: string[]; blobs?: string[]; d
  * (Workers observability is on, so it is searchable) and, when the METRICS Analytics Engine binding exists, one data
  * point. Never throws and never waits: a counter must not break the request it describes.
  */
-export function countMetric(name: string, tags: Record<string, string> = {}): void {
+export function countMetric(name: string, tags: Record<string, string> = {}, value = 1): void {
   try {
-    console.warn(JSON.stringify({ metric: name, count: 1, ...tags }))
+    console.warn(JSON.stringify({ metric: name, count: value, ...tags }))
   } catch {
     // unserialisable tag: still try the dataset below
   }
-  void writeDataPoint(name, tags)
+  void writeDataPoint(name, tags, value)
 }
 
-async function writeDataPoint(name: string, tags: Record<string, string>): Promise<void> {
+async function writeDataPoint(name: string, tags: Record<string, string>, value: number): Promise<void> {
   try {
     const { getCloudflareContext } = await import("@opennextjs/cloudflare")
     const dataset = (getCloudflareContext().env as { METRICS?: Dataset }).METRICS
-    dataset?.writeDataPoint({ indexes: [name], blobs: Object.entries(tags).map(([k, v]) => `${k}=${v}`), doubles: [1] })
+    dataset?.writeDataPoint({ indexes: [name], blobs: Object.entries(tags).map(([k, v]) => `${k}=${v}`), doubles: [value] })
   } catch {
     // no binding here (local development, tests)
   }

@@ -4,6 +4,7 @@ import { decrypt, decryptJson, encryptJson } from "../crypto"
 import { cars, rcLookups } from "../db/schema"
 import { scopedDb } from "../db/scoped"
 import { rateLimit } from "../core/rate-limit"
+import { meterUsage } from "../core/usage"
 import { isValidReg } from "../reg"
 import { getRcProvider, providerByName, type RcProvider } from "./provider"
 import { RcError, type RcRecord } from "./types"
@@ -52,6 +53,8 @@ export async function lookupRcForCar(
   }
 
   // 3. Provider call. Errors propagate as RcError; nothing is cached on failure.
+  // Counted only when the paid provider is really called (a cache hit returned above).
+  if (!(await meterUsage({ dealerId, feature: "rc_lookup_request" })).allowed) throw new RcError("rate_limited", "RC lookups are paused for today")
   const raw = await provider.fetch(reg)
   const record = provider.normalize(raw, reg)
   await db.rcLookups.insert({ carId, provider: provider.name, rawResponse: encryptJson(raw) })

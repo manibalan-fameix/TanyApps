@@ -382,6 +382,20 @@ describe.skipIf(!url)("video worker job (live database, fake ffmpeg)", () => {
     await expect(processVideoJob({ dealerId: d.id, carId, mediaId: req.mediaId }, { storage, vision, exec: failing as never })).rejects.toThrow("ffmpeg exploded")
     expect((await scoped.scopedDb(d.id).carMedia.select(eq(s.carMedia.id, req.mediaId)))[0].status).toBe("failed")
 
+    // A walkaround longer than the cap is refused up front: marked failed, no transcoding, and no throw (so the queue does not retry it).
+    const long = await media.requestUpload(d.id, { carId, uploadId: randomUUID(), kind: "video", contentType: "video/mp4", size: 10 })
+    if (!long.ok) throw new Error(long.error)
+    const [longRow] = await scoped.scopedDb(d.id).carMedia.select(eq(s.carMedia.id, long.mediaId))
+    await writeFile(local.localPath(longRow.r2Key)!, "fake-long-video")
+    const seen: string[] = []
+    const probeOnly = async (cmd: "ffmpeg" | "ffprobe") => {
+      seen.push(cmd)
+      return { stdout: JSON.stringify({ format: { duration: "7200" }, streams: [{ codec_type: "video", width: 1280, height: 720 }] }) }
+    }
+    await expect(processVideoJob({ dealerId: d.id, carId, mediaId: long.mediaId }, { storage, vision, exec: probeOnly as never })).resolves.toBeUndefined()
+    expect(seen).toEqual(["ffprobe"])
+    expect((await scoped.scopedDb(d.id).carMedia.select(eq(s.carMedia.id, long.mediaId)))[0].status).toBe("failed")
+
     await rm(path.join(local.LOCAL_ROOT, "dealers", d.id), { recursive: true, force: true })
     closeDb ??= () => pool.end()
   })

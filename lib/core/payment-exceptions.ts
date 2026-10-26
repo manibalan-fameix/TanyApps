@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, notInArray, sql } from "drizzle-orm"
 import { unscopedDb } from "../db/client"
 import { paymentExceptions } from "../db/schema"
 import { countMetric } from "./metrics"
+import { recordSecurityEvent } from "./security-audit"
 import { safeErrorMessage } from "./safe-error"
 
 /**
@@ -91,4 +92,24 @@ export async function resolveException(id: string, by: string, resolution: strin
     .where(and(eq(paymentExceptions.id, id), eq(paymentExceptions.status, "open")))
     .returning({ id: paymentExceptions.id })
   return rows.length === 1
+}
+
+/**
+ * Closes an exception as a Tany team member and records who did it in the security trail, in the SAME transaction: if the trail cannot be
+ * written the exception stays open. Returns false when it was not open (already resolved, or no such id).
+ */
+export async function resolveExceptionAudited(id: string, actor: { email: string; uid: string | null }, resolution: string): Promise<boolean> {
+  return unscopedDb.transaction(async (tx) => {
+    const rows = await tx
+      .update(paymentExceptions)
+      .set({ status: "resolved", resolvedAt: new Date(), resolvedBy: actor.email.slice(0, 100), resolution: resolution.trim().slice(0, 500) })
+      .where(and(eq(paymentExceptions.id, id), eq(paymentExceptions.status, "open")))
+      .returning({ id: paymentExceptions.id, kind: paymentExceptions.kind, businessId: paymentExceptions.businessId })
+    if (rows.length !== 1) return false
+    await recordSecurityEvent(
+      { actorType: "super_admin", actorId: actor.uid, actorLabel: actor.email, businessId: rows[0].businessId, action: "payment_exception.resolve", targetType: "payment_exception", targetId: id, outcome: "success", metadata: { kind: rows[0].kind, noteLength: resolution.trim().length } },
+      tx,
+    )
+    return true
+  })
 }

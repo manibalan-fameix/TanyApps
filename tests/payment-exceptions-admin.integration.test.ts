@@ -1,7 +1,7 @@
 // Live test: only the Tany team can close a payment exception, and what they type is recorded with who they are.
 // Runs only when TEST_DATABASE_URL points at a DISPOSABLE, migrated database (see docs/staging/neon-test-database.md).
 import { randomBytes } from "node:crypto"
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { testDatabaseUrl } from "./support/disposable-db"
@@ -13,6 +13,10 @@ vi.mock("@/lib/super/guard", () => ({
   requireSuperAdmin: async () => {
     if (!who.admin) throw new Error("NEXT_NOT_FOUND") // what the real guard does for anyone who is not on the Tany list (a 404)
     return { email: who.admin }
+  },
+  superAdminActor: async () => {
+    if (!who.admin) throw new Error("NEXT_NOT_FOUND")
+    return { email: who.admin, uid: "uid-ops" }
   },
 }))
 
@@ -55,6 +59,17 @@ describe.skipIf(!url)("payment exceptions: who can close them (live database)", 
     const after = await get(e.id)
     expect([after.status, after.resolvedBy, after.resolution]).toEqual(["resolved", "ops@tany.in", "Refunded in the Razorpay dashboard"])
     expect(after.resolvedAt).not.toBeNull()
+    // The resolution is also in the platform security trail, attributed to the verified team member, without the free-text note.
+    const trail = await unscopedDb.select().from(s.securityAuditEvents).where(and(eq(s.securityAuditEvents.action, "payment_exception.resolve"), eq(s.securityAuditEvents.targetId, e.id)))
+    expect(trail).toHaveLength(1)
+    expect(trail[0]).toMatchObject({ actorType: "super_admin", actorId: "uid-ops", actorLabel: "ops@tany.in", outcome: "success", targetType: "payment_exception" })
+    expect(JSON.stringify(trail[0])).not.toContain("Refunded in the Razorpay dashboard")
+  })
+  it("a denied resolution leaves no trail row and changes nothing", async () => {
+    const e = await make()
+    who.admin = null
+    await expect(actions.resolvePaymentException(e.id, "should not happen")).rejects.toThrow("NEXT_NOT_FOUND")
+    expect(await unscopedDb.select().from(s.securityAuditEvents).where(eq(s.securityAuditEvents.targetId, e.id))).toHaveLength(0)
   })
   it("a note is required, an id must be real, and a second resolve is refused", async () => {
     const e = await make()

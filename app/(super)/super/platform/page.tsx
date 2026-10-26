@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/restaurant/page-header"
+import { ListCard } from "@/components/super/metrics"
 import { Badge } from "@/components/ui/badge"
 import {
   Card,
@@ -10,8 +11,8 @@ import {
 import { copy } from "@/lib/copy"
 import { INDUSTRY_KEYS } from "@/lib/industries"
 import { superAdminEmails, requireSuperAdmin } from "@/lib/super/guard"
-import { loadSystemHealth } from "@/lib/super/queries"
-import { num } from "@/lib/super/format"
+import { loadCronStatus, loadSystemHealth } from "@/lib/super/queries"
+import { fmtDateTime, num } from "@/lib/super/format"
 
 export const metadata = { title: "Platform" }
 
@@ -50,11 +51,23 @@ export default async function PlatformPage() {
   ]
   const team = [...superAdminEmails()]
   const health = await loadSystemHealth()
+  const cron = await loadCronStatus()
   return (
     <div className="flex w-full flex-col gap-4">
       <PageHeader
         title="Platform"
         description="The Tany team and the services this deployment is connected to."
+      />
+      <ListCard
+        title="Scheduled jobs"
+        hint="Latest run of each job in the last 2 days. Failed or stuck runs are listed first; the scheduler retries them."
+        empty="No scheduled job has run in the last 2 days."
+        rows={cron.map((c) => ({
+          key: c.job,
+          primary: `${c.job} · ${c.stuck ? "stuck" : c.status}`,
+          secondary: `${c.result ?? "no result yet"}${c.attempts > 1 ? ` · attempt ${c.attempts}` : ""}`,
+          right: fmtDateTime(c.startedAt.toISOString()),
+        }))}
       />
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

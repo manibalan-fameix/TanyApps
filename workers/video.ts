@@ -7,6 +7,8 @@ import { promisify } from "node:util"
 import { eq } from "drizzle-orm"
 
 import type { VisionClient, VisionImage } from "../lib/ai/vision.ts"
+import { countMetric } from "../lib/core/metrics.ts"
+import { meterUsage } from "../lib/core/usage.ts"
 import { carMedia } from "../lib/db/schema/index.ts"
 import { scopedDb } from "../lib/db/scoped.ts"
 import type { VideoJob } from "../lib/jobs/boss.ts"
@@ -17,7 +19,11 @@ import { RENDITIONS, hlsArgs, masterPlaylist, parseProbe, posterArgs, probeArgs,
 
 const execFileAsync = promisify(execFile)
 export type Exec = (cmd: "ffmpeg" | "ffprobe", args: string[]) => Promise<{ stdout: string }>
-export const realExec: Exec = (cmd, args) => execFileAsync(cmd, args, { maxBuffer: 32 * 1024 * 1024 })
+/** One ffmpeg/ffprobe call may not run longer than this; the process is killed, the job fails and the queue's retry limit applies. */
+export const EXEC_TIMEOUT_MS = 10 * 60_000
+/** A listing walkaround is minutes long. Anything longer is refused rather than transcoded (a 400 MB cap alone does not bound CPU time). */
+export const MAX_VIDEO_SECONDS = 15 * 60
+export const realExec: Exec = (cmd, args) => execFileAsync(cmd, args, { maxBuffer: 32 * 1024 * 1024, timeout: EXEC_TIMEOUT_MS, killSignal: "SIGKILL" })
 
 const CONTENT_TYPES: Record<string, string> = { m3u8: "application/vnd.apple.mpegurl", ts: "video/mp2t", jpg: "image/jpeg" }
 const FRAME_COUNT = 12
@@ -52,6 +58,14 @@ export async function processVideoJob(
     await writeFile(input, await deps.storage.get(media.r2Key))
 
     const probe = parseProbe((await exec("ffprobe", probeArgs(input))).stdout)
+    if (probe.durationSec > MAX_VIDEO_SECONDS) {
+      // Not retried: the same file would be just as long next time.
+      countMetric("video_rejected", { reason: "too_long" })
+      await db.carMedia.update({ status: "failed" }, eq(carMedia.id, media.id))
+      return
+    }
+    // Processing time, counted once per video however many times the job is retried (the key). Measurement only.
+    await meterUsage({ dealerId: job.dealerId, feature: "video_processing_seconds", quantity: Math.ceil(probe.durationSec), key: `video:${media.id}` })
     const out = videoOutputKeys(media.r2Key)
     const hlsDir = path.join(work, "hls")
     for (const r of RENDITIONS) {

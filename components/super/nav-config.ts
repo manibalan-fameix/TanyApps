@@ -1,6 +1,7 @@
 import type { IconSvgElement } from "@hugeicons/react"
 import {
   Alert02Icon,
+  Shield01Icon,
   Building03Icon,
   Car01Icon,
   ChartLineData01Icon,
@@ -56,6 +57,8 @@ export const superNavGroups: SuperNavGroup[] = [
       { title: "Revenue & plans", url: "/super/revenue", icon: Wallet01Icon },
       { title: "Bookings", url: "/super/bookings", icon: Invoice01Icon },
       { title: "Payment exceptions", url: "/super/payments", icon: Alert02Icon },
+      { title: "Usage and cost", url: "/super/usage", icon: ChartLineData01Icon },
+      { title: "Security trail", url: "/super/security", icon: Shield01Icon },
     ],
   },
   {

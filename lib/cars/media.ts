@@ -1,6 +1,7 @@
 import { and, eq, ne } from "drizzle-orm"
 
 import { angleOrder, isAngle, type CarAngle } from "../angles.ts"
+import { meterUsage } from "../core/usage.ts"
 import { carMedia, cars } from "../db/schema/index.ts"
 import { scopedDb } from "../db/scoped.ts"
 import { enqueueVideoJob } from "../jobs/boss.ts"
@@ -71,6 +72,9 @@ export async function confirmUpload(
     await db.carMedia.update({ status: "failed" }, eq(carMedia.id, row.id))
     return { ok: false, error: "too_large" }
   }
+
+  // Bytes stored, counted once per file (confirming twice does not double it). Measurement only: it never blocks an upload.
+  await meterUsage({ dealerId, feature: "media_upload_bytes", quantity: head.size, key: `media:${row.id}`, product: "platform" })
 
   await db.carMedia.update(
     {
