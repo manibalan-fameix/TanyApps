@@ -31,11 +31,11 @@ const inHours = (h: number) => new Date(Date.now() + h * 3600_000 + 330 * 60_000
 async function fillTrip(page: Page) {
   await page.goto(`${SUB}/`)
   await expect(page.getByRole("heading", { name: /where to/i })).toBeVisible()
+  // The screen is drop-first: the airport quick pick answers "Where to?", and only then does the pickup field appear.
+  await page.getByRole("list", { name: "Airports and stations" }).getByRole("button", { name: /Chennai Airport/ }).click()
+  await expect(page.locator("#drop")).toHaveValue("Chennai Airport")
   await page.locator("#pickup").fill("T Nagar")
   await page.getByRole("button", { name: /T Nagar/ }).first().click()
-  // The drop is an airport: tap the quick pick under the drop field.
-  await page.locator("#drop").locator("xpath=ancestor::div[contains(@class,'flex-col')][1]").getByRole("button", { name: "Chennai Airport" }).click()
-  await expect(page.locator("#drop")).toHaveValue("Chennai Airport")
   await page.locator("#start-at").fill(inHours(30))
   await page.getByRole("button", { name: "See vehicles and fares" }).click()
 }
@@ -104,8 +104,9 @@ test("a customer books an airport trip, the operator accepts, the customer sees 
   await expect(page.getByTestId(`trip-${code}`)).toBeVisible()
   await page.goto(bookingUrl)
   await page.getByTestId("repeat-booking").click()
-  await expect(page.locator("#pickup")).toHaveValue("T Nagar")
-  await expect(page.locator("#drop")).toHaveValue("Chennai Airport")
+  // A repeat opens straight on the trip-details step with the route already filled in (no pickup/drop inputs on that step).
+  await expect(page.getByRole("heading", { name: "Trip details" })).toBeVisible()
+  await expect(page.getByText(/T Nagar.*→.*Chennai Airport/)).toBeVisible()
   await opCtx.close()
 })
 
@@ -183,4 +184,31 @@ test("the operator takes a booking by phone with a typed distance, and it is con
   await op.goto("/cabs/customers?q=9876511144")
   await expect(op.getByRole("link", { name: "Counter Customer" })).toBeVisible()
   await ctx.close()
+})
+
+test("pressing Request booking twice in a row makes one booking, and a second visit to the review screen is a new booking", async ({ page }) => {
+  await fillTrip(page)
+  await expect(page.getByRole("heading", { name: "Choose your vehicle" })).toBeVisible()
+  await page.getByTestId("vehicle-Sedan").getByRole("button", { name: "Select" }).click()
+  await expect(page.getByRole("heading", { name: "Review your booking" })).toBeVisible()
+  await page.getByTestId("verify-to-book").click()
+  await otpLogin(page, "+919876522233")
+  await page.waitForURL(`${SUB}/**`)
+  await expect(page.getByRole("heading", { name: "Review your booking" })).toBeVisible()
+
+  // Two quick presses of the button (a nervous double tap).
+  await page.getByRole("button", { name: "Request booking" }).dblclick()
+  await page.waitForURL(/\/my\/bookings\/[0-9a-f-]{36}/)
+  await page.goto(`${SUB}/my/bookings`)
+  const rows = page.locator('[data-testid^="trip-"]')
+  await expect(rows).toHaveCount(1)
+
+  // An intentional second booking of the very same trip is a different request: the customer reaches the review screen again.
+  await fillTrip(page)
+  await page.getByTestId("vehicle-Sedan").getByRole("button", { name: "Select" }).click()
+  await expect(page.getByRole("heading", { name: "Review your booking" })).toBeVisible()
+  await page.getByRole("button", { name: "Request booking" }).click()
+  await page.waitForURL(/\/my\/bookings\/[0-9a-f-]{36}/)
+  await page.goto(`${SUB}/my/bookings`)
+  await expect(page.locator('[data-testid^="trip-"]')).toHaveCount(2)
 })

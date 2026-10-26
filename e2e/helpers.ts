@@ -21,9 +21,13 @@ export async function jpeg(page: Page, label = "x") {
   return { name: `${label}.jpg`, mimeType: "image/jpeg", buffer: Buffer.from(b64, "base64") }
 }
 
+/**
+ * Signs in as the seeded demo dealer through the development-only demo button. The server shows that button only when
+ * NODE_ENV is "development" and E2E=1 (see lib/auth/dev-bypass.ts); a production build never renders it.
+ */
 export async function signIn(page: Page) {
   await page.goto("/login")
-  await page.getByRole("button", { name: /continue with google/i }).click()
+  await page.getByRole("button", { name: /open the demo dealer/i }).click()
   await page.waitForURL("**/dashboard")
 }
 
@@ -34,6 +38,15 @@ export async function startCar(page: Page, reg: string) {
   await page.getByLabel("Registration number").fill(reg)
   await page.getByRole("button", { name: /look up this car/i }).click()
   await expect(page.getByTestId("variant-option").first()).toBeVisible()
+}
+
+/**
+ * The wizard has an optional "Marketplace details" step between photos and price. These journeys do not fill it, so they pass
+ * through it with Continue, exactly as a dealer who skips it would.
+ */
+export async function continuePastMarketplace(page: Page) {
+  await expect(page.getByRole("heading", { name: "Marketplace details" })).toBeVisible()
+  await page.getByRole("button", { name: "Continue", exact: true }).click()
 }
 
 export async function pickVariantAndContinue(page: Page) {

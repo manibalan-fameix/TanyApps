@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 
 import { CAR_ANGLES } from "../lib/angles"
-import { jpeg, jpegSize, pickVariantAndContinue, signIn, startCar } from "./helpers"
+import { continuePastMarketplace, jpeg, jpegSize, pickVariantAndContinue, signIn, startCar } from "./helpers"
 
 async function captureAll(page: Page) {
   await page.getByRole("button", { name: /start guided capture/i }).click()
@@ -24,6 +24,7 @@ test("plate photo to a published car, with a working short link", async ({ page,
   await captureAll(page)
   await expect(page.getByTestId("upload-count")).toHaveText("12 of 12 uploaded", { timeout: 60_000 })
   await page.getByRole("button", { name: "Continue", exact: true }).click()
+  await continuePastMarketplace(page)
 
   await page.getByLabel("Asking price (₹)").fill("565000")
   await page.getByLabel("Kilometres driven").fill("48200")
@@ -48,7 +49,8 @@ test("plate photo to a published car, with a working short link", async ({ page,
   expect(canonical).toMatch(/\/\d{4}-[a-z0-9-]+-tn11(-\d+)?$/)
   await page.goto(canonical)
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Alpha", { ignoreCase: true }).catch(() => {})
-  await expect(page.getByText("₹5,65,000")).toBeVisible()
+  // The buyer page shows the price in more than one place (header card and purchase panel); one visible match is what matters.
+  await expect(page.getByText("₹5,65,000").first()).toBeVisible()
   await expect(page.getByText("TN11AB1234")).toHaveCount(0) // the plate never reaches buyers
 
   // Another dealer's subdomain must not resolve this car's short link.
@@ -82,7 +84,8 @@ test("publishing waits for the cover photo, then unlocks while other photos keep
   await signIn(page)
   await startCar(page, "TN 22 EF 9012")
   await pickVariantAndContinue(page)
-  await page.getByRole("button", { name: "Continue", exact: true }).click() // straight to price with no photos
+  await page.getByRole("button", { name: "Continue", exact: true }).click() // photos step: none taken
+  await continuePastMarketplace(page)
 
   await page.getByLabel("Asking price (₹)").fill("350000")
   await page.getByLabel("Kilometres driven").fill("72000")
@@ -147,6 +150,7 @@ test("emulated Fast 3G: plate photo to published in under 2 minutes with only th
   await page.getByRole("button", { name: /^done$/i }).click()
   await expect(page.getByTestId("upload-count")).toHaveText("1 of 12 uploaded", { timeout: 90_000 })
   await page.getByRole("button", { name: "Continue", exact: true }).click()
+  await continuePastMarketplace(page)
 
   await page.getByLabel("Asking price (₹)").fill("450000")
   await page.getByLabel("Kilometres driven").fill("52000")
@@ -168,6 +172,7 @@ test("carousel photos download as 4:5 crops", async ({ page }) => {
   await page.getByRole("button", { name: /^done$/i }).click()
   await expect(page.getByTestId("upload-count")).toHaveText("3 of 12 uploaded", { timeout: 60_000 })
   await page.getByRole("button", { name: "Continue", exact: true }).click()
+  await continuePastMarketplace(page)
   await page.getByLabel("Asking price (₹)").fill("480000")
   await page.getByLabel("Kilometres driven").fill("30000")
   await page.getByRole("button", { name: "Publish" }).click()

@@ -170,6 +170,9 @@ export function checkTarget(target: Target, env: EnvMap, configs: Configs): Find
   else note(`Cloudflare account expected: ${app.vars.R2_ACCOUNT_ID.slice(0, 4)}...${app.vars.R2_ACCOUNT_ID.slice(-4)}`)
 
   if (!env.CRON_SECRET) block("CRON_SECRET is missing (the cron worker and the app must share it).")
+  // The Tany team area admits only the listed emails. An empty list is safe (nobody gets in) but is almost never intended.
+  if (!env.SUPER_ADMIN_EMAILS?.trim()) note("SUPER_ADMIN_EMAILS is not set: nobody will be able to open /super in this environment.")
+  else if (env.SUPER_ADMIN_UIDS?.trim()) note("SUPER_ADMIN_UIDS is set: a team member must also sign in as one of the listed Firebase accounts.")
   return f
 }
 

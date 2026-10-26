@@ -136,10 +136,13 @@ test("a new cab operator sets up, adds a vehicle with documents, sets rates and 
   await expect(page.getByText(/document.* expired/)).toBeVisible()
 })
 
-test("a cab operator's public site offers booking and lists the vehicles, with no prices until a trip is chosen", async ({ page }) => {
+test("a cab operator's public site offers booking, with no prices until a trip is chosen", async ({ page }) => {
   await page.goto("http://sri-murugan.localhost:" + (process.env.E2E_CABS_PORT ?? "3101") + "/")
-  await expect(page.getByRole("heading", { name: "Book your cab" })).toBeVisible()
-  await expect(page.getByRole("heading", { name: "Our vehicles" })).toBeVisible()
-  await expect(page.getByText("Sedan").first()).toBeVisible()
+  // The home screen is the booking entry point ("Where to?" with the trip types). It used to also list "Our vehicles"; that section was
+  // removed in the map-first redesign, so vehicles are first shown with their fares after a trip is chosen (see cabs-booking.spec.ts).
+  await expect(page.getByRole("heading", { name: "Where to?" })).toBeVisible()
+  await expect(page.getByRole("tablist", { name: "Trip type" })).toBeVisible()
+  await expect(page.getByRole("tab", { name: "Airport" })).toBeVisible()
+  // The invariant that still matters: no fare is quoted before the customer has chosen a trip.
   await expect(page.getByText("₹")).toHaveCount(0)
 })

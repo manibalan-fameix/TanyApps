@@ -255,3 +255,18 @@ describe("no package script can reach Cloudflare around the guard", () => {
     expect(scripts["deploy:staging"]).toBe("node scripts/deploy.ts all staging")
   })
 })
+
+describe("super admin configuration notes", () => {
+  const notes = (env: EnvMap) => checkTarget("staging", env, configs).filter((f) => f.level === "note").map((f) => f.message)
+  it("tells the operator when no team email is configured, without blocking the deployment", () => {
+    expect(notes(goodStaging()).some((m) => m.includes("SUPER_ADMIN_EMAILS is not set"))).toBe(true)
+    expect(blocks("staging", goodStaging()).some((m) => m.includes("SUPER_ADMIN"))).toBe(false)
+  })
+  it("is quiet when the list is set, and says so when a uid list is also set (and never prints a value)", () => {
+    const env = { ...goodStaging(), SUPER_ADMIN_EMAILS: `ops-${MARK}@tany.test` }
+    expect(notes(env).some((m) => m.includes("SUPER_ADMIN_EMAILS is not set"))).toBe(false)
+    const withUids = { ...env, SUPER_ADMIN_UIDS: `uid-${MARK}` }
+    expect(notes(withUids).some((m) => m.includes("SUPER_ADMIN_UIDS is set"))).toBe(true)
+    expect(JSON.stringify(checkTarget("staging", withUids, configs))).not.toContain(MARK)
+  })
+})

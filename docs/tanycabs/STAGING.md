@@ -136,6 +136,8 @@ CABS_ALLOWED_EMAILS=       # emails allowed to create a cab business on staging
 PHONE_OTP_PROVIDER=firebase
 FIREBASE_APPCHECK_SITE_KEY= # step 6.7
 PILOT_DEALERS=
+SUPER_ADMIN_EMAILS=        # the Tany team's Google emails allowed into /super. Empty means NOBODY can open /super (safe, but staging checks need it)
+SUPER_ADMIN_UIDS=          # optional second factor: the Firebase uids (from Authentication > Users) of those same accounts. Leave empty to use emails only
 STAGING_OWNER_EMAIL=       # optional: links this Google account as owner of the demo businesses (seed step)
 ```
 

@@ -21,7 +21,9 @@ export default defineConfig({
   },
   projects: [
     // No camera available: exercises the file-input fallback that older or locked-down phones get.
-    { name: "android-chrome", testIgnore: /camera\.spec\.ts/, use: { browserName: "chromium" } },
+    // The cab specs need their own server, port and database (and the Firebase emulator): run them with `pnpm test:e2e:cabs` and
+    // `pnpm test:e2e:cabs-login`, not under this config.
+    { name: "android-chrome", testIgnore: /(camera|cabs-.*)\.spec\.ts/, use: { browserName: "chromium" } },
     // Chromium's fake camera stream: exercises the live getUserMedia path with the on-screen outline.
     {
       name: "android-chrome-camera",

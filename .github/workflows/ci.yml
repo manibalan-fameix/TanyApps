@@ -1,0 +1,89 @@
+name: CI
+
+# Quality gates for every pull request and every push to main. Nothing here deploys, reads a production secret, or touches a shared
+# database: the integration tests run against a throwaway Postgres that lives only for this job and passes the same
+# disposable-database checks as a developer's (tests/support/disposable-db.ts).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Newer pushes to a pull request replace its older run; runs on main always finish so its history is complete.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci-admin-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Same names a developer uses. The role is a plain, non-superuser test role; the database carries the disposable marker.
+      TEST_DATABASE_DISPOSABLE: "1"
+      TEST_DATABASE_CONFIRM: tany_ci_test
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false # no later step pushes; the job token is not left in .git/config
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - run: npm install -g pnpm@12.4.2
+      - run: pnpm install --frozen-lockfile
+
+      # Runtime dependencies only (dev tooling advisories are tracked in docs/architecture/DEPENDENCY_ADVISORIES.md). A newly published
+      # high or critical advisory against something the app ships turns this red on purpose.
+      - run: pnpm audit --prod --audit-level=high
+      - run: pnpm typecheck
+      - run: pnpm lint
+      # No .env file and no secrets exist in CI, so this also proves the build does not depend on any.
+      - run: pnpm build
+
+      - name: Create the disposable test database
+        run: |
+          PASSWORD="$(openssl rand -hex 16)"
+          echo "::add-mask::$PASSWORD"
+          psql "postgres://postgres:ci-admin-only@localhost:5432/postgres" -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE tany_ci_test_user LOGIN PASSWORD '$PASSWORD' NOSUPERUSER NOCREATEDB NOCREATEROLE" \
+            -c "CREATE DATABASE tany_ci_test OWNER tany_ci_test_user" \
+            -c "COMMENT ON DATABASE tany_ci_test IS 'tany:disposable-test-db'"
+          echo "TEST_DATABASE_URL=postgres://tany_ci_test_user:$PASSWORD@localhost:5432/tany_ci_test" >> "$GITHUB_ENV"
+
+      - run: pnpm test:db check
+      - run: pnpm test:db migrate
+      - name: Unit and integration tests
+        run: pnpm test:db test
+
+  # The Cloudflare Worker bundle: OpenNext build, then Wrangler validates the config and the bundle without uploading anything
+  # (--dry-run needs no login and no token). Separate job so a slow bundle does not hide the fast checks above.
+  worker-bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false # no later step pushes; the job token is not left in .git/config
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - run: npm install -g pnpm@12.4.2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec opennextjs-cloudflare build
+      - run: pnpm exec wrangler deploy -c wrangler.jsonc --dry-run --outdir "$RUNNER_TEMP/worker-out"
+      - run: pnpm exec wrangler deploy -c workers/tracker/wrangler.jsonc --dry-run --outdir "$RUNNER_TEMP/tracker-out"
+      - run: pnpm exec wrangler deploy -c workers/cron/wrangler.jsonc --dry-run --outdir "$RUNNER_TEMP/cron-out"
