@@ -5,12 +5,12 @@ import { getDealerBySlug } from "@/lib/tenant/dealer"
 export const dynamic = "force-dynamic"
 
 /**
- * The home-screen manifest of one cab operator's site, so a customer can keep it on their phone like an app. Named and coloured for
+ * The home-screen manifest of one cab operator's or restaurant's site, so a customer can keep it on their phone like an app. Named and coloured for
  * the operator. (The app-wide manifest in app/manifest.ts is for the dealer dashboard and starts at /dashboard, which is wrong here.)
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ dealer: string }> }) {
   const dealer = await getDealerBySlug((await params).dealer)
-  if (!dealer || dealer.industry !== "cabs") return new NextResponse("Not found", { status: 404 })
+  if (!dealer || (dealer.industry !== "cabs" && dealer.industry !== "restaurants")) return new NextResponse("Not found", { status: 404 })
   const body = {
     name: dealer.displayName,
     short_name: dealer.displayName.slice(0, 12),

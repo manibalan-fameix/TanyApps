@@ -341,7 +341,7 @@ export function CouponsGrid({ rows, owner }: { rows: CouponRow[]; owner: boolean
 
 // ---------- banners ----------
 
-export type BannerRow = { id: string; title: string; subtitle: string; imageUrl: string | null; status: "showing" | "hidden" }
+export type BannerRow = { id: string; title: string; subtitle: string; imageUrl: string | null; buttonLabel: string; linkUrl: string; status: "showing" | "hidden" }
 
 export function BannersGrid({ rows, owner }: { rows: BannerRow[]; owner: boolean }) {
   const ctx = useRunner()
@@ -365,6 +365,7 @@ export function BannersGrid({ rows, owner }: { rows: BannerRow[]; owner: boolean
               <div className="flex min-w-0 flex-col leading-tight">
                 <span className="truncate font-medium">{data.title}</span>
                 {data.subtitle ? <span className="truncate text-xs text-muted-foreground">{data.subtitle}</span> : null}
+                {data.linkUrl ? <span className="truncate text-xs text-muted-foreground">{data.buttonLabel ? `"${data.buttonLabel}" → ` : "→ "}{data.linkUrl}</span> : null}
               </div>
             </div>
           ) : null,

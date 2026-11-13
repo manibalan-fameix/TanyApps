@@ -47,6 +47,7 @@ import {
   slugSchema,
 } from "@/lib/dealers/onboard"
 import { RADIUS_OPTIONS, readableOn } from "@/lib/theme/tokens"
+import { dominantLogoColour } from "@/lib/image/logo-colour"
 import { resizeToPng } from "@/lib/image/resize"
 import { slugify } from "@/lib/slug"
 import { cn } from "@/lib/utils"
@@ -151,6 +152,7 @@ export function OnboardingWizard({
   const [accent, setAccent] = useState<string>(PALETTES[0].accent)
   const [radius, setRadius] = useState<OnboardDraft["radius"]>("md")
   const [logo, setLogo] = useState<string | null>(null)
+  const [colourFromLogo, setColourFromLogo] = useState(false)
   const [chosenPlan, setPlan] = useState<SignupPlanKey>("free")
   // A kind of business may not offer every plan (cabs has no free plan): fall back to its first one.
   const offered = getIndustry(industry ?? "motors").offeredPlans
@@ -274,8 +276,18 @@ export function OnboardingWizard({
       const blob = await resizeToPng(file, 256)
       const reader = new FileReader()
       reader.onload = () => {
-        setLogo(reader.result as string)
+        const url = reader.result as string
+        setLogo(url)
         setErrors((e) => ({ ...e, logo: undefined }))
+        // The brand colour follows the logo. The owner can still pick a palette or a custom colour afterwards.
+        dominantLogoColour(url)
+          .then((c) => {
+            if (c) {
+              setPrimary(c)
+              setColourFromLogo(true)
+            }
+          })
+          .catch(() => {})
       }
       reader.readAsDataURL(blob)
     } catch {
@@ -720,7 +732,10 @@ export function OnboardingWizard({
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => setLogo(null)}
+                          onClick={() => {
+                            setLogo(null)
+                            setColourFromLogo(false)
+                          }}
                         >
                           Remove
                         </Button>
@@ -742,6 +757,7 @@ export function OnboardingWizard({
                         onClick={() => {
                           setPrimary(p.primary)
                           setAccent(p.accent)
+                          setColourFromLogo(false)
                         }}
                         className={cn(
                           "size-9 rounded-full border-2 border-transparent",
@@ -757,11 +773,15 @@ export function OnboardingWizard({
                         type="color"
                         aria-label="Custom brand colour"
                         value={primary}
-                        onChange={(e) => setPrimary(e.target.value)}
+                        onChange={(e) => {
+                          setPrimary(e.target.value)
+                          setColourFromLogo(false)
+                        }}
                         className="size-9 cursor-pointer rounded-md border bg-transparent p-0.5"
                       />
                     </label>
                   </div>
+                  {colourFromLogo ? <p className="text-xs text-muted-foreground">Colour taken from your logo. Pick another to change it.</p> : null}
                   <FieldError message={errors.primary} />
                 </div>
                 <div className="grid gap-2">

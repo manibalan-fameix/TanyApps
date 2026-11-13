@@ -5,6 +5,7 @@ import { and, asc, desc, eq, gt, inArray, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
+import { bannerSchema, cleanLink } from "@/lib/restaurant/banners"
 import { banners, coupons, deliveryPartners, deliveryZones, enquiries, menuItems, orders, reviews } from "@/lib/db/schema"
 import { hashPassword } from "@/lib/auth/password"
 import { nextPartnerCode, parsePincodes, partnerSchema, pinSchema, zoneSchema } from "@/lib/restaurant/delivery"
@@ -411,21 +412,18 @@ export async function deleteCoupon(id: string): Promise<Result> {
 
 // ---------- banners (owner) ----------
 
-const bannerSchema = z.object({
-  title: z.string().trim().min(2, "Enter a title.").max(60),
-  subtitle: z.string().trim().max(100).default(""),
-  imageUrl: z.string().trim().max(500).default(""),
-})
-
 export async function createBanner(input: unknown): Promise<Result> {
   const s = await session()
   if (!s) return denied
   if (!s.owner) return ownerOnly
   const parsed = bannerSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+  const linkUrl = cleanLink(parsed.data.linkUrl)
+  if (parsed.data.linkUrl.trim() !== "" && linkUrl === "") return { ok: false, error: "Use a page on your site (like /menu) or a link starting with https://." }
+  if (parsed.data.buttonLabel && !linkUrl) return { ok: false, error: "Choose where the button should take guests, or clear the button text." }
   if (!isOwnImage(getStorage(), s.dealer.id, parsed.data.imageUrl)) return { ok: false, error: "Upload the image again." }
   const db = scopedDb(s.dealer.id)
-  await db.banners.insert({ ...parsed.data, imageUrl: parsed.data.imageUrl || null, sortOrder: await db.banners.count() })
+  await db.banners.insert({ ...parsed.data, linkUrl, imageUrl: parsed.data.imageUrl || null, sortOrder: await db.banners.count() })
   refresh("/banners", "/")
   return { ok: true }
 }

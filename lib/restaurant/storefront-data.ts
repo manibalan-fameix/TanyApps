@@ -4,6 +4,7 @@ import { cache } from "react"
 import { banners, coupons, deliveryZones, menuCategories, menuItems, reviews } from "../db/schema"
 import { scopedDb } from "../db/scoped"
 import type { DealerProfile } from "../tenant/dealer"
+import { type StoreBanner, readTone } from "./banners"
 import { readProfile } from "./profile"
 import { readServiceArea } from "./service-area"
 import { enabledFulfilments, paymentOptions, readOrderSettings } from "./settings"
@@ -48,7 +49,7 @@ export const loadStorefront = cache(async (dealer: DealerProfile) => {
   return {
     dishes,
     categories,
-    banners: bannerRows,
+    banners: bannerRows.map((b): StoreBanner => ({ id: b.id, title: b.title, subtitle: b.subtitle, buttonLabel: b.buttonLabel, linkUrl: b.linkUrl, tone: readTone(b.tone), imageUrl: b.imageUrl })),
     reviews: reviewRows,
     coupons: couponRows
       .filter((c) => !c.expiresAt || c.expiresAt.getTime() > now)
