@@ -13,7 +13,8 @@ describe("every workflow", () => {
   it.each(files)("%s pins each third-party action to a full commit SHA", (f) => {
     const refs = [...read(f).matchAll(/^\s*-?\s*uses:\s*(\S+)/gm)].map((m) => m[1])
     expect(refs.length).toBeGreaterThan(0)
-    for (const ref of refs) expect(ref, `${f}: ${ref}`).toMatch(/^[\w.-]+\/[\w./-]+@[0-9a-f]{40}$/)
+    // A reusable workflow from this same repository (./.github/workflows/x.yml) is our own code, not a third party, so it cannot be pinned.
+    for (const ref of refs.filter((r) => !/^\.\/\.github\/workflows\/[\w.-]+\.yml$/.test(r))) expect(ref, `${f}: ${ref}`).toMatch(/^[\w.-]+\/[\w./-]+@[0-9a-f]{40}$/)
   })
   it.each(files)("%s never uses pull_request_target and declares least-privilege permissions", (f) => {
     const text = read(f)

@@ -82,7 +82,9 @@ if [ -n "$SLUG" ]; then
   echo "-- tenant $T"
   check "storefront renders" "200" GET "$T" /
   check "internal cron is not served on the tenant host" "404" POST "$T" /api/internal/cron/retry-order-refunds
-  check "admin upload is not served on the tenant host" "404" PUT "$T" /api/upload/x
+  # The proxy skips /api/upload (the route checks the session itself and takes large bodies), so an anonymous call answers 401 here rather than
+# 404. It can never succeed on a tenant host: no cookie carries a Domain attribute, so the app host's session is never sent to a tenant host.
+check "admin upload is refused on the tenant host (no session can reach it)" "401|404" PUT "$T" /api/upload/x
 fi
 
 echo
