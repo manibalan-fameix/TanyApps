@@ -26,3 +26,5 @@ overrides:
   "@modelcontextprotocol/sdk": ^1.32.0
   "@grpc/grpc-js": ^1.13.6
   "glob@10": ^10.5.0
+  # GHSA-gg6h-894w-4m9c (high, quadratic-time lookbehind matching), pulled in by firebase > @firebase/firestore. Same major, patched in 2.8.7.
+  re2js: ^2.8.7
