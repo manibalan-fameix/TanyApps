@@ -1,0 +1,73 @@
+name: Deploy staging
+
+# Every push to the `staging` branch runs the CI gates, then deploys the SAME code to tanystaging.in (app, tracker and cron Workers),
+# applies pending database migrations to the staging database, and smoke-tests the result. Developers and QA test there; only after
+# sign-off does `staging` get merged into `main` (docs/staging/GO-LIVE.md). Production is never deployed from here.
+#
+# Everything staging-specific lives in the GitHub Environment named "staging" (Settings > Environments), never in this file:
+#   secret STAGING_ENV_FILE          the full contents of .env.staging (docs/tanycabs/STAGING.md section 8)
+#   secret CLOUDFLARE_DEPLOY_TOKEN   token that deploys Workers (see docs/staging/GO-LIVE.md); NOT the DNS token inside STAGING_ENV_FILE
+#   secret CLOUDFLARE_ACCOUNT_ID     the account that owns tany.in and tanystaging.in
+# scripts/predeploy-check.sh and lib/deploy/guard.ts still run and refuse anything that points at production.
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time, in order; a newer push waits instead of cancelling a deploy halfway through a migration.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: staging
+      url: https://app.tanystaging.in
+    env:
+      # Wrangler reads these from the process environment, which wins over anything in .env.staging.
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - run: npm install -g pnpm@12.4.2
+      - run: pnpm install --frozen-lockfile
+
+      - name: Write .env.staging from the environment secret
+        env:
+          STAGING_ENV_FILE: ${{ secrets.STAGING_ENV_FILE }}
+        run: |
+          test -n "$STAGING_ENV_FILE" || { echo "Secret STAGING_ENV_FILE is not set on the 'staging' environment." >&2; exit 1; }
+          umask 077
+          printf '%s\n' "$STAGING_ENV_FILE" > .env.staging
+
+      # predeploy-check.sh insists origin is exactly this URL; actions/checkout sets it without ".git".
+      - run: git remote set-url origin https://github.com/manibalan-fameix/TanyApps.git
+
+      # Order matters (docs/tanycabs/STAGING.md): secrets, then migrations, then the code that needs them.
+      - run: pnpm secrets:staging
+      - run: pnpm db:migrate:staging
+      - run: bash scripts/setup-wildcard-dns.sh staging
+      - run: pnpm deploy:staging
+
+      - name: Smoke test
+        run: bash scripts/staging-smoke.sh tanystaging.in demo-motors
+
+      - name: Remove the secrets file
+        if: always()
+        run: rm -f .env.staging
