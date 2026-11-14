@@ -1,0 +1,34 @@
+# Who must approve changes to the parts of this repository that control deployment, access to production, money, and the database.
+# Teammates can change everything else on `staging` with a normal reviewed PR. Branch protection on `staging` has "Require review from Code
+# Owners" turned on, so a PR touching any path below cannot merge without the owner's approval.
+#
+# Why: the GitHub "staging" environment holds a Cloudflare token that can edit Workers in the whole account. Anything that decides what runs with
+# it (workflows, deploy scripts, Wrangler configs) is therefore a route to production, and must be reviewed by the owner.
+
+# Deployment and CI
+/.github/                  @manibalan-fameix
+/scripts/                  @manibalan-fameix
+/lib/deploy/               @manibalan-fameix
+/wrangler.jsonc            @manibalan-fameix
+/workers/                  @manibalan-fameix
+/open-next.config.ts       @manibalan-fameix
+/tests/ci-workflow.test.ts @manibalan-fameix
+/tests/deploy-guard.test.ts @manibalan-fameix
+
+# Supply chain: dependencies and overrides
+/package.json              @manibalan-fameix
+/pnpm-lock.yaml            @manibalan-fameix
+/pnpm-workspace.yaml       @manibalan-fameix
+
+# Database schema and migrations (applied automatically on every staging deploy, and by hand on production)
+/drizzle/                  @manibalan-fameix
+/lib/db/                   @manibalan-fameix
+
+# Access control, routing, security headers and money
+/proxy.ts                  @manibalan-fameix
+/next.config.ts            @manibalan-fameix
+/lib/auth/                 @manibalan-fameix
+/lib/core/guards.ts        @manibalan-fameix
+/lib/billing/              @manibalan-fameix
+/app/api/webhooks/         @manibalan-fameix
+/app/(super)/              @manibalan-fameix
