@@ -46,6 +46,10 @@ jobs:
       - name: Seed Marina Spice Kitchen
         env:
           STAGING_OWNER_EMAIL: ${{ inputs.owner_email }}
+          # Staging storage (the non-secret values from the staging block of wrangler.jsonc); the access keys come from the env file.
+          R2_ACCOUNT_ID: 8b98f4164cf5f4c0400f25a3f66b2ede
+          R2_BUCKET: tany-staging
+          R2_PUBLIC_URL: https://cdn.tanystaging.in
         run: |
           # an empty input must not shadow a value from the env file
           [ -n "$STAGING_OWNER_EMAIL" ] || unset STAGING_OWNER_EMAIL
