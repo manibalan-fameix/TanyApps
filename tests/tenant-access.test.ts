@@ -161,7 +161,7 @@ describe("server actions", () => {
     "firebaseAccountExists", "signInWithFirebaseToken", "signInTeammate", "openDevDemo", "signInWithEmailPassword", "signInSuperAdmin", "signInSuperAdminLocal",
     // anonymous storefront actions: the business comes from the host, input is validated, and each is rate limited
     "previewCoupon", "previewDelivery", "placeOrder", "confirmOrderPayment", "getPaymentCheckout", "cancelPendingOrder", "sendEnquiry", "submitReview",
-    "locateGuest", "searchGuestPlaces", "checkPincode", "createBooking", "confirmBooking",
+    "locateGuest", "searchGuestPlaces", "checkPincode", "createBooking", "confirmBooking", "requestTableBooking",
     "searchPlacesPublic", "placeDetailsPublic", "quickPickPublic", "getQuotes", "requestBooking", "cancelMyBooking",
     "updateProfile", "saveAddress", "deleteAddress", "saveContact", "deleteContact",
     // delivery rider sign-in by private PIN/link
