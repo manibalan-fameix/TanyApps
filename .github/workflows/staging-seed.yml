@@ -36,6 +36,7 @@ jobs:
           node-version: 24
       - run: npm install -g pnpm@12.4.2
       - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium # the seed renders its placeholder food pictures in a browser
       - name: Write .env.staging from the environment secret
         env:
           STAGING_ENV_FILE: ${{ secrets.STAGING_ENV_FILE }}
