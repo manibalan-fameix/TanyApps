@@ -11,6 +11,11 @@ on:
         description: Google account to make owner of the test restaurant (optional if STAGING_OWNER_EMAIL is in the env file)
         required: false
         type: string
+      photos:
+        description: Replace the drawn placeholder pictures with real Pexels photos (needs PEXELS_API_KEY in the env file)
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -55,6 +60,13 @@ jobs:
           # an empty input must not shadow a value from the env file
           [ -n "$STAGING_OWNER_EMAIL" ] || unset STAGING_OWNER_EMAIL
           pnpm seed:tanyeats
+      - name: Real food photos from Pexels
+        if: ${{ inputs.photos }}
+        env:
+          R2_ACCOUNT_ID: 8b98f4164cf5f4c0400f25a3f66b2ede
+          R2_BUCKET: tany-staging
+          R2_PUBLIC_URL: https://cdn.tanystaging.in
+        run: pnpm seed:photos:staging
       - name: Remove the secrets file
         if: always()
         run: rm -f .env.staging
