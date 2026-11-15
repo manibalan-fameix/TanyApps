@@ -33,3 +33,58 @@ export function summariseHours(hours: BusinessHours | null | undefined): string 
     })
     .join(" · ")
 }
+
+const DAY_FROM_SHORT: Record<string, DayKey> = { Mon: "mon", Tue: "tue", Wed: "wed", Thu: "thu", Fri: "fri", Sat: "sat", Sun: "sun" }
+
+/**
+ * Whether the schedule says "open" at this moment, read on the restaurant's own clock (India has no daylight saving).
+ * No schedule at all gives null: the owner never set hours, so the page says nothing either way. A close time at or before
+ * the open time means the day runs past midnight.
+ */
+export function isOpenAt(hours: BusinessHours | null | undefined, at: Date = new Date(), timeZone = "Asia/Kolkata"): boolean | null {
+  if (!hours || DAY_ORDER.every((d) => !hours[d])) return null
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(at)
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ""
+  const today = DAY_FROM_SHORT[get("weekday")]
+  const now = Number(get("hour")) * 60 + Number(get("minute"))
+  const mins = (t: string) => {
+    const [h, m] = t.split(":").map(Number)
+    return h * 60 + m
+  }
+  const todays = hours[today]
+  if (todays) {
+    const open = mins(todays.open)
+    const close = mins(todays.close)
+    if (close > open ? now >= open && now < close : now >= open) return true
+  }
+  // Yesterday's late close can still be running into this morning.
+  const yesterday = DAY_ORDER[(DAY_ORDER.indexOf(today) + 6) % 7]
+  const y = hours[yesterday]
+  if (y && mins(y.close) <= mins(y.open) && now < mins(y.close)) return true
+  return false
+}
+
+/**
+ * When the restaurant next opens, as a short phrase for a guest: "today 7 am", "tomorrow 7 am" or "Mon 7 am".
+ * Null when no schedule is set or nothing opens in the coming week.
+ */
+export function nextOpeningLabel(hours: BusinessHours | null | undefined, at: Date = new Date(), timeZone = "Asia/Kolkata"): string | null {
+  if (!hours || DAY_ORDER.every((d) => !hours[d])) return null
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(at)
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ""
+  const today = DAY_ORDER.indexOf(DAY_FROM_SHORT[get("weekday")])
+  const now = Number(get("hour")) * 60 + Number(get("minute"))
+  const mins = (t: string) => {
+    const [h, m] = t.split(":").map(Number)
+    return h * 60 + m
+  }
+  for (let ahead = 0; ahead <= 7; ahead++) {
+    const day = DAY_ORDER[(today + ahead) % 7]
+    const slot = hours[day]
+    if (!slot) continue
+    if (ahead === 0 && mins(slot.open) <= now) continue
+    const when = ahead === 0 ? "today" : ahead === 1 ? "tomorrow" : DAY_SHORT[day]
+    return `${when} ${clock(slot.open)}`
+  }
+  return null
+}

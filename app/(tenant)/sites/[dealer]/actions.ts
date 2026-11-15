@@ -217,6 +217,35 @@ export async function sendEnquiry(input: unknown): Promise<{ ok: true } | Fail> 
   return { ok: true }
 }
 
+const bookingSchema = z.object({
+  name: z.string().trim().min(2, "Enter your name.").max(60),
+  phone: z.string().trim().regex(/^[0-9+\s-]{10,15}$/, "Enter a valid phone number."),
+  guests: z.number().int("Enter the number of guests.").min(1, "At least 1 guest.").max(20, "For more than 20 guests, please call us."),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date."),
+  time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Pick a time."),
+  note: z.string().trim().max(300).default(""),
+})
+
+/** A guest asks for a table. The restaurant confirms by phone, so this only records the request. */
+export async function requestTableBooking(input: unknown): Promise<{ ok: true } | Fail> {
+  const ctx = await context()
+  if (!ctx) return unavailable
+  if (!(await rateLimit(`table-booking:${ctx.dealer.id}:${ctx.ip}`, 5, 60 * 60_000))) return { ok: false, error: "Too many requests. Please try again later." }
+  const parsed = bookingSchema.safeParse(input)
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0]
+    return { ok: false, error: issue.message, field: String(issue.path[0]) }
+  }
+  const { date, time, ...rest } = parsed.data
+  // The restaurant's day, not the server's: India has no daylight saving, so a fixed +05:30 is exact.
+  const when = new Date(`${date}T${time}:00+05:30`)
+  const now = Date.now()
+  if (Number.isNaN(when.getTime()) || when.getTime() < now) return { ok: false, error: "Pick a time in the future.", field: "time" }
+  if (when.getTime() > now + 60 * 24 * 60 * 60_000) return { ok: false, error: "We take bookings up to 60 days ahead.", field: "date" }
+  await scopedDb(ctx.dealer.id).tableBookings.insert({ ...rest, bookingDate: date, bookingTime: time })
+  return { ok: true }
+}
+
 const reviewSchema = z.object({
   code: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{6}$/),
   rating: z.number().int().min(1).max(5),

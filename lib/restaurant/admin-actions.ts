@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { bannerSchema, cleanLink } from "@/lib/restaurant/banners"
-import { banners, coupons, deliveryPartners, deliveryZones, enquiries, menuItems, orders, reviews } from "@/lib/db/schema"
+import { banners, coupons, deliveryPartners, deliveryZones, enquiries, menuItems, orders, reviews, tableBookings } from "@/lib/db/schema"
 import { hashPassword } from "@/lib/auth/password"
 import { nextPartnerCode, parsePincodes, partnerSchema, pinSchema, zoneSchema } from "@/lib/restaurant/delivery"
 import { adjustQuantity } from "@/lib/restaurant/stock"
@@ -456,6 +456,15 @@ export async function setReviewStatus(id: string, status: "approved" | "hidden")
   if (!uuid.safeParse(id).success || !["approved", "hidden"].includes(status)) return { ok: false, error: "Review not found." }
   await scopedDb(s.dealer.id).reviews.update({ status }, eq(reviews.id, id))
   refresh("/reviews")
+  return { ok: true }
+}
+
+export async function setTableBookingStatus(id: string, status: string): Promise<Result> {
+  const s = await session()
+  if (!s) return denied
+  if (!uuid.safeParse(id).success || !["new", "confirmed", "declined"].includes(status)) return { ok: false, error: "Booking not found." }
+  await scopedDb(s.dealer.id).tableBookings.update({ status }, eq(tableBookings.id, id))
+  refresh("/table-bookings")
   return { ok: true }
 }
 

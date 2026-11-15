@@ -34,6 +34,7 @@ export function StoreHome({
       about: profile.about,
       address: profile.address || store.serviceArea?.address || "",
       hours: summariseHours(dealer.businessHours),
+      schedule: dealer.businessHours ?? null,
       phone: dealer.phone,
       email: profile.email,
       deliveryText: store.serviceArea

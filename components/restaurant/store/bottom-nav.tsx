@@ -32,8 +32,9 @@ export function StoreBottomNav() {
                 aria-current={on ? "page" : undefined}
                 className={cn("relative flex flex-1 flex-col items-center justify-center gap-1 text-xs transition-colors", on ? "font-medium text-primary" : "text-muted-foreground")}
               >
-                <HugeiconsIcon icon={item.icon} strokeWidth={2} className="size-5" />
+                <HugeiconsIcon icon={item.icon} strokeWidth={2} className={cn("size-5", on && "[&_path]:fill-current [&_path]:[fill-opacity:0.28]")} />
                 {item.label}
+                {on ? <span aria-hidden className="absolute bottom-0 h-[3px] w-8 rounded-full bg-primary" /> : null}
                 {item.href === "/cart" && cart.count > 0 ? (
                   <span className="absolute top-1.5 left-1/2 ml-2 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] leading-4 font-semibold text-primary-foreground">
                     {cart.count}
