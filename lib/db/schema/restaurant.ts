@@ -173,6 +173,12 @@ export const banners = pgTable(
     dealerId: uuid("dealer_id").notNull().references(() => dealers.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     subtitle: text("subtitle").notNull().default(""),
+    /** Text on the banner's button. Empty means no button. */
+    buttonLabel: text("button_label").notNull().default(""),
+    /** Where a tap goes: a page on the restaurant's own site ("/menu", "/category/x") or an https link. Empty means it goes nowhere. */
+    linkUrl: text("link_url").notNull().default(""),
+    /** Background look, one of lib/restaurant/banners.ts BANNER_TONES. */
+    tone: text("tone").notNull().default("soft"),
     imageUrl: text("image_url"),
     isActive: boolean("is_active").notNull().default(true),
     sortOrder: integer("sort_order").notNull().default(0),

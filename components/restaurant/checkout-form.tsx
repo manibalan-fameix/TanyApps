@@ -14,6 +14,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { rememberOrder } from "@/lib/restaurant/recent-orders"
+import { readFulfilmentPref } from "@/components/restaurant/store/fulfilment-pref"
 import { type Fulfilment, FULFILMENT_LABEL, type OrderSettings, type PaymentMethod, enabledFulfilments } from "@/lib/restaurant/settings"
 import { cn } from "@/lib/utils"
 
@@ -25,6 +26,13 @@ export function CheckoutForm({ settings, zonesEnabled, paymentMethods, testPayme
   const options = enabledFulfilments(settings)
   const [pending, start] = useTransition()
   const [fulfilment, setFulfilment] = useState<Fulfilment>(options[0] ?? "pickup")
+  // Start on the Delivery / Pickup choice made on the home screen, when this restaurant still offers it.
+  useEffect(() => {
+    const saved = readFulfilmentPref()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (saved && options.includes(saved)) setFulfilment(saved)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
   const [address, setAddress] = useState("")

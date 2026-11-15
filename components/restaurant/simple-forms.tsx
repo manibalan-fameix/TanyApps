@@ -8,6 +8,8 @@ import { createBanner, createCoupon, saveOrderSettings, saveProfile } from "@/li
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { PromoBanner } from "@/components/restaurant/store/promo-banners"
+import { BANNER_TONES, BANNER_TONE_LABEL, type BannerTone } from "@/lib/restaurant/banners"
 import { ImageUpload } from "@/components/restaurant/image-upload"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -90,23 +92,61 @@ export function CouponForm({ onDone }: { onDone?: () => void }) {
   )
 }
 
-export function BannerForm({ onDone }: { onDone?: () => void }) {
+export type BannerDestination = { value: string; label: string }
+const CUSTOM_LINK = "__custom"
+const NO_LINK = "__none"
+
+/** A short banner: title, one line of text, a button and where it goes, a background look and a picture for the right side. */
+export function BannerForm({ onDone, destinations }: { onDone?: () => void; destinations: BannerDestination[] }) {
   const router = useRouter()
   const [pending, start] = useTransition()
-  const [v, setV] = useState({ title: "", subtitle: "", imageUrl: "" })
+  const empty = { title: "", subtitle: "", buttonLabel: "", dest: NO_LINK, custom: "", tone: "soft" as BannerTone, imageUrl: "" }
+  const [v, setV] = useState(empty)
+  const options = [{ value: NO_LINK, label: "Nowhere (just a message)" }, ...destinations, { value: CUSTOM_LINK, label: "A web link…" }]
+  const toneItems = BANNER_TONES.map((t) => ({ value: t, label: BANNER_TONE_LABEL[t] }))
+  const linkUrl = v.dest === NO_LINK ? "" : v.dest === CUSTOM_LINK ? v.custom : v.dest
   return (
     <FieldGroup>
+      <div className="pointer-events-none" aria-hidden="true">
+        <p className="mb-1.5 text-xs text-muted-foreground">Preview</p>
+        <PromoBanner banner={{ title: v.title || "Your offer title", subtitle: v.subtitle || "A short line about the offer.", buttonLabel: v.buttonLabel, linkUrl: linkUrl || (v.buttonLabel ? "/" : ""), tone: v.tone, imageUrl: v.imageUrl || null }} />
+      </div>
       <Field>
         <FieldLabel htmlFor="bn-title">Title</FieldLabel>
-        <Input id="bn-title" value={v.title} placeholder="Weekend biryani offer" onChange={(e) => setV({ ...v, title: e.target.value })} />
+        <Input id="bn-title" value={v.title} maxLength={50} placeholder="Get ₹100 off orders above ₹500" onChange={(e) => setV({ ...v, title: e.target.value })} />
       </Field>
       <Field>
-        <FieldLabel htmlFor="bn-sub">Subtitle (optional)</FieldLabel>
-        <Input id="bn-sub" value={v.subtitle} onChange={(e) => setV({ ...v, subtitle: e.target.value })} />
+        <FieldLabel htmlFor="bn-sub">Description (optional)</FieldLabel>
+        <Input id="bn-sub" value={v.subtitle} maxLength={90} placeholder="Use code SOUTH20 at checkout" onChange={(e) => setV({ ...v, subtitle: e.target.value })} />
       </Field>
       <Field>
-        <FieldLabel>Image (optional)</FieldLabel>
-        <ImageUpload kind="banner" label="image" wide value={v.imageUrl} onChange={(imageUrl) => setV({ ...v, imageUrl })} />
+        <FieldLabel htmlFor="bn-btn">Button text (optional)</FieldLabel>
+        <Input id="bn-btn" value={v.buttonLabel} maxLength={20} placeholder="Order now" onChange={(e) => setV({ ...v, buttonLabel: e.target.value })} />
+      </Field>
+      <Field>
+        <FieldLabel>Where the banner takes guests</FieldLabel>
+        <Select items={options} value={v.dest} onValueChange={(d) => setV({ ...v, dest: String(d) })}>
+          <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+          <SelectContent>{options.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+        </Select>
+      </Field>
+      {v.dest === CUSTOM_LINK ? (
+        <Field>
+          <FieldLabel htmlFor="bn-link">Web link</FieldLabel>
+          <Input id="bn-link" value={v.custom} inputMode="url" placeholder="https://" onChange={(e) => setV({ ...v, custom: e.target.value })} />
+          <FieldDescription>Must start with https://. Opens in a new tab.</FieldDescription>
+        </Field>
+      ) : null}
+      <Field>
+        <FieldLabel>Background</FieldLabel>
+        <Select items={toneItems} value={v.tone} onValueChange={(t) => setV({ ...v, tone: t as BannerTone })}>
+          <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+          <SelectContent>{toneItems.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
+        </Select>
+      </Field>
+      <Field>
+        <FieldLabel>Picture for the right side (optional)</FieldLabel>
+        <ImageUpload kind="banner" label="image" value={v.imageUrl} onChange={(imageUrl) => setV({ ...v, imageUrl })} />
       </Field>
       <Button
         type="button"
@@ -114,11 +154,11 @@ export function BannerForm({ onDone }: { onDone?: () => void }) {
         className="w-fit"
         onClick={() =>
           start(async () => {
-            const res = await createBanner(v)
+            const res = await createBanner({ title: v.title, subtitle: v.subtitle, buttonLabel: v.buttonLabel, linkUrl, tone: v.tone, imageUrl: v.imageUrl })
             if (res.ok) {
               toast.success("Banner added.")
               onDone?.()
-              setV({ title: "", subtitle: "", imageUrl: "" })
+              setV(empty)
               router.refresh()
             } else toast.error(res.error)
           })

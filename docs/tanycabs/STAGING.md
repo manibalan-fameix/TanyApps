@@ -161,6 +161,8 @@ pnpm seed:staging                          # demo cab operator, restaurant and c
 
 The seed creates `demo-cabs`, `demo-eats` and `demo-motors`. It only links an owner when `STAGING_OWNER_EMAIL` is set; to manage the demo businesses, sign in once with that Google account, then run `pnpm seed:staging` again (it is safe to repeat).
 
+For a fully-populated restaurant to test TanyEats end to end, run `STAGING_OWNER_EMAIL=you@gmail.com pnpm seed:tanyeats`. It onboards "Marina Spice Kitchen" (`marina-spice`) with every detail and a full menu, orders, offers, zones and riders; see [docs/staging/tanyeats-test-restaurant.md](../staging/tanyeats-test-restaurant.md) for the details and the pages to check.
+
 After this, `pnpm deploy:staging` is the only command for a new version (run `pnpm db:migrate:staging` first when a branch adds a migration). Secrets take effect immediately; no deploy is needed after changing one with `pnpm secrets:staging`.
 
 ## 10. Check it

@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react"
+import type { Viewport } from "next"
 import { notFound } from "next/navigation"
 
 import { CabsShell } from "@/components/cabs/tenant/shell"
@@ -25,9 +26,15 @@ export async function generateMetadata({
           template: `%s | ${dealer.displayName}`,
         },
         // A cab operator's customers can keep the site on their phone; the app-wide manifest is for the dashboard.
-        ...(dealer.industry === "cabs" ? { manifest: "/pwa-manifest" } : {}),
+        ...(dealer.industry === "cabs" || dealer.industry === "restaurants" ? { manifest: "/pwa-manifest" } : {}),
       }
     : {}
+}
+
+// A restaurant's brand-coloured header runs up to the screen edge, so the browser's own bar (status bar / address bar) takes the same colour.
+export async function generateViewport({ params }: { params: Promise<{ dealer: string }> }): Promise<Viewport> {
+  const dealer = await getDealerBySlug((await params).dealer)
+  return dealer?.industry === "restaurants" && dealer.theme.primary ? { themeColor: dealer.theme.primary } : {}
 }
 
 // Buyer surface: server-rendered, tokens only. The dealer's theme is injected as CSS custom

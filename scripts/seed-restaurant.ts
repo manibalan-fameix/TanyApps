@@ -130,7 +130,8 @@ async function drawPictures(jobs: { key: string; emoji: string; tint: [string, s
 
 // ---------- 1. dealer profile and ordering rules ----------
 const hours = Object.fromEntries(["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map((d) => [d, { open: "07:00", close: "22:30" }]))
-await unscopedDb
+// A restaurant that already has its own storefront text (for example one made by `pnpm seed:tanyeats`) keeps it.
+if (!dealer.profile) await unscopedDb
   .update(dealers)
   .set({
     profile: {
@@ -169,7 +170,8 @@ for (const { d, key } of wantedKeys) {
     price: d.price,
     compareAtPrice: d.was ?? null,
     portions: d.portions ?? [],
-    imageUrl: pictures.has(key) ? imgUrl(key) : null,
+    // A real photo (see scripts/pexels-photos.ts) is kept; the drawn picture is only the stand-in.
+    imageUrl: byName.get(d.name)?.imageUrl?.includes("-pexels") ? byName.get(d.name)!.imageUrl : pictures.has(key) ? imgUrl(key) : null,
     isVeg: d.veg,
     isAvailable: d.off ? false : d.stock === 0 ? false : true,
     isFeatured: Boolean(d.best),
@@ -195,15 +197,18 @@ for (const d of DISHES.filter((x) => x.stock !== undefined)) {
 
 // ---------- 3. banners, coupons, zones, riders ----------
 const bannerJobs = [
-  { title: "Weekend Biryani Feast", subtitle: "Chicken and mutton biryani, fresh from the dum", emoji: "🍛", tint: ["#ffe3d3", "#e8845a"] as [string, string] },
-  { title: "Free delivery above ₹500", subtitle: "Across T. Nagar, Anna Nagar, Adyar and Velachery", emoji: "🛵", tint: ["#e6f4dc", "#8fc069"] as [string, string] },
-  { title: "Filter coffee, all day", subtitle: "Strong, frothy and just the way you like it", emoji: "☕", tint: ["#fff3d6", "#c98a45"] as [string, string] },
+  { title: "Weekend Biryani Feast", subtitle: "Dum biryani, fresh every Saturday and Sunday", buttonLabel: "Order now", linkUrl: "/category/rice-biryani", tone: "soft", emoji: "🍛", tint: ["#ffe3d3", "#e8845a"] as [string, string] },
+  { title: "₹100 off orders above ₹500", subtitle: "Use code SOUTH20 at checkout", buttonLabel: "See offers", linkUrl: "/offers", tone: "bold", emoji: "🎟️", tint: ["#e6f4dc", "#8fc069"] as [string, string] },
+  { title: "Filter coffee, all day", subtitle: "Strong, frothy and just the way you like it", buttonLabel: "View menu", linkUrl: "/menu", tone: "dark", emoji: "☕", tint: ["#fff3d6", "#c98a45"] as [string, string] },
 ]
-const bannerPics = await drawPictures(bannerJobs.map((b) => ({ key: `dealers/${dealer.id}/banner/${keyOf(b.title)}.jpg`, emoji: b.emoji, tint: b.tint, label: b.title, wide: true })))
-await db.banners.delete(inArray(s.banners.title, bannerJobs.map((b) => b.title)))
+// Pictures go on the right of the banner, so they are plain (no text baked in) and not wide.
+const bannerPics = await drawPictures(bannerJobs.map((b) => ({ key: `dealers/${dealer.id}/banner/${keyOf(b.title)}-promo.jpg`, emoji: b.emoji, tint: b.tint })))
+// "Free delivery above ₹500" is an earlier version of the second banner; remove it so a re-run does not leave it behind.
+const keepPhoto = new Map((await db.banners.select()).filter((b) => b.imageUrl?.includes("-pexels")).map((b) => [b.title, b.imageUrl as string]))
+await db.banners.delete(inArray(s.banners.title, [...bannerJobs.map((b) => b.title), "Free delivery above ₹500"]))
 for (const [i, b] of bannerJobs.entries()) {
-  const key = `dealers/${dealer.id}/banner/${keyOf(b.title)}.jpg`
-  await db.banners.insert({ title: b.title, subtitle: b.subtitle, imageUrl: bannerPics.has(key) ? imgUrl(key) : null, sortOrder: i, isActive: true })
+  const key = `dealers/${dealer.id}/banner/${keyOf(b.title)}-promo.jpg`
+  await db.banners.insert({ title: b.title, subtitle: b.subtitle, buttonLabel: b.buttonLabel, linkUrl: b.linkUrl, tone: b.tone, imageUrl: keepPhoto.get(b.title) ?? (bannerPics.has(key) ? imgUrl(key) : null), sortOrder: i, isActive: true })
 }
 
 const day = 86_400_000
