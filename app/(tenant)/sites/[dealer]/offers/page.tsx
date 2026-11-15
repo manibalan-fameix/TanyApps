@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils"
+import { PromoBanner } from "@/components/restaurant/store/promo-banners"
 import { DishCard } from "@/components/restaurant/store/dish-card"
 import { SectionTitle, StoreEmpty, StorePage, DISH_GRID } from "@/components/restaurant/store/ui"
 import { restaurantPage } from "@/lib/restaurant/page-data"
@@ -20,16 +21,8 @@ export default async function OffersPage({ params }: { params: Promise<{ dealer:
       {store.banners.length > 0 ? (
         <ul className="grid gap-4 md:grid-cols-2">
           {store.banners.map((b) => (
-            <li key={b.id} className="relative flex min-h-36 items-end overflow-hidden rounded-2xl border bg-primary p-5 text-primary-foreground">
-              {b.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={b.imageUrl} alt="" className="absolute inset-0 size-full object-cover" />
-              ) : null}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-              <div className="relative text-white">
-                <p className="text-lg font-semibold">{b.title}</p>
-                {b.subtitle ? <p className="text-sm opacity-90">{b.subtitle}</p> : null}
-              </div>
+            <li key={b.id}>
+              <PromoBanner banner={b} />
             </li>
           ))}
         </ul>

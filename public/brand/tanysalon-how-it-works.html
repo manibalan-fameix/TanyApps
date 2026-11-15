@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TanySalon Online Story</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: light; --ground: #F3E8FF; --ink: #18191c; --muted: #77787f; --line: #e6e6ea; --accent: #59168B; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { color-scheme: dark; --ground: #0c0d0e; --ink: #e4e7ec; --muted: #8a8c95; --line: #26272b; --accent: #DAB2FF; }
+  }
+  :root[data-theme="dark"] { color-scheme: dark; --ground: #0c0d0e; --ink: #e4e7ec; --muted: #8a8c95; --line: #26272b; --accent: #DAB2FF; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px;
+    background: var(--ground); color: var(--ink); font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif; }
+  main { width: 100%; max-width: 620px; }
+  /* Narrow frames (phones): start at the top instead of centring in the frame. */
+  @media (max-width: 480px) { body { place-items: start center; padding: 0 8px; } #stage .cap { top: 16px; } #stage canvas { transform: translateY(28px); } }
+  #stage { position: relative; width: 100%; aspect-ratio: 1 / 1; }
+  #stage canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; display: block; }
+  .cap { position: absolute; left: 4px; top: 6px; right: 4px; z-index: 2; pointer-events: none; text-align: center; }
+  .cap .line { margin: 6px auto 0; font-size: clamp(16px, 2.4vw, 22px); font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; max-width: 15em; }
+  .cap > div { transition: none; }
+  #fade { position: absolute; inset: 0; background: var(--ground); opacity: 0; pointer-events: none; z-index: 3; }
+</style>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+</head>
+<body>
+<main>
+  <div id="stage" role="img" aria-label="A 3D TanySalon builds itself, launches its own booking app, clients pick a service, stylist and time, walk in to their ready chair, and the salon keeps every rupee with zero marketplace commission.">
+    <div class="cap"><div class="step" id="capStep"></div><div class="line" id="capLine"></div></div>
+    <div id="fade"></div>
+  </div>
+</main>
+<script type="module">
+import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+const root = document.documentElement, q = new URLSearchParams(location.search);
+if (q.get("video")) root.classList.add("video");
+if (["light", "dark"].includes(q.get("theme"))) root.dataset.theme = q.get("theme");
+const stage = document.getElementById("stage");
+
+// ---------- renderer, camera, light ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.max(2, Math.min(devicePixelRatio, 3)));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+
+const CX = 6.5, CZ = 5.5, VIEW = 9.6;
+const cam = new THREE.OrthographicCamera(-VIEW, VIEW, VIEW, -VIEW, 0.1, 200);
+cam.position.set(CX + 30, 26.8, CZ + 30);
+cam.lookAt(CX, 2.8, CZ);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xe9dccb, 0.8));
+const sun = new THREE.DirectionalLight(0xfff3e4, 2.1);
+sun.position.set(CX - 6, 18, CZ + 12);
+sun.target.position.set(CX, 0, CZ);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+sun.position.set(6, 22, 22); sun.target.position.set(12, 0, 10);
+sun.shadow.camera.left = -24; sun.shadow.camera.right = 24; sun.shadow.camera.top = 24; sun.shadow.camera.bottom = -24; sun.shadow.camera.far = 80;
+sun.shadow.radius = 4; sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.02;
+scene.add(sun, sun.target);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.ShadowMaterial({ opacity: 0.12, color: 0x3a2a55 }));
+ground.rotation.x = -Math.PI / 2; ground.position.y = -0.52; ground.receiveShadow = true; ground.renderOrder = -1; ground.material.depthWrite = false;
+scene.add(ground);
+
+// ---------- materials ----------
+const M = (color, rough = 0.7, metal = 0) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
+const plankTex = (() => {
+  const c = document.createElement("canvas"); c.width = 1024; c.height = 1024; const g = c.getContext("2d");
+  const rows = 14, h = 1024 / rows;
+  for (let r = 0; r < rows; r++) {
+    let x = -((r * 337) % 400);
+    while (x < 1024) {
+      const w = 300 + ((r * 97 + x * 13) % 260), l = 76 + ((r * 31 + Math.abs(x) * 7) % 9);
+      g.fillStyle = `hsl(32, 52%, ${l}%)`; g.fillRect(x, r * h, w, h);
+      g.fillStyle = "rgba(120,80,40,.10)"; for (let k = 0; k < 5; k++) g.fillRect(x, r * h + 6 + k * (h / 5), w, 1);
+      g.fillStyle = "rgba(110,70,35,.35)"; g.fillRect(x, r * h, 2, h);
+      x += w;
+    }
+    g.fillStyle = "rgba(110,70,35,.35)"; g.fillRect(0, r * h, 1024, 2);
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+})();
+const mat = {
+  floor: new THREE.MeshStandardMaterial({ map: plankTex, roughness: 0.55 }),
+  floorEdge: M(0xd9b48a, 0.6),
+  wall: M(0xf6f2ec, 0.9),
+  frame: M(0xffffff, 0.5), glass: M(0xcfe4ec, 0.15, 0.1),
+  green: M(0x3f0f63, 0.5), mint: M(0xdab2ff, 0.5), cream: M(0xfff6e6, 0.7),
+  marble: M(0xf7f5f1, 0.25), wood: M(0xc68c55, 0.6), woodDark: M(0x9a6438, 0.6),
+  steel: M(0xe6e8ea, 0.35, 0.4), ink: M(0x24282c, 0.5), cushion: M(0x2b2f36, 0.7), neon: new THREE.MeshStandardMaterial({ color: 0xfff1d6, emissive: 0xffe2b0, emissiveIntensity: 0.9 }), kraft: M(0xc99a62, 0.85), tape: M(0xf4a8ff, 0.6), toolRed: M(0xd64933, 0.45), peg: M(0xd9c3a5, 0.8),
+  amber: M(0xe3a14f, 0.5), terra: M(0xc8643b, 0.7), leaf: new THREE.MeshStandardMaterial({ color: 0x4f9a5d, roughness: 0.8, flatShading: true }),
+  food: M(0xf0913a, 0.6), menuLine: M(0xdab2ff, 0.6),
+};
+
+// ---------- the TanySalon sign (drawn once the brand font is in) ----------
+const sign = (() => {
+  const c = document.createElement("canvas"); c.width = 2400; c.height = 400;
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  let done = false;
+  const draw = () => {
+    if (done || typeof drawLogo !== "function") return;
+    const g = c.getContext("2d");
+    g.setTransform(2, 0, 0, 2, 0, 0);
+    g.fillStyle = "#ffffff"; g.fillRect(0, 0, 1200, 200);
+    const wh = 100, ww = wh * 229 / 44, total = 150 + 34 + ww, x0 = (1200 - total) / 2;
+    drawLogo(g, x0, 25, 150);
+    if (imgsReady) for (let a = 0; a < 12; a++) g.drawImage(imgWord, x0 + 184 + 2.6 * Math.cos(a * Math.PI / 6), 52 + 2.6 * Math.sin(a * Math.PI / 6), ww, wh);
+    tex.needsUpdate = true; done = imgsReady;
+  };
+  return { tex, draw, reset: () => { done = false; } };
+})();
+
+// ---------- helpers (world: x, y on the floor, z up → three: x, z, y) ----------
+const mesh = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, z, y); o.castShadow = true; o.receiveShadow = true; return o; };
+const rbox = (x0, y0, x1, y1, z0, z1, m, r = 0.08) => mesh(new RoundedBoxGeometry(x1 - x0, z1 - z0, y1 - y0, 3, Math.min(r, (Math.min(x1 - x0, y1 - y0, z1 - z0)) / 2 - 0.001)), m, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+const cyl = (cx, cy, r, z0, z1, m, rTop = r) => mesh(new THREE.CylinderGeometry(rTop, r, z1 - z0, 40), m, cx, cy, (z0 + z1) / 2);
+
+const parts = [];
+const part = (t0, kind, build, pivot = [0, 0, 0]) => {
+  const g = new THREE.Group(); g.position.set(pivot[0], pivot[2], pivot[1]);
+  const inner = new THREE.Group(); inner.position.set(-pivot[0], -pivot[2], -pivot[1]);
+  g.add(inner); build(inner); scene.add(g);
+  parts.push({ t0, kind, g });
+};
+
+// 1 · floor slab
+part(0, "floor", (g) => {
+  const slab = rbox(0, 0, 13, 11, -0.5, 0, mat.floorEdge, 0.12);
+  slab.material = [mat.floorEdge, mat.floorEdge, mat.floor, mat.floorEdge, mat.floorEdge, mat.floorEdge];
+  g.add(slab);
+}, [6.5, 5.5, 0]);
+
+// 2 · walls with their windows, menu board and door
+part(0.45, "wall", (g) => {
+  g.add(rbox(0, 0.4, 0.4, 11, 0, 6.2, mat.wall, 0.06));
+  g.add(rbox(0.38, 0.6, 0.5, 10.8, 5.45, 5.6, mat.neon, 0.04));
+}, [0.2, 5.7, 0]);
+part(0.6, "wall", (g) => {
+  g.add(rbox(0, 0, 13, 0.4, 0, 6.2, mat.wall, 0.06));
+  g.add(rbox(1.2, 0.38, 4.0, 0.5, 2.6, 4.6, mat.green, 0.06));
+  g.add(rbox(1.55, 0.48, 2.45, 0.54, 3.0, 3.8, mat.menuLine, 0.1));                    // a services banner: two service tiles
+  g.add(rbox(2.75, 0.48, 3.65, 0.54, 3.0, 3.8, mat.menuLine, 0.1));
+  g.add(rbox(1.55, 0.48, 3.65, 0.54, 4.05, 4.2, mat.menuLine, 0.03));
+  g.add(rbox(11.6, 0.38, 12.8, 0.52, 0, 4.1, mat.woodDark, 0.05));
+  g.add(cyl(11.85, 0.6, 0.07, 2.0, 2.1, mat.steel));
+  // the TanySalon sign above the awning
+  g.add(rbox(4.9, 0.38, 11.3, 0.5, 4.98, 6.12, mat.frame, 0.08));
+  const sp = new THREE.Mesh(new THREE.PlaneGeometry(6.2, 1.03), new THREE.MeshStandardMaterial({ map: sign.tex, roughness: 0.6 }));
+  sp.position.set(8.1, 5.53, 0.505); g.add(sp);
+}, [6.5, 0.2, 0]);
+
+// 3 · three styling stations on the left wall: lit mirror, product shelf, salon chair
+const STATIONS = [
+  { y: 2.9, label: "Haircut & Styling" },
+  { y: 5.9, label: "Hair Colour" },
+  { y: 8.9, label: "Bridal Makeup" },
+];
+const BOTTLES = [0xdab2ff, 0xffffff, 0xf2c14e, 0xd97a9b, 0x3f0f63];
+STATIONS.forEach((st, i) => {
+  const y = st.y;
+  const glow = new THREE.MeshStandardMaterial({ color: 0xd9e4ea, metalness: 0.55, roughness: 0.12, emissive: 0xfff2dc, emissiveIntensity: 0.0 });
+  st.screen = glow;
+  part(1.2 + i * 0.12, "drop", (g) => {
+    g.add(rbox(0.4, y - 0.95, 0.56, y + 0.95, 1.5, 4.3, mat.frame, 0.12));                               // mirror frame
+    const mir = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 2.6), glow); mir.rotation.y = Math.PI / 2; mir.position.set(0.57, 2.9, y); g.add(mir);
+    for (let k = 0; k < 4; k++) g.add(mesh(new THREE.SphereGeometry(0.09, 12, 8), mat.neon, 0.62, y - 0.75 + k * 0.5, 4.38));   // vanity bulbs
+    g.add(rbox(0.4, y - 1.0, 1.2, y + 1.0, 1.0, 1.1, mat.marble, 0.03));                                  // product shelf
+    g.add(rbox(0.4, y - 0.9, 1.1, y + 0.9, 0, 1.0, mat.green, 0.05));
+    BOTTLES.forEach((c, k) => { if (k < 4) { g.add(cyl(0.75, y - 0.7 + k * 0.35, 0.09, 1.1, 1.42 + (k % 2) * 0.12, M(c, 0.4))); } });
+    g.add(rbox(0.7, y + 0.55, 1.0, y + 0.75, 1.1, 1.3, mat.ink, 0.04));                                   // a hair dryer
+    g.add(cyl(0.85, y + 0.65, 0.07, 1.3, 1.55, mat.ink));
+  });
+  part(1.6 + i * 0.12, "drop", (g) => {                                                                       // salon chair, facing the mirror
+    g.add(cyl(2.7, y, 0.45, 0, 0.06, mat.steel)); g.add(cyl(2.7, y, 0.1, 0.06, 0.65, mat.steel));
+    g.add(rbox(2.25, y - 0.45, 3.05, y + 0.45, 0.65, 0.95, mat.cushion, 0.14));
+    g.add(rbox(2.9, y - 0.45, 3.2, y + 0.45, 0.9, 2.2, mat.cushion, 0.14));
+    for (const dy of [-0.5, 0.5]) g.add(rbox(2.4, y + dy - 0.07, 3.1, y + dy + 0.07, 0.95, 1.12, mat.steel, 0.04));
+    g.add(rbox(1.75, y - 0.3, 2.05, y + 0.3, 0.2, 0.28, mat.steel, 0.03));                                // footrest
+  });
+});
+
+// 4 · reception under the awning, with a screen and a row of product jars
+part(1.5, "drop", (g) => {
+  g.add(rbox(5.0, 0.4, 11.2, 1.9, 0, 2.05, mat.green, 0.08));
+  g.add(rbox(4.9, 0.4, 11.3, 2.05, 2.05, 2.2, mat.marble, 0.05));
+  for (let x = 5.6; x < 11; x += 0.9) g.add(rbox(x, 1.9, x + 0.08, 1.95, 0.25, 1.85, mat.mint, 0.02));
+});
+part(1.64, "drop", (g) => {
+  g.add(rbox(9.3, 0.9, 10.5, 1.6, 2.2, 2.26, mat.ink, 0.03));
+  const scr = rbox(9.3, 0.82, 10.5, 0.9, 2.26, 3.0, mat.ink, 0.03); scr.rotation.x = -0.18; g.add(scr);
+  [0xdab2ff, 0xffffff, 0xd97a9b, 0xf2c14e].forEach((c, k) => { g.add(cyl(5.9 + k * 0.5, 1.2, 0.17, 2.2, 2.6, M(c, 0.35))); g.add(cyl(5.9 + k * 0.5, 1.2, 0.18, 2.6, 2.68, mat.green)); });
+});
+
+// 5 · a hair-wash station: a basin on a cabinet and a reclined chair
+part(2.0, "drop", (g) => {
+  g.add(rbox(8.4, 4.6, 10.4, 5.4, 0, 1.0, mat.green, 0.06));
+  const basin = mesh(new THREE.CylinderGeometry(0.55, 0.38, 0.4, 28, 1, true), mat.frame, 9.4, 5.0, 1.2); basin.material = mat.frame.clone(); basin.material.side = THREE.DoubleSide; g.add(basin);
+  g.add(cyl(9.4, 5.0, 0.4, 1.0, 1.02, M(0xbfc6cc, 0.3, 0.6)));
+  g.add(rbox(9.3, 4.65, 9.5, 4.8, 1.0, 1.55, mat.steel, 0.03));                                          // tap
+  g.add(rbox(8.8, 5.6, 10.0, 7.6, 0, 0.55, mat.ink, 0.06));                                              // chair base
+  g.add(rbox(8.8, 6.2, 10.0, 7.6, 0.55, 0.85, mat.cushion, 0.14));                                       // seat
+  const back = rbox(8.8, 5.45, 10.0, 6.35, 0.6, 0.9, mat.cushion, 0.14); back.rotation.x = 0.55; back.position.y += 0.25; g.add(back);
+});
+
+// 7 · plant in the front corner
+part(2.45, "drop", (g) => {
+  g.add(cyl(12.2, 10.2, 0.38, 0, 0.8, mat.terra, 0.48));
+  const a = mesh(new THREE.IcosahedronGeometry(0.75, 1), mat.leaf, 12.2, 10.2, 1.55); g.add(a);
+  const b = mesh(new THREE.IcosahedronGeometry(0.5, 1), mat.leaf, 12.0, 10.4, 2.2); g.add(b);
+});
+
+// 8 · the striped awning unfolds over the counter (pivot at the hinge on the wall)
+const awning = (() => {
+  const g = new THREE.Group(); g.position.set(0, 4.85, 0.42);
+  const panel = new THREE.Group(); g.add(panel);
+  const x0 = 4.6, x1 = 11.6, n = 8, w = (x1 - x0) / n, L = 2.1;
+  for (let i = 0; i < n; i++) {
+    const m = i % 2 ? mat.cream : mat.green;
+    const s = new THREE.Mesh(new THREE.BoxGeometry(w, 0.07, L), m); s.position.set(x0 + w * (i + 0.5), 0, L / 2); s.castShadow = true; panel.add(s);
+  }
+  const val = new THREE.Group(); val.position.set(0, 0, L); panel.add(val);
+  for (let i = 0; i < n; i++) {
+    const m = i % 2 ? mat.cream : mat.green, cx = x0 + w * (i + 0.5);
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(w, 0.3, 0.07), m); strip.position.set(cx, -0.15, 0); strip.castShadow = true; val.add(strip);
+    const sc = new THREE.Mesh(new THREE.CylinderGeometry(w / 2, w / 2, 0.07, 32, 1, false, 0, Math.PI), m);
+    sc.rotation.x = Math.PI / 2; sc.rotation.y = Math.PI / 2; sc.position.set(cx, -0.3, 0); sc.castShadow = true; val.add(sc);
+  }
+  for (const x of [x0 + 0.1, x1 - 0.1]) { const arm = rbox(x - 0.04, 0, x + 0.04, 2.0, -0.04, 0.04, mat.ink, 0.02); arm.position.set(x, -0.02, 1.0); panel.add(arm); }
+  scene.add(g);
+  return { g, panel, val };
+})();
+parts.push({ t0: 2.9, kind: "awning", g: awning.g });
+
+// ---------- the neighbourhood: road, homes, the restaurant's own app ----------
+const HOUSES = [
+  { hx: 3.2, body: 0xf3d6b4, roof: 0xc8643b },
+  { hx: 9.4, body: 0xd7e7f2, roof: 0x2f6f8f },
+  { hx: 15.6, body: 0xf6e7a9, roof: 0x3e6b5a },
+];
+const HY0 = 16.0, HY1 = 19.2, LANE = 13.3;
+const road = { t0: 4.0, kind: "floor", g: null };
+part(4.0, "floor", (g) => {
+  g.add(rbox(-1.5, 12.0, 24.5, 14.6, -0.42, -0.08, M(0x4c5258, 0.85), 0.1));
+  for (let x = -0.5; x < 24; x += 2.2) g.add(rbox(x, LANE - 0.06, x + 1.1, LANE + 0.06, -0.08, -0.05, M(0xffffff, 0.6), 0.02));
+  g.add(rbox(-1.5, 11.3, 24.5, 12.0, -0.42, 0.0, M(0xe8e3db, 0.8), 0.06));
+}, [11.5, 13.3, 0]);
+HOUSES.forEach(({ hx, body, roof }, i) => part(4.35 + i * 0.14, "drop", (g) => {
+  g.add(rbox(hx - 2.4, 15.2, hx + 3.0, 20.2, -0.42, -0.05, M(0xcfe6c4, 0.9), 0.12));
+  g.add(rbox(hx - 1.6, HY0, hx + 1.6, HY1, 0, 2.5, M(body, 0.85), 0.08));
+  const tri = new THREE.Shape(); tri.moveTo(-1.95, 0); tri.lineTo(1.95, 0); tri.lineTo(0, 1.6); tri.closePath();
+  const rf = new THREE.Mesh(new THREE.ExtrudeGeometry(tri, { depth: 3.6, bevelEnabled: false }), M(roof, 0.7));
+  rf.rotation.y = Math.PI / 2; rf.position.set(hx - 1.8, 2.5, (HY0 + HY1) / 2); rf.castShadow = true; rf.receiveShadow = true;
+  // ExtrudeGeometry runs along +z; rotated, it runs along +x from hx-1.8
+  g.add(rf);
+  g.add(rbox(hx + 1.56, 17.2, hx + 1.7, 18.2, 0, 1.75, mat.woodDark, 0.04));            // door, on the +x face
+  g.add(rbox(hx - 0.9, HY1 - 0.04, hx + 0.6, HY1 + 0.08, 1.0, 1.9, mat.glass, 0.03));   // window, front face
+  g.add(rbox(hx - 1.0, HY1 + 0.02, hx + 0.7, HY1 + 0.1, 0.92, 0.98, mat.frame, 0.02));
+  g.add(cyl(hx - 1.9, 19.7, 0.1, 0, 0.7, mat.woodDark));
+  g.add(mesh(new THREE.IcosahedronGeometry(0.55, 1), mat.leaf, hx - 1.9, 19.7, 1.05));
+}));
+
+// the phone: the restaurant's own ordering app, standing to the right
+const PX = 19.6, PY = 4.6, PW = 4.2, PH = 8.6;
+const screenCanvas = document.createElement("canvas"); screenCanvas.width = 1080; screenCanvas.height = 2200;
+const screenTex = new THREE.CanvasTexture(screenCanvas); screenTex.colorSpace = THREE.SRGBColorSpace; screenTex.anisotropy = 8;
+const FONT = '"Space Grotesk", ui-sans-serif, system-ui, sans-serif';
+const LOGO_TILE = `<svg width="240" height="240" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M16.3039 0.152087C19.0139 -0.0994188 24.312 0.0402772 27.1237 0.0456998L46.2888 0.070491L185.501 0.0712633L210.019 0.046476C214.272 0.0420863 219.945 -0.112587 224.097 0.167839C227.002 0.368476 229.806 1.28231 232.247 2.82311C240.796 8.20104 239.999 15.559 239.967 24.1169L239.935 38.0298L239.978 203.214C239.996 212.474 240.503 219.111 234.957 227.147C230.547 233.52 223.719 237.95 215.959 239.474C207.953 240.96 199.668 239.248 192.984 234.726C183.468 228.415 181.957 221.945 180.049 211.916C179.585 215.891 179.42 218.208 178.002 221.954C177.158 223.918 176.087 225.783 174.811 227.515C170.2 233.768 163.279 238.333 155.399 239.596C147.408 240.892 139.215 239.044 132.637 234.462C127.947 231.185 123.172 225.416 121.738 219.927C121.212 217.913 120.882 214.216 120.488 211.888C119.965 213.593 119.764 215.698 119.406 217.479C117.184 228.526 106.733 237.978 95.2741 239.632C87.052 240.864 78.6649 238.83 72.0104 233.992C63.2342 227.618 62.0798 222.219 60.6621 212.529C59.2779 219.015 58.2266 223.709 53.8329 229.044C36.9187 249.578 2.53398 239.47 0.380188 213.189C-0.31589 204.694 0.15873 47.8098 0.14887 39.2026L0.107035 24.7976C0.100906 22.3476 0.0945116 19.9585 0.178457 17.5093C0.49345 8.31156 6.63209 1.12583 16.3039 0.152087Z" fill="#59168B"/>
+<path d="M83.752 155C75.502 155 68.752 148.25 68.752 139.875C68.752 131.75 75.502 125 83.752 125C84.877 125 86.002 125.125 87.127 125.375L97.877 106.25L80.377 75C78.002 70.875 79.252 66.625 84.002 63.75L103.002 97.375L121.877 63.75C126.627 66.625 127.877 70.875 125.502 75L108.002 106.25L118.752 125.375C119.877 125.125 121.002 125 122.127 125C130.377 125 137.127 131.75 137.127 139.875C137.127 148.25 130.377 155 122.127 155C113.752 155 107.002 148.25 107.002 139.875C107.002 136 108.502 132.375 111.127 129.625L103.002 115.125L94.752 129.625C97.377 132.375 98.877 136 98.877 139.875C98.877 148.25 92.127 155 83.752 155ZM83.752 146.5C87.377 146.5 90.377 143.625 90.377 140C90.377 136.375 87.377 133.5 83.752 133.5C80.252 133.5 77.252 136.375 77.252 140C77.252 143.625 80.252 146.5 83.752 146.5ZM122.127 146.5C125.627 146.5 128.627 143.625 128.627 140C128.627 136.375 125.627 133.5 122.127 133.5C118.502 133.5 115.502 136.375 115.502 140C115.502 143.625 118.502 146.5 122.127 146.5ZM156.002 155V118.375H137.502V110H156.252V103.375H137.502V95H156.252V88.375H137.502V80H156.252V73.375H137.502V65H156.252C161.127 65 165.002 68.875 165.002 73.75V155H156.002Z" fill="#DAB2FF"/>
+</svg>`;
+const LOGO_WORD = `<svg width="229" height="44" viewBox="0 0 229 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M205.409 33.6022V9.79416H211.361V12.9142H212.225C212.609 12.0822 213.329 11.2982 214.385 10.5622C215.441 9.79416 217.041 9.41016 219.185 9.41016C221.041 9.41016 222.657 9.84216 224.033 10.7062C225.441 11.5382 226.529 12.7062 227.297 14.2102C228.065 15.6822 228.449 17.4102 228.449 19.3942V33.6022H222.401V19.8742C222.401 18.0822 221.953 16.7382 221.057 15.8422C220.193 14.9462 218.945 14.4982 217.313 14.4982C215.457 14.4982 214.017 15.1222 212.993 16.3702C211.969 17.5862 211.457 19.2982 211.457 21.5062V33.6022H205.409Z" fill="black"/>
+<path d="M187.346 34.2731C184.978 34.2731 182.85 33.7931 180.962 32.8331C179.074 31.8731 177.586 30.4811 176.498 28.6571C175.41 26.8331 174.866 24.6411 174.866 22.0811V21.3131C174.866 18.7531 175.41 16.5611 176.498 14.7371C177.586 12.9131 179.074 11.5211 180.962 10.5611C182.85 9.6011 184.978 9.12109 187.346 9.12109C189.714 9.12109 191.842 9.6011 193.73 10.5611C195.618 11.5211 197.106 12.9131 198.194 14.7371C199.282 16.5611 199.826 18.7531 199.826 21.3131V22.0811C199.826 24.6411 199.282 26.8331 198.194 28.6571C197.106 30.4811 195.618 31.8731 193.73 32.8331C191.842 33.7931 189.714 34.2731 187.346 34.2731ZM187.346 28.8971C189.202 28.8971 190.738 28.3051 191.954 27.1211C193.17 25.9051 193.778 24.1771 193.778 21.9371V21.4571C193.778 19.2171 193.17 17.5051 191.954 16.3211C190.77 15.1051 189.234 14.4971 187.346 14.4971C185.49 14.4971 183.954 15.1051 182.738 16.3211C181.522 17.5051 180.914 19.2171 180.914 21.4571V21.9371C180.914 24.1771 181.522 25.9051 182.738 27.1211C183.954 28.3051 185.49 28.8971 187.346 28.8971Z" fill="black"/>
+<path d="M163.269 33.6V0H169.317V33.6H163.269Z" fill="black"/>
+<path d="M142.91 34.2731C141.214 34.2731 139.694 33.9851 138.35 33.4091C137.006 32.8011 135.934 31.9371 135.134 30.8171C134.366 29.6651 133.982 28.2731 133.982 26.6411C133.982 25.0091 134.366 23.6491 135.134 22.5611C135.934 21.4411 137.022 20.6091 138.398 20.0651C139.806 19.4891 141.406 19.2011 143.198 19.2011H149.726V17.8571C149.726 16.7371 149.374 15.8251 148.67 15.1211C147.966 14.3851 146.846 14.0171 145.31 14.0171C143.806 14.0171 142.686 14.3691 141.95 15.0731C141.214 15.7451 140.734 16.6251 140.51 17.7131L134.942 15.8411C135.326 14.6251 135.934 13.5211 136.766 12.5291C137.63 11.5051 138.766 10.6891 140.174 10.0811C141.614 9.4411 143.358 9.12109 145.406 9.12109C148.542 9.12109 151.022 9.90509 152.846 11.4731C154.67 13.0411 155.582 15.3131 155.582 18.2891V27.1691C155.582 28.1291 156.03 28.6091 156.926 28.6091H158.846V33.6011H154.814C153.63 33.6011 152.654 33.3131 151.886 32.7371C151.118 32.1611 150.734 31.3931 150.734 30.4331V30.3851H149.822C149.694 30.7691 149.406 31.2811 148.958 31.9211C148.51 32.5291 147.806 33.0731 146.846 33.5531C145.886 34.0331 144.574 34.2731 142.91 34.2731ZM143.966 29.3771C145.662 29.3771 147.038 28.9131 148.094 27.9851C149.182 27.0251 149.726 25.7611 149.726 24.1931V23.7131H143.63C142.51 23.7131 141.63 23.9531 140.99 24.4331C140.35 24.9131 140.03 25.5851 140.03 26.4491C140.03 27.3131 140.366 28.0171 141.038 28.5611C141.71 29.1051 142.686 29.3771 143.966 29.3771Z" fill="black"/>
+<path d="M120.421 34.2731C117.317 34.2731 114.773 33.6011 112.789 32.2571C110.805 30.9131 109.605 28.9931 109.189 26.4971L114.757 25.0571C114.981 26.1771 115.349 27.0571 115.861 27.6971C116.405 28.3371 117.061 28.8011 117.829 29.0891C118.629 29.3451 119.493 29.4731 120.421 29.4731C121.829 29.4731 122.869 29.2331 123.541 28.7531C124.213 28.2411 124.549 27.6171 124.549 26.8811C124.549 26.1451 124.229 25.5851 123.589 25.2011C122.949 24.7851 121.925 24.4491 120.517 24.1931L119.173 23.9531C117.509 23.6331 115.989 23.2011 114.613 22.6571C113.237 22.0811 112.133 21.2971 111.301 20.3051C110.469 19.3131 110.053 18.0331 110.053 16.4651C110.053 14.0971 110.917 12.2891 112.645 11.0411C114.373 9.7611 116.645 9.12109 119.461 9.12109C122.117 9.12109 124.325 9.7131 126.085 10.8971C127.845 12.0811 128.997 13.6331 129.541 15.5531L123.925 17.2811C123.669 16.0651 123.141 15.2011 122.341 14.6891C121.573 14.1771 120.613 13.9211 119.461 13.9211C118.309 13.9211 117.429 14.1291 116.821 14.5451C116.213 14.9291 115.909 15.4731 115.909 16.1771C115.909 16.9451 116.229 17.5211 116.869 17.9051C117.509 18.2571 118.373 18.5291 119.461 18.7211L120.805 18.9611C122.597 19.2811 124.213 19.7131 125.653 20.2571C127.125 20.7691 128.277 21.5211 129.109 22.5131C129.973 23.4731 130.405 24.7851 130.405 26.4491C130.405 28.9451 129.493 30.8811 127.669 32.2571C125.877 33.6011 123.461 34.2731 120.421 34.2731Z" fill="black"/>
+<path d="M83.5477 43.201V37.921H96.5077C97.4037 37.921 97.8517 37.441 97.8517 36.481V30.481H96.9877C96.7317 31.025 96.3317 31.569 95.7877 32.113C95.2437 32.657 94.5077 33.105 93.5797 33.457C92.6517 33.809 91.4677 33.985 90.0277 33.985C88.1717 33.985 86.5397 33.569 85.1317 32.737C83.7557 31.873 82.6837 30.689 81.9157 29.185C81.1477 27.681 80.7637 25.953 80.7637 24.001V9.79297H86.8117V23.521C86.8117 25.313 87.2437 26.657 88.1077 27.553C89.0037 28.449 90.2677 28.897 91.8997 28.897C93.7557 28.897 95.1957 28.289 96.2197 27.073C97.2437 25.825 97.7557 24.097 97.7557 21.889V9.79297H103.804V37.825C103.804 39.457 103.324 40.753 102.364 41.713C101.404 42.705 100.124 43.201 98.5237 43.201H83.5477Z" fill="#E5270B"/>
+<path d="M51.7529 33.6022V9.79416H57.7049V12.9142H58.5689C58.9529 12.0822 59.6729 11.2982 60.7289 10.5622C61.7849 9.79416 63.3849 9.41016 65.5289 9.41016C67.3849 9.41016 69.0009 9.84216 70.3769 10.7062C71.7849 11.5382 72.8729 12.7062 73.6409 14.2102C74.4089 15.6822 74.7929 17.4102 74.7929 19.3942V33.6022H68.7449V19.8742C68.7449 18.0822 68.2969 16.7382 67.4009 15.8422C66.5369 14.9462 65.2889 14.4982 63.6569 14.4982C61.8009 14.4982 60.3609 15.1222 59.3369 16.3702C58.3129 17.5862 57.8009 19.2982 57.8009 21.5062V33.6022H51.7529Z" fill="#E5270B"/>
+<path d="M31.3948 34.2731C29.6988 34.2731 28.1788 33.9851 26.8348 33.4091C25.4908 32.8011 24.4188 31.9371 23.6188 30.8171C22.8508 29.6651 22.4668 28.2731 22.4668 26.6411C22.4668 25.0091 22.8508 23.6491 23.6188 22.5611C24.4188 21.4411 25.5068 20.6091 26.8828 20.0651C28.2908 19.4891 29.8908 19.2011 31.6828 19.2011H38.2108V17.8571C38.2108 16.7371 37.8588 15.8251 37.1548 15.1211C36.4508 14.3851 35.3308 14.0171 33.7948 14.0171C32.2908 14.0171 31.1708 14.3691 30.4348 15.0731C29.6988 15.7451 29.2188 16.6251 28.9948 17.7131L23.4268 15.8411C23.8108 14.6251 24.4188 13.5211 25.2508 12.5291C26.1148 11.5051 27.2508 10.6891 28.6588 10.0811C30.0988 9.4411 31.8428 9.12109 33.8908 9.12109C37.0268 9.12109 39.5068 9.90509 41.3308 11.4731C43.1548 13.0411 44.0668 15.3131 44.0668 18.2891V27.1691C44.0668 28.1291 44.5148 28.6091 45.4108 28.6091H47.3308V33.6011H43.2988C42.1148 33.6011 41.1388 33.3131 40.3708 32.7371C39.6028 32.1611 39.2188 31.3931 39.2188 30.4331V30.3851H38.3068C38.1788 30.7691 37.8908 31.2811 37.4428 31.9211C36.9948 32.5291 36.2908 33.0731 35.3308 33.5531C34.3708 34.0331 33.0588 34.2731 31.3948 34.2731ZM32.4508 29.3771C34.1468 29.3771 35.5228 28.9131 36.5788 27.9851C37.6668 27.0251 38.2108 25.7611 38.2108 24.1931V23.7131H32.1148C30.9948 23.7131 30.1148 23.9531 29.4748 24.4331C28.8348 24.9131 28.5148 25.5851 28.5148 26.4491C28.5148 27.3131 28.8508 28.0171 29.5228 28.5611C30.1948 29.1051 31.1708 29.3771 32.4508 29.3771Z" fill="#E5270B"/>
+<path d="M11.232 33.6023C9.664 33.6023 8.384 33.1223 7.392 32.1623C6.432 31.1703 5.952 29.8583 5.952 28.2263V14.7863H0V9.79434H5.952V2.40234H12V9.79434H18.528V14.7863H12V27.1703C12 28.1303 12.448 28.6103 13.344 28.6103H17.952V33.6023H11.232Z" fill="#E5270B"/>
+</svg>`;
+const svgImg = (src) => { const i = new Image(); i.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(src); return i; };
+const imgTile = svgImg(LOGO_TILE), imgWord = svgImg(LOGO_WORD);
+let imgsReady = false;
+Promise.all([imgTile.decode(), imgWord.decode()]).then(() => { imgsReady = true; if (window.brandRefresh) window.brandRefresh(); }).catch(() => {});
+function drawLogo(g, x, y, s) { if (imgsReady) g.drawImage(imgTile, x, y, s, s); }
+const fontReady = () => document.fonts.check(`600 40px "Space Grotesk"`);
+function rr(g, x, y, w, h, r) { g.beginPath(); g.roundRect(x, y, w, h, r); }
+function drawScreen(orders, pulse) {
+  const g = screenCanvas.getContext("2d"), W = 540, H = 1100;
+  g.setTransform(2, 0, 0, 2, 0, 0);
+  g.fillStyle = "#f5f6f3"; g.fillRect(0, 0, W, H);
+  g.fillStyle = "#59168B"; g.fillRect(0, 0, W, 250);
+  g.fillStyle = "#ffffff"; g.font = `600 22px ${FONT}`; g.fillText("9:41", 34, 46);
+  rr(g, W - 112, 84, 82, 82, 18); g.fillStyle = "#ffffff"; g.fill(); drawLogo(g, W - 101, 95, 60);
+  g.font = `600 46px ${FONT}`; g.fillText("Glow Studio", 34, 132);
+  g.fillStyle = "#DAB2FF"; g.font = `500 23px ${FONT}`; g.fillText("glowstudio.tany.in", 34, 172);
+  rr(g, 34, 192, 200, 38, 19); g.fillStyle = "rgba(255,255,255,.14)"; g.fill();
+  g.fillStyle = "#fff"; g.font = `500 20px ${FONT}`; g.fillText("★ 4.9 · Unisex salon", 52, 218);
+  const items = [["Haircut & Styling", "₹350 · 45 min", "#DAB2FF"], ["Hair Colour", "₹1,200 · 2 hrs", "#D97A9B"], ["Bridal Makeup", "₹8,000 · 3 hrs", "#F2C14E"]];
+  items.forEach(([n, p, c], i) => {
+    const y = 280 + i * 132;
+    rr(g, 26, y, W - 52, 114, 22); g.fillStyle = "#fff"; g.fill();
+    g.beginPath(); g.arc(90, y + 57, 38, 0, Math.PI * 2); g.fillStyle = c; g.fill();
+    g.fillStyle = "#18191c"; g.font = `600 27px ${FONT}`; g.fillText(n, 146, y + 50);
+    g.fillStyle = "#6c6e75"; g.font = `500 24px ${FONT}`; g.fillText(p, 146, y + 86);
+    rr(g, W - 150, y + 36, 96, 44, 14); g.fillStyle = "#59168B"; g.fill();
+    g.fillStyle = "#fff"; g.font = `600 21px ${FONT}`; g.fillText("BOOK", W - 131, y + 65);
+  });
+  const y2 = 690;
+  rr(g, 26, y2, W - 52, 170, 24); g.fillStyle = pulse > 0 ? `rgba(218,178,255,${0.25 + 0.5 * pulse})` : "#ffffff"; g.fill();
+  g.fillStyle = "#6c6e75"; g.font = `500 22px ${FONT}`; g.fillText("Appointments today", 54, y2 + 46);
+  g.fillStyle = "#18191c"; g.font = `600 78px ${FONT}`; g.fillText(String(orders), 52, y2 + 130);
+  g.fillStyle = "#59168B"; g.font = `600 24px ${FONT}`; g.fillText("↑ live", W - 140, y2 + 128);
+  rr(g, 26, y2 + 190, W - 52, 70, 20); g.fillStyle = "#F5ECFF"; g.fill();
+  g.fillStyle = "#59168B"; g.font = `600 25px ${FONT}`; g.fillText("Marketplace commission  ₹0", 50, y2 + 235);
+  rr(g, 26, H - 110, W - 52, 76, 22); g.fillStyle = "#59168B"; g.fill();
+  g.fillStyle = "#fff"; g.font = `600 28px ${FONT}`; g.fillText("Today 5 PM · Priya · Book", W / 2 - 168, H - 62);
+  screenTex.needsUpdate = true;
+}
+const phone = (() => {
+  const g = new THREE.Group(); g.position.set(PX, 0, PY); g.rotation.y = Math.PI / 4;
+  const inner = new THREE.Group(); g.add(inner);
+  const body = new THREE.Mesh(new RoundedBoxGeometry(PW, PH, 0.42, 4, 0.36), M(0x1d2125, 0.35, 0.3));
+  body.position.y = PH / 2 + 0.25; body.castShadow = true; inner.add(body);
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(PW - 0.34, PH - 0.34), new THREE.MeshBasicMaterial({ map: screenTex, toneMapped: false }));
+  scr.position.set(0, PH / 2 + 0.25, 0.215); inner.add(scr);
+  const stand = new THREE.Mesh(new RoundedBoxGeometry(2.6, 0.25, 1.6, 3, 0.1), M(0xd9dcdf, 0.4, 0.3));
+  stand.position.set(0, 0.12, -0.2); stand.castShadow = true; stand.receiveShadow = true; g.add(stand);
+  scene.add(g);
+  return { g, inner };
+})();
+
+const brandDraws = [];
+function labelSprite(text, w = 2.6) {
+  const c = document.createElement("canvas"); c.width = 800; c.height = 300; const g = c.getContext("2d");
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const draw = () => {
+    g.setTransform(2, 0, 0, 2, 0, 0); g.clearRect(0, 0, 400, 150);
+    rr(g, 8, 8, 384, 112, 40); g.fillStyle = "#ffffff"; g.fill();
+    g.beginPath(); g.moveTo(180, 118); g.lineTo(200, 142); g.lineTo(220, 118); g.fill();
+    let fs = 46; g.font = `600 ${fs}px ${FONT}`; while (g.measureText(text).width > 330 && fs > 30) { fs -= 2; g.font = `600 ${fs}px ${FONT}`; }
+    g.fillStyle = "#59168B"; g.textAlign = "center"; g.fillText(text, 200, 64 + fs * 0.35);
+    t.needsUpdate = true;
+  };
+  draw(); brandDraws.push(draw);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, toneMapped: false }));
+  s.renderOrder = 9; s.userData.w = w; scene.add(s); return s;
+}
+const LABELS = [...STATIONS.map((st, i) => ({ s: labelSprite(st.label, 3.0), p: [0.9, st.y, 5.0], t0: 5.6 + i * 0.16 })), { s: labelSprite("Hair Spa", 3.0), p: [9.4, 5.6, 2.9], t0: 6.08 }];
+// sprites: order bubbles, coins, the badge
+function iconSprite(draw, size) {
+  const c = document.createElement("canvas"); c.width = c.height = 256; draw(c.getContext("2d"));
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, toneMapped: false }));
+  s.scale.set(size, size, 1); s.renderOrder = 10; scene.add(s); return s;
+}
+const bagIcon = (g) => {
+  rr(g, 18, 18, 220, 220, 60); g.fillStyle = "#59168B"; g.fill();
+  g.strokeStyle = "#fff"; g.lineWidth = 13; g.lineJoin = "round"; g.lineCap = "round";
+  rr(g, 66, 78, 124, 116, 16); g.stroke();
+  g.beginPath(); g.moveTo(66, 112); g.lineTo(190, 112); g.moveTo(98, 62); g.lineTo(98, 90); g.moveTo(158, 62); g.lineTo(158, 90); g.stroke();
+  g.beginPath(); g.moveTo(102, 150); g.lineTo(120, 168); g.lineTo(156, 134); g.stroke();
+  g.beginPath(); g.arc(200, 56, 34, 0, Math.PI * 2); g.fillStyle = "#DAB2FF"; g.fill();
+  g.fillStyle = "#59168B"; g.font = `700 40px ${FONT}`; g.textAlign = "center"; g.fillText("+1", 200, 70);
+};
+const ORDERS = [0, 2, 1, 2, 0].map((h, i) => ({ h, t0: 6.5 + i * 0.42, dur: 0.95, s: iconSprite(bagIcon, 1.7) }));
+const coinMat = new THREE.MeshStandardMaterial({ color: 0xf2bf3c, roughness: 0.3, metalness: 0.7 });
+const COINS = [];
+HOUSES.forEach((_, h) => { for (let k = 0; k < 3; k++) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.46, 0.12, 28), coinMat); m.castShadow = true; scene.add(m);
+  COINS.push({ h, t0: 11.0 + h * 0.28 + k * 0.13, dur: 0.95, m });
+} });
+const badge = (() => {
+  const c = document.createElement("canvas"); c.width = 640; c.height = 200; const g = c.getContext("2d");
+  rr(g, 10, 20, 620, 160, 80); g.fillStyle = "#59168B"; g.fill();
+  g.fillStyle = "#DAB2FF"; g.font = `700 76px ${FONT}`; g.fillText("0%", 60, 128);
+  g.fillStyle = "#fff"; g.font = `600 46px ${FONT}`; g.fillText("commission", 210, 120);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, toneMapped: false }));
+  s.renderOrder = 11; scene.add(s); return s;
+})();
+
+// scooters
+function makeScooter(shirt) {
+  const g = new THREE.Group();
+  const b = new THREE.Mesh(new THREE.CapsuleGeometry(0.24, 0.55, 6, 14), M(shirt, 0.6)); b.position.y = 0.55; b.castShadow = true; g.add(b);
+  const h = new THREE.Mesh(new THREE.SphereGeometry(0.2, 18, 12), M(0xc68a62, 0.6)); h.position.y = 1.22; h.castShadow = true; g.add(h);
+  const hp = new THREE.Mesh(new THREE.TorusGeometry(0.21, 0.035, 8, 20, Math.PI), M(0x3b2a20, 0.6)); hp.position.y = 1.26; hp.rotation.y = Math.PI / 2; g.add(hp);
+  scene.add(g); return g;
+}
+const SHIRTS = [0xd97a9b, 0x2f6f8f, 0xe3a14f];
+const RIDES = HOUSES.map(({ hx }, i) => {
+  const d = [hx + 2.0, 17.7], lane = LANE + (i - 1) * 0.35, sy = STATIONS[i].y;
+  const pts = [d, [d[0], lane], [6.4, lane], [6.4, 10.6], [3.6, sy]];
+  const seg = []; let L = 0;
+  for (let k = 1; k < pts.length; k++) { const l = Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]); seg.push(l); L += l; }
+  const parcel = new THREE.Object3D(); scene.add(parcel);
+  return { pts, seg, L, t0: 8.7 + i * 0.35, dur: 2.2, g: makeScooter(SHIRTS[i]), parcel };
+});
+function along(r, u) {
+  let d = u * r.L;
+  for (let k = 0; k < r.seg.length; k++) {
+    if (d <= r.seg[k] || k === r.seg.length - 1) {
+      const a = r.pts[k], b = r.pts[k + 1], f = clamp(d / r.seg[k]);
+      return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, Math.atan2(b[1] - a[1], b[0] - a[0])];
+    }
+    d -= r.seg[k];
+  }
+}
+
+// ---------- timeline (a pure function of time) ----------
+const LOOP = 15.6, DROP = 3.6;
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const ease = (t) => { t = clamp(t); return 1 - Math.pow(1 - t, 3); };
+const inOut = (t) => { t = clamp(t); return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+const back = (t) => { t = clamp(t); const c = 1.5; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+const W = Math.sqrt(150), Z = 0.5, WD = W * Math.sqrt(1 - Z * Z);
+const springOff = (t) => Math.exp(-Z * W * t) * (Math.cos(WD * t) + (Z * W / WD) * Math.sin(WD * t));
+const arc = (a, b, u, hgt) => [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u + Math.sin(Math.PI * u) * hgt];
+const at = (x, y, z) => new THREE.Vector3(x, z, y);
+
+const VIEW0 = 10.0, VIEW1 = 14.6, T0 = [6.5, 5.5, 4.4], T1 = [10.2, 11.8, 5.6], OFF = new THREE.Vector3(30, 24, 30);
+let view = VIEW0;
+const CAPS = [
+  [0, "Step 1", "Set up your salon online in 3 minutes"],
+  [4.0, "Step 2", "Launch your own TanySalon booking app"],
+  [6.4, "Step 3", "Clients pick a service, stylist and time"],
+  [8.7, "Step 4", "They walk in. Their chair is ready."],
+  [11.2, "Step 5", "0% marketplace commission. Every rupee is yours."],
+];
+const capStep = document.getElementById("capStep"), capLine = document.getElementById("capLine"), fadeEl = document.getElementById("fade");
+let lastCap = -1, lastScreen = "";
+
+function pose(t) {
+  // camera: hold on the restaurant, then pull back over the neighbourhood
+  const z = inOut((t - 3.7) / 1.5);
+  view = VIEW0 + (VIEW1 - VIEW0) * z;
+  const tgt = at(...T0.map((v, i) => v + (T1[i] - v) * z));
+  cam.position.copy(tgt).add(OFF); cam.lookAt(tgt); resize();
+
+  parts.forEach((p) => {
+    const lt = t - p.t0, g = p.g;
+    if (lt < 0) { g.visible = false; return; }
+    g.visible = true;
+    if (p.kind === "floor") {
+      const a = ease(lt / 0.55), b = ease((lt - 0.18) / 0.6);
+      g.scale.set(Math.max(0.001, a), 1, Math.max(0.04, b));
+    } else if (p.kind === "wall") {
+      g.scale.y = Math.max(0.001, ease(lt / 0.7));
+    } else if (p.kind === "drop") {
+      g.position.y = DROP * springOff(lt);
+      g.scale.setScalar(Math.min(1, 0.55 + lt / 0.25));
+    } else if (p.kind === "awning") {
+      const ang = 90 - 68 * ease(lt / 0.8);
+      awning.panel.rotation.x = THREE.MathUtils.degToRad(ang);
+      awning.val.rotation.x = -THREE.MathUtils.degToRad(ang);
+      g.scale.setScalar(Math.min(1, lt / 0.2));
+    }
+  });
+
+  // phone rises out of its stand
+  const pl = t - 5.0;
+  phone.g.visible = pl >= 0;
+  phone.inner.scale.y = Math.max(0.001, back(pl / 0.8));
+  phone.g.children[1].scale.setScalar(Math.min(1, Math.max(0.001, pl / 0.25)));
+
+  // orders fly from homes into the app
+  let arrived = 0, pulse = 0;
+  const scrC = [PX - 0.2, PY + 0.2, 5.4];
+  ORDERS.forEach((o) => {
+    const u = (t - o.t0) / o.dur, h = HOUSES[o.h];
+    o.s.visible = u > 0 && u < 1;
+    if (u >= 1) { arrived++; pulse = Math.max(pulse, 1 - clamp((t - o.t0 - o.dur) / 0.5)); }
+    if (o.s.visible) {
+      const p = arc([h.hx, (HY0 + HY1) / 2, 4.6], scrC, inOut(u), 3.2);
+      o.s.position.copy(at(...p));
+      const k = 1.7 * (u < 0.15 ? u / 0.15 : u > 0.85 ? Math.max(0.3, (1 - u) / 0.15) : 1);
+      o.s.scale.set(k, k, 1);
+    }
+  });
+  const key = 24 + arrived + ":" + pulse.toFixed(2) + fontReady() + imgsReady;
+  if (key !== lastScreen) { lastScreen = key; drawScreen(24 + arrived, pulse); }
+
+  // scooters ride out, parcels land at the door
+  RIDES.forEach((r) => {
+    const u = (t - r.t0) / r.dur;
+    r.g.visible = t >= r.t0 - 0.25;
+    const [x, y, hd] = along(r, inOut(u));
+    r.g.position.copy(at(x, y, u > 0 && u < 1 ? Math.abs(Math.sin(u * 40)) * 0.1 : 0));
+    r.g.rotation.y = -hd;
+    r.g.scale.setScalar(1.25 * clamp((t - r.t0 + 0.25) / 0.25));
+    const pu = t - (r.t0 + r.dur);
+    r.parcel.visible = pu > 0;
+    r.parcel.position.y = pu > 0 ? 1.4 * springOff(pu) : 0;
+  });
+
+  // payments come straight back to the restaurant's till
+  const till = [9.9, 1.15, 3.0];
+  COINS.forEach((c) => {
+    const u = (t - c.t0) / c.dur, h = HOUSES[c.h];
+    c.m.visible = u > 0 && u < 1;
+    if (c.m.visible) {
+      c.m.position.copy(at(...arc([h.hx + 2.2, 17.7, 1.2], till, inOut(u), 4.5)));
+      c.m.rotation.set(Math.PI / 2, 0, u * 9);
+    }
+  });
+
+  // each station's screen lights up when its gamer sits down
+  STATIONS.forEach((st, i) => { const r = RIDES[i]; st.screen.emissiveIntensity = 0.0 + 0.55 * clamp((t - (r.t0 + r.dur) + 0.1) / 0.4); });
+  // station labels
+  LABELS.forEach((lb, i) => {
+    const l = t - lb.t0, k = back(l / 0.5);
+    lb.s.visible = l > 0;
+    lb.s.position.copy(at(lb.p[0], lb.p[1], lb.p[2] + 0.08 * Math.sin(Math.max(0, l) * 2.2 + i)));
+    lb.s.scale.set(lb.s.userData.w * k, lb.s.userData.w * 0.375 * k, 1);
+  });
+
+  // the badge over the restaurant
+  const bl = t - 11.7;
+  badge.visible = bl > 0;
+  const bs = back(bl / 0.6);
+  badge.position.copy(at(7.0, 5.0, 9.9 + 0.12 * Math.sin(Math.max(0, bl) * 2.4)));
+  badge.scale.set(6.4 * bs, 2.0 * bs, 1);
+
+  // captions and the loop's fade
+  let ci = 0; CAPS.forEach((c, i) => { if (t >= c[0]) ci = i; });
+  if (ci !== lastCap) { lastCap = ci; capLine.textContent = CAPS[ci][2]; }
+  const since = t - CAPS[ci][0];
+  capLine.style.opacity = String(clamp(since / 0.35));
+  capLine.style.transform = `translateY(${(1 - ease(since / 0.45)) * 8}px)`;
+  fadeEl.style.opacity = String(clamp((t - (LOOP - 0.5)) / 0.4));
+}
+
+// ---------- sizing, theme, loop ----------
+let sz = '';
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  if (sz !== w + 'x' + h) { sz = w + 'x' + h; renderer.setSize(w, h, false); }
+  const a = w / h || 1; cam.left = -view * a; cam.right = view * a; cam.top = view; cam.bottom = -view; cam.updateProjectionMatrix();
+}
+const isDark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+const syncTheme = () => { ground.material.opacity = isDark() ? 0.35 : 0.12; ground.material.color.set(isDark() ? 0x000000 : 0x3a2a55); };
+new ResizeObserver(resize).observe(stage); resize(); syncTheme();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", syncTheme);
+
+window.renderAt = (t) => { sign.draw(); pose(t); renderer.render(scene, cam); };
+let start = performance.now();
+const PLAYBACK_RATE = 0.8;
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+if (!q.get("video")) {
+  const loop = (now) => { const t = reduced ? 13 : (((now - start) / 1000) * PLAYBACK_RATE) % LOOP; window.renderAt(t); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+}
+window.LOOP = LOOP;
+window.brandRefresh = () => { sign.reset(); sign.draw(); lastScreen = ""; brandDraws.forEach((d) => d()); };
+document.fonts.load(`600 118px "Space Grotesk"`).then(() => window.brandRefresh()).catch(() => {});
+document.fonts.ready.then(() => { lastScreen = ''; window.ready = true; });
+</script>
+</body>
+</html>
+
+</body></html>

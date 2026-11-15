@@ -59,7 +59,7 @@ export const PRODUCT_AUDIENCE: Record<ProductKey, readonly string[]> = {
 }
 
 /** Products with an animated how-it-works page in /public/brand (`<key>-how-it-works.html`). */
-export const HOW_IT_WORKS: readonly ProductKey[] = ["tanymotos", "tanyeats", "tanycabs", "tanyecom", "tanyexpert", "tanygaming", "tanygarage"]
+export const HOW_IT_WORKS: readonly ProductKey[] = ["tanymotos", "tanyeats", "tanycabs", "tanyecom", "tanyexpert", "tanygaming", "tanygarage", "tanymeds", "tanymeat", "tanyretail", "tanysalon", "tanysport"]
 
 /** One-line examples for "Find my Tany", one per product. `focus` is the business itself, shown bolder. */
 export const PRODUCT_EXAMPLES: Record<ProductKey, { lead: string; focus: string }> = {

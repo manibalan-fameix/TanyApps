@@ -50,7 +50,7 @@ export function StoreHeader({ name, logoUrl, phone }: { name: string; logoUrl: s
 
   return (
     <>
-    <header className="fixed inset-x-0 top-0 z-50">
+    <header className={cn("fixed inset-x-0 top-0 z-50", home && "hidden")}>
       <div className={cn(STORE_CONTENT, "py-3 sm:py-4")}>
         <nav
           aria-label="Primary navigation"

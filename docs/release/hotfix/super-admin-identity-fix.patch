@@ -1,0 +1,727 @@
+diff --git a/.env.example b/.env.example
+index f57a5f5..9eedf39 100644
+--- a/.env.example
++++ b/.env.example
+@@ -39,6 +39,9 @@ SEED_OWNER_EMAIL=
+ # --- Tany super admin ---
+ # Comma-separated emails of the Tany team allowed into /super. Anyone else gets a 404.
+ SUPER_ADMIN_EMAILS=
++# Optional second factor: comma-separated Firebase UIDs. When set, a super admin must sign in as one of these accounts AND have a
++# verified email on the list above. Find a UID in Firebase console > Authentication > Users. Leave empty to rely on the email list.
++SUPER_ADMIN_UIDS=
+ 
+ # --- Add-a-car flow (Phase 2-3) ---
+ # Media storage on Cloudflare R2. All five must be set together.
+diff --git a/app/(admin)/(shell)/settings/team/actions.ts b/app/(admin)/(shell)/settings/team/actions.ts
+index 1087b5a..d1c6627 100644
+--- a/app/(admin)/(shell)/settings/team/actions.ts
++++ b/app/(admin)/(shell)/settings/team/actions.ts
+@@ -5,12 +5,13 @@ import { revalidatePath } from "next/cache"
+ import { z } from "zod"
+ 
+ import { getDealerContext } from "@/lib/auth/context"
+-import { createUser, fillMissingUserDetails, findMembership, findUsersByContact, setUserPasswordHash } from "@/lib/tenant/team"
++import { createUser, fillMissingUserDetails, findMembership, findUsersByContact, hasOwnSignIn, setUserPasswordHash } from "@/lib/tenant/team"
+ import { dealerUsers } from "@/lib/db/schema"
+ import { scopedDb } from "@/lib/db/scoped"
+ import { hashPassword } from "@/lib/auth/password"
+ import { audit } from "@/lib/core/audit"
+ import { rateLimit } from "@/lib/core/rate-limit"
++import { superAdminEmails } from "@/lib/super/emails"
+ 
+ type Result = { ok: true } | { ok: false; error: string }
+ 
+@@ -49,6 +50,8 @@ export async function addTeammate(input: unknown): Promise<Result> {
+   const parsed = teammateSchema.safeParse(input)
+   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the details." }
+   const { name, email, phone, password } = parsed.data
++  // Addresses reserved for the Tany team cannot be used for a business teammate.
++  if (superAdminEmails().has(email)) return { ok: false, error: "That email cannot be used for a teammate." }
+ 
+   const { byEmail, byPhone } = await findUsersByContact(email, phone)
+   if (byEmail && byPhone && byEmail.id !== byPhone.id) return { ok: false, error: "That email and mobile number belong to different people." }
+@@ -63,7 +66,9 @@ export async function addTeammate(input: unknown): Promise<Result> {
+       error: membership.dealerId === ctx.dealer.id ? "That person is already on your team." : "That person already belongs to another dealership.",
+     }
+   }
+-  await setUserPasswordHash(userId, await hashPassword(password))
++  // A person who already signed in themselves keeps their own credentials: they join with the same Google/phone/email they use now.
++  // Only an account this owner is creating (or one an owner provisioned earlier) gets the password the owner just set.
++  if (!(existing && (await hasOwnSignIn(existing.id)))) await setUserPasswordHash(userId, await hashPassword(password))
+   await scopedDb(ctx.dealer.id).dealerUsers.insert({ userId, role: "staff" })
+   await audit(scopedDb(ctx.dealer.id), { actorType: "user", actorId: ctx.user.id, action: "team.add_staff", entity: "user", entityId: userId, diff: { role: "staff" } })
+   revalidatePath("/settings/team")
+@@ -94,6 +99,8 @@ export async function resetTeammatePassword(userId: string, password: unknown):
+   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the password." }
+   const [target] = await scopedDb(ctx.dealer.id).dealerUsers.select(eq(dealerUsers.userId, userId))
+   if (!target || target.role !== "staff") return { ok: false, error: "That person is not on your team." }
++  // Someone who signs in with their own account has no owner-set password to reset.
++  if (await hasOwnSignIn(userId)) return { ok: false, error: "That person signs in with their own account, so there is no password to reset." }
+   await setUserPasswordHash(userId, await hashPassword(parsed.data))
+   await audit(scopedDb(ctx.dealer.id), { actorType: "user", actorId: ctx.user.id, action: "team.reset_password", entity: "user", entityId: userId })
+   return { ok: true }
+diff --git a/lib/auth/firebase.ts b/lib/auth/firebase.ts
+index 77cc40d..4a342d3 100644
+--- a/lib/auth/firebase.ts
++++ b/lib/auth/firebase.ts
+@@ -60,3 +60,7 @@ export async function verifyFirebaseIdToken(
+     return null
+   }
+ }
++
++/** The address Firebase itself vouches for in this token: the email only when `email_verified` is true, otherwise nothing. */
++export const verifiedEmailOf = (identity: Pick<FirebaseIdentity, "email" | "emailVerified">): string | null =>
++  identity.emailVerified && identity.email ? identity.email : null
+diff --git a/lib/auth/index.ts b/lib/auth/index.ts
+index 9b0c8e1..76219db 100644
+--- a/lib/auth/index.ts
++++ b/lib/auth/index.ts
+@@ -6,6 +6,7 @@ import { unscopedDb } from "../db/client"
+ import { accounts, users } from "../db/schema"
+ import { firebaseProjectId, verifyFirebaseIdToken } from "./firebase"
+ import { findOrCreateFirebaseUser } from "./firebase-user"
++import { applySignInClaims, exposeClaims, identityMaySignIn, withVerifiedClaims } from "./session-claims"
+ import { authenticateTeammate } from "./teammate-login"
+ 
+ // Sign-in happens in the browser with Firebase (Google, phone OTP, email + password). The browser
+@@ -23,9 +24,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
+       async authorize(credentials) {
+         const identity = await verifyFirebaseIdToken(String(credentials?.idToken ?? ""))
+         if (!identity) return null
+-        // Email + password accounts must prove they own the address before they get a session.
+-        if (identity.provider === "password" && !identity.emailVerified) return null
+-        return findOrCreateFirebaseUser(identity)
++        if (!identityMaySignIn(identity)) return null
++        const user = await findOrCreateFirebaseUser(identity)
++        return user ? withVerifiedClaims(user, identity) : null
+       },
+     }),
+     Credentials({
+@@ -36,9 +37,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
+   ],
+   pages: { signIn: "/login" },
+   callbacks: {
++    // Claims are written only at sign-in (see ./session-claims.ts). Sessions that predate them have none and must sign in again
++    // before they can use the super admin.
++    jwt: ({ token, user }) => applySignInClaims(token, user),
+     session({ session, token }) {
+       if (token.sub) session.user.id = token.sub
+-      return session
++      return exposeClaims(session, token)
+     },
+   },
+ })
+diff --git a/lib/auth/session-claims.ts b/lib/auth/session-claims.ts
+new file mode 100644
+index 0000000..f57b5ce
+--- /dev/null
++++ b/lib/auth/session-claims.ts
+@@ -0,0 +1,39 @@
++import type { FirebaseIdentity } from "./firebase"
++import { verifiedEmailOf } from "./firebase"
++
++/**
++ * The identity claims carried from a verified Firebase sign-in into the session. They are written in exactly one place (the
++ * sign-in token), never taken from a profile row or from anything the client sends later, and read by the super admin guard.
++ */
++export type SessionClaims = { verifiedEmail: string | null; verifiedUid: string | null }
++
++/** Email+password accounts must prove they own the address before they get any session. */
++export const identityMaySignIn = (identity: Pick<FirebaseIdentity, "provider" | "emailVerified">): boolean =>
++  !(identity.provider === "password" && !identity.emailVerified)
++
++/** The user returned from a Firebase sign-in, with the claims the token itself proved. */
++export const withVerifiedClaims = <U extends object>(user: U, identity: FirebaseIdentity): U & SessionClaims => ({
++  ...user,
++  verifiedEmail: verifiedEmailOf(identity),
++  verifiedUid: identity.uid,
++})
++
++type Token = Record<string, unknown>
++
++/** jwt callback: `user` is present only at sign-in. Providers that prove no identity (teammate password) store null claims. */
++export function applySignInClaims<T extends Token>(token: T, user: object | null | undefined): T {
++  if (!user) return token
++  const claims = user as Partial<SessionClaims>
++  const out: Token = token
++  out.verifiedEmail = claims.verifiedEmail ?? null
++  out.verifiedUid = claims.verifiedUid ?? null
++  return token
++}
++
++/** session callback: read-only exposure of what the token holds. */
++export function exposeClaims<S extends object>(session: S, token: Token): S & SessionClaims {
++  const out = session as S & SessionClaims
++  out.verifiedEmail = typeof token.verifiedEmail === "string" ? token.verifiedEmail : null
++  out.verifiedUid = typeof token.verifiedUid === "string" ? token.verifiedUid : null
++  return out
++}
+diff --git a/lib/super/actions.ts b/lib/super/actions.ts
+index e94a73b..a3612cc 100644
+--- a/lib/super/actions.ts
++++ b/lib/super/actions.ts
+@@ -14,7 +14,7 @@ import {
+   localLoginPassword,
+ } from "../auth/local-login"
+ import { rateLimit } from "../core/rate-limit"
+-import { superAdminEmails } from "./guard"
++import { superAdminEmails, superAdminUids } from "./emails"
+ 
+ export type SuperSignInResult = { ok: true } | { ok: false; error: string }
+ 
+@@ -31,6 +31,9 @@ export async function signInSuperAdmin(
+   const email = identity?.emailVerified ? identity.email?.toLowerCase() : null
+   if (!email || !superAdminEmails().has(email))
+     return { ok: false, error: NOT_ALLOWED }
++  const uids = superAdminUids()
++  if (uids.size > 0 && !(identity && uids.has(identity.uid)))
++    return { ok: false, error: NOT_ALLOWED }
+   try {
+     await signIn("firebase", { idToken, redirect: false })
+     return { ok: true }
+diff --git a/lib/super/data.ts b/lib/super/data.ts
+index 9ec82f3..6ddd8a4 100644
+--- a/lib/super/data.ts
++++ b/lib/super/data.ts
+@@ -276,6 +276,7 @@ export type Overview = {
+ }
+ 
+ export async function loadOverview(): Promise<Overview> {
++  await requireSuperAdmin()
+   const rows = await loadBusinesses()
+   const since30 = new Date(Date.now() - 30 * DAY)
+   const [
+diff --git a/lib/super/emails.ts b/lib/super/emails.ts
+new file mode 100644
+index 0000000..5adc5e1
+--- /dev/null
++++ b/lib/super/emails.ts
+@@ -0,0 +1,19 @@
++/**
++ * Tany team accounts allowed into the super admin: SUPER_ADMIN_EMAILS (comma separated).
++ * In development SEED_OWNER_EMAIL and the dev owner count too, so the local login works without extra setup.
++ * No imports on purpose: server actions that only need the list (team management) must not load the auth stack.
++ */
++export function superAdminEmails(): Set<string> {
++  const list = (process.env.SUPER_ADMIN_EMAILS ?? "").split(",")
++  if (process.env.NODE_ENV === "development") list.push(process.env.SEED_OWNER_EMAIL?.toLowerCase() || "dev@localhost", "dev@localhost")
++  return new Set(list.map((e) => e.trim().toLowerCase()).filter(Boolean))
++}
++
++/**
++ * Optional second factor of identity: SUPER_ADMIN_UIDS (comma separated Firebase uids). When set, a super admin must ALSO sign in as
++ * one of these uids, so a re-created or re-assigned Firebase account that happens to carry a team address is still refused. Unset
++ * means the verified-email list alone applies (the pre-existing behaviour).
++ */
++export function superAdminUids(): Set<string> {
++  return new Set((process.env.SUPER_ADMIN_UIDS ?? "").split(",").map((u) => u.trim()).filter(Boolean))
++}
+diff --git a/lib/super/guard.ts b/lib/super/guard.ts
+index 3336547..54655d3 100644
+--- a/lib/super/guard.ts
++++ b/lib/super/guard.ts
+@@ -2,6 +2,8 @@ import { notFound, redirect } from "next/navigation"
+ import { cookies } from "next/headers"
+ import { cache } from "react"
+ 
++import { superAdminEmails, superAdminUids } from "./emails"
++
+ import { auth } from "../auth"
+ import {
+   DEV_BYPASS_COOKIE,
+@@ -10,49 +12,50 @@ import {
+ } from "../auth/dev-bypass"
+ import {
+   LOCAL_LOGIN_COOKIE,
+-  defaultLocalLoginEmail,
+   emailFromLocalLoginCookie,
+   isLocalPasswordLoginEnabled,
+ } from "../auth/local-login"
+ 
+-/**
+- * Tany team accounts allowed into the super admin: SUPER_ADMIN_EMAILS (comma separated).
+- * In development SEED_OWNER_EMAIL counts too, so the local login works without extra setup.
+- */
+-export function superAdminEmails(): Set<string> {
+-  const list = (process.env.SUPER_ADMIN_EMAILS ?? "").split(",")
+-  if (process.env.NODE_ENV === "development")
+-    list.push(defaultLocalLoginEmail(), DEV_USER.email)
+-  return new Set(list.map((e) => e.trim().toLowerCase()).filter(Boolean))
+-}
++export { superAdminEmails } from "./emails"
+ 
+-const sessionEmail = cache(async (): Promise<string | null> => {
++type Identity = { email: string; uid: string | null; dev: boolean }
++
++const sessionIdentity = cache(async (): Promise<Identity | null> => {
+   const cookieStore = await cookies()
+   if (isLocalPasswordLoginEnabled()) {
+     const email = emailFromLocalLoginCookie(
+       cookieStore.get(LOCAL_LOGIN_COOKIE)?.value
+     )
+-    if (email) return email
++    if (email) return { email, uid: null, dev: true }
+   }
+   if (isDevBypassEnabled() && cookieStore.get(DEV_BYPASS_COOKIE))
+-    return DEV_USER.email
+-  const session = await auth()
+-  return session?.user?.email?.toLowerCase() ?? null
++    return { email: DEV_USER.email, uid: null, dev: true }
++  // Identity comes only from what Firebase verified at sign-in (see lib/auth/session-claims.ts), never from a profile field.
++  const session = (await auth()) as { verifiedEmail?: string | null; verifiedUid?: string | null } | null
++  const email = session?.verifiedEmail?.toLowerCase()
++  return email ? { email, uid: session?.verifiedUid ?? null, dev: false } : null
+ })
+ 
++/** On the team list, and (when SUPER_ADMIN_UIDS is set) signed in as one of the listed Firebase uids. Dev sign-ins have no uid. */
++function allowed(id: Identity): boolean {
++  if (!superAdminEmails().has(id.email)) return false
++  const uids = superAdminUids()
++  return id.dev || uids.size === 0 || (id.uid !== null && uids.has(id.uid))
++}
++
+ /**
+  * For every super admin page and data function. Signed out goes to login; anyone who is not on the
+  * Tany list gets a plain 404, so the area does not show up to dealers.
+  */
+ export async function requireSuperAdmin() {
+-  const email = await sessionEmail()
+-  if (!email) redirect("/super/login")
+-  if (!superAdminEmails().has(email)) notFound()
+-  return { email }
++  const id = await sessionIdentity()
++  if (!id) redirect("/super/login")
++  if (!allowed(id)) notFound()
++  return { email: id.email }
+ }
+ 
+ /** The signed-in team member's email, or null. Never redirects: for the login page itself. */
+ export async function currentSuperAdmin() {
+-  const email = await sessionEmail()
+-  return email && superAdminEmails().has(email) ? email : null
++  const id = await sessionIdentity()
++  return id && allowed(id) ? id.email : null
+ }
+diff --git a/lib/tenant/team.ts b/lib/tenant/team.ts
+index 22678b4..2e07fbb 100644
+--- a/lib/tenant/team.ts
++++ b/lib/tenant/team.ts
+@@ -1,7 +1,7 @@
+ import { eq } from "drizzle-orm"
+ 
+ import { unscopedDb } from "../db/client"
+-import { dealerUsers, users } from "../db/schema"
++import { accounts, dealerUsers, users } from "../db/schema"
+ 
+ type UserRow = typeof users.$inferSelect
+ 
+@@ -43,3 +43,12 @@ export async function findMembership(userId: string) {
+ export async function setUserPasswordHash(userId: string, passwordHash: string): Promise<void> {
+   await unscopedDb.update(users).set({ passwordHash }).where(eq(users.id, userId))
+ }
++
++/**
++ * Whether this person has ever signed in to Tany themselves (a linked Firebase account). Such a row is their own identity, not one an
++ * owner provisioned, so an owner must never be able to set its password.
++ */
++export async function hasOwnSignIn(userId: string): Promise<boolean> {
++  const [row] = await unscopedDb.select({ id: accounts.userId }).from(accounts).where(eq(accounts.userId, userId)).limit(1)
++  return Boolean(row)
++}
+diff --git a/scripts/upload-secrets.sh b/scripts/upload-secrets.sh
+index 3e44113..c0f8356 100755
+--- a/scripts/upload-secrets.sh
++++ b/scripts/upload-secrets.sh
+@@ -62,7 +62,7 @@ python3 - <<'PY' | pnpm exec wrangler secret bulk "${WR_ENV[@]+"${WR_ENV[@]}"}"
+ import json, os, re, sys
+ keys = ["DATABASE_URL", "AUTH_SECRET", "ENCRYPTION_KEY", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY",
+         "RC_API_KEY", "VISION_API_KEY", "TRACKER_SECRET", "CRON_SECRET", "BLIND_INDEX_KEY",
+-        "GOOGLE_MAPS_SERVER_KEY", "GOOGLE_ROUTES_TOLLS", "GOOGLE_ROUTE_CACHE_DAYS", "CABS_ALLOWED_EMAILS", "R2_PRIVATE_BUCKET", "PILOT_DEALERS", "PHONE_OTP_PROVIDER", "FIREBASE_APPCHECK_SITE_KEY",
++        "GOOGLE_MAPS_SERVER_KEY", "GOOGLE_ROUTES_TOLLS", "GOOGLE_ROUTE_CACHE_DAYS", "CABS_ALLOWED_EMAILS", "SUPER_ADMIN_EMAILS", "SUPER_ADMIN_UIDS", "R2_PRIVATE_BUCKET", "PILOT_DEALERS", "PHONE_OTP_PROVIDER", "FIREBASE_APPCHECK_SITE_KEY",
+         "RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "RAZORPAY_WEBHOOK_SECRET",
+         "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_ANALYTICS_TOKEN"]
+ env = {}
+diff --git a/tests/super-admin-claims.test.ts b/tests/super-admin-claims.test.ts
+new file mode 100644
+index 0000000..ced78e9
+--- /dev/null
++++ b/tests/super-admin-claims.test.ts
+@@ -0,0 +1,120 @@
++// The whole identity chain for the Tany team area, with real signed tokens: Firebase ID token -> verification -> sign-in claims ->
++// JWT -> session -> guard. Keys are generated locally; nothing leaves the machine.
++import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose"
++import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
++
++import { verifyFirebaseIdToken } from "../lib/auth/firebase"
++import { applySignInClaims, exposeClaims, identityMaySignIn, withVerifiedClaims } from "../lib/auth/session-claims"
++
++const PROJECT = "tany-test"
++const TEAM = "founder@tany.test"
++let privateKey: CryptoKey
++let keys: ReturnType<typeof createLocalJWKSet>
++let session: unknown = null
++
++vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => undefined }) }))
++vi.mock("next/navigation", () => ({
++  redirect: (to: string) => {
++    throw new Error(`redirect:${to}`)
++  },
++  notFound: () => {
++    throw new Error("notFound")
++  },
++}))
++vi.mock("../lib/auth", () => ({ auth: async () => session }))
++
++beforeAll(async () => {
++  const pair = await generateKeyPair("RS256")
++  privateKey = pair.privateKey
++  keys = createLocalJWKSet({ keys: [{ ...(await exportJWK(pair.publicKey)), alg: "RS256", kid: "k1" }] })
++})
++beforeEach(() => {
++  session = null
++  process.env.SUPER_ADMIN_EMAILS = TEAM
++  delete process.env.SUPER_ADMIN_UIDS
++})
++
++const token = (claims: Record<string, unknown> = {}, over: { uid?: string; aud?: string; exp?: string; key?: CryptoKey } = {}) =>
++  new SignJWT({ firebase: { sign_in_provider: "google.com" }, email: TEAM, email_verified: true, ...claims })
++    .setProtectedHeader({ alg: "RS256", kid: "k1" })
++    .setSubject(over.uid ?? "uid-founder")
++    .setIssuer(`https://securetoken.google.com/${PROJECT}`)
++    .setAudience(over.aud ?? PROJECT)
++    .setIssuedAt()
++    .setExpirationTime(over.exp ?? "1h")
++    .sign(over.key ?? privateKey)
++
++/** What the app does at sign-in: verify, decide whether to allow, add claims, store in the JWT, expose on the session. */
++async function signInWith(idToken: string, rowEmail: string | null = null) {
++  const identity = await verifyFirebaseIdToken(idToken, PROJECT, keys)
++  if (!identity || !identityMaySignIn(identity)) return null
++  const row = { id: "user-1", name: "X", email: rowEmail, image: null } // the users row: its email is whatever was written to it
++  const jwt = applySignInClaims({ sub: "user-1" }, withVerifiedClaims(row, identity))
++  return exposeClaims({ user: { id: "user-1", email: rowEmail } }, jwt)
++}
++async function guard() {
++  vi.resetModules()
++  return import("../lib/super/guard")
++}
++
++describe("a genuine team member", () => {
++  it("passes the guard with a verified team email", async () => {
++    session = await signInWith(await token())
++    expect(session).not.toBeNull()
++    expect((await (await guard()).requireSuperAdmin()).email).toBe(TEAM)
++  })
++  it("passes with the matching uid when a uid list is set, and not with another", async () => {
++    session = await signInWith(await token())
++    process.env.SUPER_ADMIN_UIDS = "uid-founder"
++    await expect((await guard()).requireSuperAdmin()).resolves.toEqual({ email: TEAM })
++    process.env.SUPER_ADMIN_UIDS = "someone-else"
++    await expect((await guard()).requireSuperAdmin()).rejects.toThrow("notFound")
++  })
++})
++
++describe("only a verified Firebase identity reaches the guard", () => {
++  it("a team email that Firebase has NOT verified carries no claim", async () => {
++    session = await signInWith(await token({ email_verified: false }))
++    await expect((await guard()).requireSuperAdmin()).rejects.toThrow("redirect:/super/login")
++  })
++  it("a phone sign-in is refused even when the users row carries a team email", async () => {
++    session = await signInWith(await token({ email: undefined, email_verified: undefined, phone_number: "+919876543210", firebase: { sign_in_provider: "phone" } }), TEAM)
++    await expect((await guard()).requireSuperAdmin()).rejects.toThrow("redirect:/super/login")
++  })
++  it("a verified non-team Google account whose users row carries a team email is refused", async () => {
++    session = await signInWith(await token({ email: "dealer@shop.test" }, { uid: "uid-dealer" }), TEAM)
++    await expect((await guard()).requireSuperAdmin()).rejects.toThrow("notFound")
++  })
++  it("a teammate password session (no Firebase identity) has null claims and is refused", async () => {
++    const jwt = applySignInClaims({ sub: "user-2" }, { id: "user-2", email: TEAM }) // what the teammate provider returns: no claims
++    session = exposeClaims({ user: { id: "user-2", email: TEAM } }, jwt)
++    await expect((await guard()).requireSuperAdmin()).rejects.toThrow("redirect:/super/login")
++  })
++  it("a session object that already holds a claim cannot keep it: the token is the only source", () => {
++    const forged = { user: {}, verifiedEmail: TEAM, verifiedUid: "uid-founder" }
++    expect(exposeClaims(forged, { sub: "u" })).toMatchObject({ verifiedEmail: null, verifiedUid: null })
++    expect(exposeClaims({ user: {} }, { verifiedEmail: 123, verifiedUid: {} })).toMatchObject({ verifiedEmail: null, verifiedUid: null })
++  })
++  it("a later request cannot add claims: with no sign-in user the token is left unchanged", () => {
++    expect(applySignInClaims({ sub: "u" }, undefined)).toEqual({ sub: "u" })
++    expect(applySignInClaims({ sub: "u", verifiedEmail: null }, null)).toEqual({ sub: "u", verifiedEmail: null })
++  })
++  it("a session from before the claims existed is refused", async () => {
++    session = { user: { email: TEAM } }
++    await expect((await guard()).requireSuperAdmin()).rejects.toThrow("redirect:/super/login")
++  })
++})
++
++describe("Firebase token validation feeding sign-in", () => {
++  it("rejects wrong audience, wrong signing key, expired and garbage tokens, so no session can start", async () => {
++    const other = (await generateKeyPair("RS256")).privateKey
++    expect(await signInWith(await token({}, { aud: "another-project" }))).toBeNull()
++    expect(await signInWith(await token({}, { key: other }))).toBeNull()
++    expect(await signInWith(await token({}, { exp: "-1m" }))).toBeNull()
++    expect(await signInWith("not.a.jwt")).toBeNull()
++  })
++  it("an email+password account must be verified before it gets any session", async () => {
++    expect(await signInWith(await token({ email_verified: false, firebase: { sign_in_provider: "password" } }))).toBeNull()
++    expect(await signInWith(await token({ email_verified: true, firebase: { sign_in_provider: "password" } }))).not.toBeNull()
++  })
++})
+diff --git a/tests/super-admin-guard.test.ts b/tests/super-admin-guard.test.ts
+new file mode 100644
+index 0000000..83c60d0
+--- /dev/null
++++ b/tests/super-admin-guard.test.ts
+@@ -0,0 +1,165 @@
++// The Tany team area must be reachable only by an email Firebase verified at sign-in. A profile email alone proves nothing.
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
++
++let session: unknown = null
++vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => undefined }) }))
++vi.mock("next/navigation", () => ({
++  redirect: (to: string) => {
++    throw new Error(`redirect:${to}`)
++  },
++  notFound: () => {
++    throw new Error("notFound")
++  },
++}))
++vi.mock("../lib/auth", () => ({ auth: async () => session }))
++
++const TEAM = "founder@tany.test"
++
++async function guard() {
++  vi.resetModules()
++  process.env.SUPER_ADMIN_EMAILS = `${TEAM}, other@tany.test`
++  return import("../lib/super/guard")
++}
++
++describe("requireSuperAdmin", () => {
++  beforeEach(() => {
++    session = null
++  })
++
++  it("lets in a team address that Firebase verified at sign-in", async () => {
++    session = { user: { email: TEAM }, verifiedEmail: TEAM }
++    const { requireSuperAdmin } = await guard()
++    await expect(requireSuperAdmin()).resolves.toEqual({ email: TEAM })
++  })
++
++  it("rejects a teammate-password session that only carries a matching users.email", async () => {
++    session = { user: { email: TEAM }, verifiedEmail: null }
++    const { requireSuperAdmin } = await guard()
++    await expect(requireSuperAdmin()).rejects.toThrow("redirect:/super/login")
++  })
++
++  it("rejects a session from before the claim existed", async () => {
++    session = { user: { email: TEAM } }
++    const { requireSuperAdmin } = await guard()
++    await expect(requireSuperAdmin()).rejects.toThrow("redirect:/super/login")
++  })
++
++  it("answers 404 to a verified address that is not on the team list", async () => {
++    session = { user: { email: "dealer@shop.test" }, verifiedEmail: "dealer@shop.test" }
++    const { requireSuperAdmin } = await guard()
++    await expect(requireSuperAdmin()).rejects.toThrow("notFound")
++  })
++
++  it("does not trust users.email even when a different address was verified", async () => {
++    session = { user: { email: TEAM }, verifiedEmail: "dealer@shop.test" }
++    const { requireSuperAdmin } = await guard()
++    await expect(requireSuperAdmin()).rejects.toThrow("notFound")
++  })
++
++  it("currentSuperAdmin never reports an unverified session", async () => {
++    session = { user: { email: TEAM }, verifiedEmail: null }
++    const { currentSuperAdmin } = await guard()
++    expect(await currentSuperAdmin()).toBeNull()
++  })
++})
++
++// ---------- stable uid allow-list (optional second factor) ----------
++
++describe("SUPER_ADMIN_UIDS", () => {
++  beforeEach(() => {
++    session = null
++  })
++  afterEach(() => {
++    delete process.env.SUPER_ADMIN_UIDS
++  })
++  const withUids = async (uids: string | undefined) => {
++    const g = await guard()
++    if (uids === undefined) delete process.env.SUPER_ADMIN_UIDS
++    else process.env.SUPER_ADMIN_UIDS = uids
++    return g
++  }
++
++  it("is not required when unset", async () => {
++    session = { user: {}, verifiedEmail: TEAM, verifiedUid: "anyone" }
++    const { requireSuperAdmin } = await withUids(undefined)
++    await expect(requireSuperAdmin()).resolves.toEqual({ email: TEAM })
++  })
++  it("admits the listed uid with a team email", async () => {
++    session = { user: {}, verifiedEmail: TEAM, verifiedUid: "uid-founder" }
++    const { requireSuperAdmin } = await withUids("uid-founder, uid-other")
++    await expect(requireSuperAdmin()).resolves.toEqual({ email: TEAM })
++  })
++  it("refuses a team email signed in as a different Firebase account", async () => {
++    session = { user: {}, verifiedEmail: TEAM, verifiedUid: "uid-other" }
++    const { requireSuperAdmin } = await withUids("uid-founder")
++    await expect(requireSuperAdmin()).rejects.toThrow("notFound")
++  })
++  it("refuses a session with no uid claim when a list is configured", async () => {
++    session = { user: {}, verifiedEmail: TEAM }
++    const { requireSuperAdmin } = await withUids("uid-founder")
++    await expect(requireSuperAdmin()).rejects.toThrow("notFound")
++  })
++  it("a listed uid alone is not enough: the verified email must be on the team list too", async () => {
++    session = { user: {}, verifiedEmail: "dealer@shop.test", verifiedUid: "uid-founder" }
++    const { requireSuperAdmin } = await withUids("uid-founder")
++    await expect(requireSuperAdmin()).rejects.toThrow("notFound")
++  })
++})
++
++// ---------- verified-email semantics ----------
++
++describe("verifiedEmailOf", () => {
++  it("returns the email only when Firebase says it is verified", async () => {
++    const { verifiedEmailOf } = await import("../lib/auth/firebase")
++    expect(verifiedEmailOf({ email: TEAM, emailVerified: true })).toBe(TEAM)
++    expect(verifiedEmailOf({ email: TEAM, emailVerified: false })).toBeNull()
++    expect(verifiedEmailOf({ email: null, emailVerified: true })).toBeNull()
++  })
++})
++
++// ---------- structural: no /super entry point may be left unguarded ----------
++
++import { readFileSync, readdirSync, statSync } from "node:fs"
++import path from "node:path"
++
++const ROOT = path.resolve(__dirname, "..")
++const files = (dir: string, re: RegExp, out: string[] = []): string[] => {
++  for (const n of readdirSync(dir)) {
++    const f = path.join(dir, n)
++    if (statSync(f).isDirectory()) files(f, re, out)
++    else if (re.test(n)) out.push(f)
++  }
++  return out
++}
++
++describe("every /super entry point enforces the guard on the server", () => {
++  it("each exported async function in lib/super/data.ts and queries.ts calls requireSuperAdmin first", () => {
++    const bad: string[] = []
++    for (const rel of ["lib/super/data.ts", "lib/super/queries.ts"]) {
++      const s = readFileSync(path.join(ROOT, rel), "utf8")
++      for (const m of s.matchAll(/export async function (\w+)[^{]*\{/g)) {
++        const head = s.slice(m.index! + m[0].length, m.index! + m[0].length + 300)
++        if (!/await requireSuperAdmin\(\)/.test(head)) bad.push(`${rel}:${m[1]}`)
++      }
++    }
++    expect(bad).toEqual([])
++  })
++
++  it("server actions and route handlers under app/(super) call the guard", () => {
++    const bad = files(path.join(ROOT, "app/(super)"), /^(actions|route)\.ts$/).filter((f) => !/requireSuperAdmin/.test(readFileSync(f, "utf8"))).map((f) => path.relative(ROOT, f))
++    expect(bad).toEqual([])
++  })
++
++  it("pages under app/(super) reach data only through the guarded lib/super layer", () => {
++    const bad = files(path.join(ROOT, "app/(super)"), /\.(ts|tsx)$/)
++      .filter((f) => /@\/lib\/db|unscopedDb|scopedDb/.test(readFileSync(f, "utf8")))
++      .map((f) => path.relative(ROOT, f))
++    expect(bad).toEqual([])
++  })
++
++  it("the auth callbacks never take identity from the client (no session-update merge into the token)", () => {
++    const s = readFileSync(path.join(ROOT, "lib/auth/index.ts"), "utf8")
++    expect(s).not.toMatch(/trigger\s*===\s*["']update["']/)
++    expect(s).not.toMatch(/jwt\(\{[^)]*session/)
++  })
++})
+diff --git a/tests/super-sign-in-action.test.ts b/tests/super-sign-in-action.test.ts
+new file mode 100644
+index 0000000..3dcd65e
+--- /dev/null
++++ b/tests/super-sign-in-action.test.ts
+@@ -0,0 +1,41 @@
++// The super admin sign-in action: only a Firebase-verified team email may even start a session, and (when set) only a listed uid.
++import { beforeEach, describe, expect, it, vi } from "vitest"
++
++const signIn = vi.fn(async () => {})
++let identity: unknown = null
++vi.mock("next/headers", () => ({ cookies: async () => ({ set() {}, delete() {} }) }))
++vi.mock("next/navigation", () => ({ redirect: () => {} }))
++vi.mock("../lib/core/rate-limit", () => ({ rateLimit: async () => true }))
++vi.mock("../lib/auth", () => ({ signIn }))
++vi.mock("../lib/auth/firebase", () => ({ verifyFirebaseIdToken: async () => identity }))
++
++const TEAM = "founder@tany.test"
++const run = async () => (await import("../lib/super/actions")).signInSuperAdmin("token")
++
++describe("signInSuperAdmin", () => {
++  beforeEach(() => {
++    signIn.mockClear()
++    process.env.SUPER_ADMIN_EMAILS = TEAM
++    delete process.env.SUPER_ADMIN_UIDS
++  })
++  it("starts a session for a verified team email", async () => {
++    identity = { uid: "u1", email: TEAM, emailVerified: true }
++    expect((await run()).ok).toBe(true)
++    expect(signIn).toHaveBeenCalledTimes(1)
++  })
++  it("refuses an unverified team email, a non-team email and an invalid token", async () => {
++    for (const id of [{ uid: "u1", email: TEAM, emailVerified: false }, { uid: "u1", email: "dealer@shop.test", emailVerified: true }, null]) {
++      identity = id
++      expect((await run()).ok).toBe(false)
++    }
++    expect(signIn).not.toHaveBeenCalled()
++  })
++  it("with a uid list, refuses a team email signed in as another account before any session starts", async () => {
++    process.env.SUPER_ADMIN_UIDS = "u1"
++    identity = { uid: "u-other", email: TEAM, emailVerified: true }
++    expect((await run()).ok).toBe(false)
++    expect(signIn).not.toHaveBeenCalled()
++    identity = { uid: "u1", email: TEAM, emailVerified: true }
++    expect((await run()).ok).toBe(true)
++  })
++})
+diff --git a/tests/team-security.integration.test.ts b/tests/team-security.integration.test.ts
+new file mode 100644
+index 0000000..33c91ef
+--- /dev/null
++++ b/tests/team-security.integration.test.ts
+@@ -0,0 +1,34 @@
++// Live test: hasOwnSignIn tells accounts a person created by signing in from accounts provisioned for them.
++// Runs only when TEST_DATABASE_URL points at a DISPOSABLE, migrated database (see docs/staging/neon-test-database.md).
++import { randomBytes } from "node:crypto"
++import { afterAll, beforeAll, describe, expect, it } from "vitest"
++
++import { testDatabaseUrl } from "./support/disposable-db"
++
++const url = testDatabaseUrl()
++
++describe.skipIf(!url)("team: hasOwnSignIn (live database)", () => {
++  let team: typeof import("../lib/tenant/team")
++  let unscopedDb: typeof import("../lib/db/client").unscopedDb
++  let pool: typeof import("../lib/db/client").pool
++  let s: typeof import("../lib/db/schema")
++  const tag = randomBytes(3).toString("hex")
++
++  beforeAll(async () => {
++    process.env.DATABASE_URL = url
++    team = await import("../lib/tenant/team")
++    ;({ unscopedDb, pool } = await import("../lib/db/client"))
++    s = await import("../lib/db/schema")
++  })
++  afterAll(async () => {
++    await pool.end()
++  })
++
++  it("is false for a row an owner provisioned and true once the person has a linked sign-in", async () => {
++    const [provisioned] = await unscopedDb.insert(s.users).values({ name: "Provisioned", email: `prov-${tag}@example.test`, phone: `+9190000${tag.slice(0, 5).replace(/\D/g, "1").padEnd(5, "1")}` }).returning()
++    const [self] = await unscopedDb.insert(s.users).values({ name: "Self", email: `self-${tag}@example.test` }).returning()
++    await unscopedDb.insert(s.accounts).values({ userId: self.id, type: "oidc", provider: "firebase", providerAccountId: `uid-${tag}` })
++    expect(await team.hasOwnSignIn(provisioned.id)).toBe(false)
++    expect(await team.hasOwnSignIn(self.id)).toBe(true)
++  })
++})

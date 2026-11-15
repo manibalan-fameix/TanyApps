@@ -2,17 +2,17 @@
 
 import { useState } from "react"
 
-import { BannerForm, CouponForm } from "@/components/restaurant/simple-forms"
+import { type BannerDestination, BannerForm, CouponForm } from "@/components/restaurant/simple-forms"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 
 const COPY = {
   coupon: { button: "New coupon", title: "New coupon", body: "Guests enter the code at checkout." },
-  banner: { button: "New banner", title: "New banner", body: "Shown at the top of your menu page." },
+  banner: { button: "New banner", title: "New banner", body: "Shown under the search bar on your home page." },
 }
 
 /** The "add" action for small lists: opens a side panel, like the edit panel on the cars list. */
-export function NewSheet({ kind }: { kind: keyof typeof COPY }) {
+export function NewSheet({ kind, destinations = [] }: { kind: keyof typeof COPY; destinations?: BannerDestination[] }) {
   const [open, setOpen] = useState(false)
   const c = COPY[kind]
   return (
@@ -23,7 +23,7 @@ export function NewSheet({ kind }: { kind: keyof typeof COPY }) {
           <SheetTitle>{c.title}</SheetTitle>
           <SheetDescription>{c.body}</SheetDescription>
         </SheetHeader>
-        <div className="px-4 pb-4">{kind === "coupon" ? <CouponForm onDone={() => setOpen(false)} /> : <BannerForm onDone={() => setOpen(false)} />}</div>
+        <div className="px-4 pb-4">{kind === "coupon" ? <CouponForm onDone={() => setOpen(false)} /> : <BannerForm destinations={destinations} onDone={() => setOpen(false)} />}</div>
       </SheetContent>
     </Sheet>
   )
