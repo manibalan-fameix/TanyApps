@@ -63,10 +63,14 @@ jobs:
       - name: Real food photos from Pexels
         if: ${{ inputs.photos }}
         env:
+          # Optional separate secret on the "staging" environment; wins over a PEXELS_API_KEY line in the env file.
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           R2_ACCOUNT_ID: 8b98f4164cf5f4c0400f25a3f66b2ede
           R2_BUCKET: tany-staging
           R2_PUBLIC_URL: https://cdn.tanystaging.in
-        run: pnpm seed:photos:staging
+        run: |
+          [ -n "$PEXELS_API_KEY" ] || unset PEXELS_API_KEY
+          pnpm seed:photos:staging
       - name: Remove the secrets file
         if: always()
         run: rm -f .env.staging
