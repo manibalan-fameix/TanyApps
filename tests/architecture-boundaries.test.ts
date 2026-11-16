@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest"
 const ROOT = path.resolve(__dirname, "..")
 const PRODUCTS = ["cars", "restaurant", "cabs"] as const
 type Product = (typeof PRODUCTS)[number]
+const relativePath = (file: string) => path.relative(ROOT, file).split(path.sep).join("/")
 
 const KNOWN_EDGES = new Set([
   "lib/cabs/admin-actions.ts -> restaurant",
@@ -68,7 +69,7 @@ function edges(): string[] {
       for (const file of walk(path.join(ROOT, base, owner))) {
         for (const spec of importsOf(file)) {
           const target = productOf(spec)
-          if (target && target !== owner) found.push(`${path.relative(ROOT, file)} -> ${target}`)
+          if (target && target !== owner) found.push(`${relativePath(file)} -> ${target}`)
         }
       }
     }
@@ -93,7 +94,7 @@ describe("product boundaries", () => {
     const found: string[] = []
     for (const file of walk(path.join(ROOT, "lib", "core"))) {
       for (const spec of importsOf(file)) {
-        if (productOf(spec) || /(^|\/)(cars|restaurant|cabs)(\/|$)/.test(spec)) found.push(`${path.relative(ROOT, file)} -> ${spec}`)
+        if (productOf(spec) || /(^|\/)(cars|restaurant|cabs)(\/|$)/.test(spec)) found.push(`${relativePath(file)} -> ${spec}`)
       }
     }
     const unique = [...new Set(found)]

@@ -13,7 +13,7 @@ function walk(dir: string, out: string[] = []): string[] {
   }
   return out
 }
-const rel = (f: string) => path.relative(ROOT, f)
+const rel = (f: string) => path.relative(ROOT, f).split(path.sep).join("/")
 const app = ["app", "lib", "components", "hooks"].flatMap((d) => walk(path.join(ROOT, d))).filter((f) => !rel(f).startsWith("lib/db/schema"))
 const text = (f: string) => readFileSync(f, "utf8")
 

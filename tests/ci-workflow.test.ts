@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest"
 
 const DIR = path.resolve(__dirname, "../.github/workflows")
 const files = readdirSync(DIR).filter((f) => f.endsWith(".yml"))
-const read = (f: string) => readFileSync(path.join(DIR, f), "utf8")
+const read = (f: string) => readFileSync(path.join(DIR, f), "utf8").replace(/\r\n/g, "\n")
 const ci = read("ci.yml")
 
 describe("every workflow", () => {

@@ -285,7 +285,7 @@ describe("the server key stays on the server", () => {
   roots.forEach(walk)
 
   it("is read in exactly one place, and never in a file that runs in the browser", () => {
-    const users = files.filter((f) => readFileSync(f, "utf8").includes("GOOGLE_MAPS_SERVER_KEY"))
+    const users = files.filter((f) => readFileSync(f, "utf8").includes("GOOGLE_MAPS_SERVER_KEY")).map((f) => f.split("\\").join("/"))
     expect(users).toEqual(["lib/core/geo/places-provider.ts"])
     for (const f of files) {
       const src = readFileSync(f, "utf8")
