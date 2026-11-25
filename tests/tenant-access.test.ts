@@ -60,6 +60,7 @@ const RAW_CLIENT_USERS: Record<string, Mode> = {
   "lib/bookings/service.ts": "provider-lookup",
   "lib/restaurant/payments.ts": "provider-lookup",
   // system sweeps: scheduled jobs and the run-once lock
+  "lib/restaurant/monthly-orders.ts": "system-sweep", // the daily job: finds shops with monthly groceries on, then does every read and write through that shop's scopedDb
   "lib/core/jobs/expire-trip-holds.ts": "system-sweep",
   "lib/core/jobs/retry-booking-refunds.ts": "system-sweep",
   "lib/core/scheduler.ts": "system-sweep",
@@ -135,6 +136,7 @@ describe("route handlers", () => {
     "app/api/t/track/route.ts": "public view counter; tenant from host, rate limited",
     "app/api/t/csp-report/route.ts": "receives browser CSP reports; size-capped, rate limited, logs origins only",
     "app/api/t/chat/route.ts": "public storefront chat; tenant from host, per-IP and per-business limits",
+    "app/api/t/dish-match/route.ts": "public storefront photo search; tenant from host, per-IP and per-business limits, size-capped, file type sniffed",
     "app/api/id/social/route.ts": "central login step; same-origin, rate limited",
     "app/api/id/ticket/route.ts": "central login step; same-origin, rate limited, verified OTP proof",
     "app/api/dev-storage/[...key]/route.ts": "development only (404 when R2 is configured)",

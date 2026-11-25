@@ -4,7 +4,8 @@ import { cache } from "react"
 import { banners, coupons, deliveryZones, menuCategories, menuItems, reviews } from "../db/schema"
 import { scopedDb } from "../db/scoped"
 import type { DealerProfile } from "../tenant/dealer"
-import { type StoreBanner, readTone } from "./banners"
+import { MAX_BANNERS, type StoreBanner, readTone } from "./banners"
+import { readHomepage } from "./homepage"
 import { readProfile } from "./profile"
 import { readServiceArea } from "./service-area"
 import { enabledFulfilments, paymentOptions, readOrderSettings } from "./settings"
@@ -19,7 +20,7 @@ export const loadStorefront = cache(async (dealer: DealerProfile) => {
   const [items, cats, bannerRows, reviewRows, couponRows, zoneCount] = await Promise.all([
     db.menuItems.select(undefined, { orderBy: [desc(menuItems.isFeatured), asc(menuItems.sortOrder), asc(menuItems.name)] }),
     db.menuCategories.select(undefined, { orderBy: [asc(menuCategories.sortOrder)] }),
-    db.banners.select(eq(banners.isActive, true), { orderBy: [asc(banners.sortOrder)], limit: 5 }),
+    db.banners.select(eq(banners.isActive, true), { orderBy: [asc(banners.sortOrder), asc(banners.createdAt)], limit: MAX_BANNERS }),
     db.reviews.select(eq(reviews.status, "approved"), { orderBy: [desc(reviews.createdAt)], limit: 12 }),
     db.coupons.select(eq(coupons.isActive, true), { orderBy: [desc(coupons.createdAt)], limit: 12 }),
     db.deliveryZones.count(eq(deliveryZones.isActive, true)),
@@ -36,6 +37,7 @@ export const loadStorefront = cache(async (dealer: DealerProfile) => {
     portions: i.portions,
     imageUrl: i.imageUrl,
     isVeg: i.isVeg,
+    details: i.details ?? {},
     isAvailable: i.isAvailable,
     isFeatured: i.isFeatured,
     categoryId: i.categoryId && name.has(i.categoryId) ? i.categoryId : null,
@@ -49,7 +51,7 @@ export const loadStorefront = cache(async (dealer: DealerProfile) => {
   return {
     dishes,
     categories,
-    banners: bannerRows.map((b): StoreBanner => ({ id: b.id, title: b.title, subtitle: b.subtitle, buttonLabel: b.buttonLabel, linkUrl: b.linkUrl, tone: readTone(b.tone), imageUrl: b.imageUrl })),
+    banners: bannerRows.map((b): StoreBanner => ({ id: b.id, title: b.title, subtitle: b.subtitle, buttonLabel: b.buttonLabel, linkUrl: b.linkUrl, tone: readTone(b.tone), imageUrl: b.imageUrl, promoText: b.promoText })),
     reviews: reviewRows,
     coupons: couponRows
       .filter((c) => !c.expiresAt || c.expiresAt.getTime() > now)
@@ -71,6 +73,8 @@ export const loadStorefront = cache(async (dealer: DealerProfile) => {
     zonesEnabled: zoneCount > 0,
     canOrder: settings.acceptingOrders && enabledFulfilments(settings).length > 0,
     profile: readProfile(dealer.profile),
+    /** The owner's home page layout (Home page in the admin). */
+    homepage: readHomepage(dealer.profile),
   }
 })
 

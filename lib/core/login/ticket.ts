@@ -15,6 +15,8 @@ export type LoginTicket = {
   st: string
   /** Where to send the browser afterwards: a path on the same host. */
   next: string
+  /** The name the customer typed on the sign-in page, when the business asks for one. */
+  nm?: string
   /** Single-use id. */
   jti: string
   iat: number
@@ -29,9 +31,9 @@ export function safeNext(value: string | null | undefined): string {
   return v
 }
 
-export async function issueTicket(input: { phone: string; host: string; state: string; next: string }, now = Date.now(), secret?: string): Promise<string> {
+export async function issueTicket(input: { phone: string; host: string; state: string; next: string; name?: string }, now = Date.now(), secret?: string): Promise<string> {
   const iat = Math.floor(now / 1000)
-  const claims: LoginTicket = { sub: input.phone, aud: input.host.toLowerCase(), st: input.state, next: safeNext(input.next), jti: randomToken(), iat, exp: iat + TICKET_TTL_SECONDS }
+  const claims: LoginTicket = { sub: input.phone, aud: input.host.toLowerCase(), st: input.state, next: safeNext(input.next), ...(input.name ? { nm: input.name } : {}), jti: randomToken(), iat, exp: iat + TICKET_TTL_SECONDS }
   return signToken("login-ticket", claims, secret)
 }
 

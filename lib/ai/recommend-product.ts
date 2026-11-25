@@ -14,7 +14,7 @@ const KEYWORDS: Record<ProductKey, string[]> = {
   tanygarage: ["garage", "mechanic", "service centre", "service center", "car wash", "repair"],
   tanymeat: ["meat", "fish", "chicken", "mutton", "poultry", "seafood"],
   tanymeds: ["pharmacy", "medical", "medicine", "chemist", "clinic"],
-  tanyretail: ["shop", "supermarket", "grocery", "kirana", "provision", "retail"],
+  tanyretail: ["shop", "supermarket", "hypermarket", "grocery", "kirana", "provision", "retail", "textile", "saree", "garments", "hardware", "stationery", "mobile shop", "electronics"],
   tanysalon: ["salon", "spa", "barber", "beauty", "parlour", "parlor", "makeup"],
   tanysport: ["turf", "court", "sports", "cricket", "football", "badminton", "club"],
 }

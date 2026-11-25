@@ -7,19 +7,21 @@ import { mapsUrl } from "@/lib/restaurant/location"
 import { formatKm } from "@/lib/restaurant/service-area"
 import { restaurantPage } from "@/lib/restaurant/page-data"
 import { cn } from "@/lib/utils"
+import { storeTerms } from "@/lib/verticals/terms"
 
 export const metadata = { title: "Our story" }
 
 export default async function AboutPage({ params }: { params: Promise<{ dealer: string }> }) {
   const { dealer, store } = await restaurantPage(params)
   const { profile } = store
+  const t = storeTerms(dealer.industry, dealer.businessType)
   const hours = summariseHours(dealer.businessHours)
   return (
     <StorePage className="max-w-3xl">
       <Eyebrow>Our story</Eyebrow>
       <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{profile.tagline || dealer.displayName}</h1>
       <p className="mt-6 leading-8 whitespace-pre-line text-muted-foreground">
-        {profile.about || `${dealer.displayName} serves fresh food in ${dealer.city}. Browse the menu and order for pickup or delivery.`}
+        {profile.about || dealer.industry === "retail" ? `${dealer.displayName} is a shop in ${dealer.city}. Browse our ${t.catalogue.toLowerCase()} and order for pickup or delivery.` : `${dealer.displayName} serves fresh food in ${dealer.city}. Browse the menu and order for pickup or delivery.`}
       </p>
       <dl className="mt-8 grid gap-4 rounded-2xl border bg-card p-5 text-sm sm:grid-cols-2">
         <div><dt className="font-medium">Address</dt><dd className="mt-1 text-muted-foreground">{profile.address || dealer.city}</dd></div>
@@ -29,7 +31,7 @@ export default async function AboutPage({ params }: { params: Promise<{ dealer: 
           <div>
             <dt className="font-medium">Delivery area</dt>
             <dd className="mt-1 text-muted-foreground">
-              {store.serviceArea.radiusKm !== null ? `Up to ${formatKm(store.serviceArea.radiusKm)} km from the restaurant. ` : ""}
+              {store.serviceArea.radiusKm !== null ? `Up to ${formatKm(store.serviceArea.radiusKm)} km from the ${t.business}. ` : ""}
               <a className="underline" target="_blank" rel="noreferrer" href={mapsUrl(store.serviceArea.lat, store.serviceArea.lng)}>Get directions</a>
             </dd>
           </div>

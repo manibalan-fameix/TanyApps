@@ -25,10 +25,10 @@ export default async function MyAccount({ params }: { params: Promise<{ dealer: 
       <AccountForms
         lang={lang}
         name={customer.name ?? ""}
-        phone={decrypt(customer.phoneEnc).replace(/^\+91/, "+91 ")}
+        phone={decrypt(customer.phoneEnc, db.dealerId).replace(/^\+91/, "+91 ")}
         quick={quick}
-        addresses={addresses.map((a) => ({ id: a.id, label: a.label, text: placeText({ addressEnc: a.addressEnc, placeId: a.placeId, lat: a.lat, lng: a.lng, stateCode: null }).name }))}
-        contacts={contacts.map((c) => ({ id: c.id, name: c.name, phone: (tryDecrypt(c.phoneEnc) ?? "").replace(/^\+91/, "+91 ") }))}
+        addresses={addresses.map((a) => ({ id: a.id, label: a.label, text: placeText({ addressEnc: a.addressEnc, placeId: a.placeId, lat: a.lat, lng: a.lng, stateCode: null }, db.dealerId).name }))}
+        contacts={contacts.map((c) => ({ id: c.id, name: c.name, phone: (tryDecrypt(c.phoneEnc, db.dealerId) ?? "").replace(/^\+91/, "+91 ") }))}
       />
     </div>
   )

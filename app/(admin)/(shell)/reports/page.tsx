@@ -4,7 +4,7 @@ import { redirect } from "next/navigation"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { SimpleTable } from "@/components/data-table/simple-table"
 import { getDealerContext } from "@/lib/auth/context"
 import { SOURCES } from "@/lib/analytics/events"
 import { fetchPerformance } from "@/lib/analytics/query"
@@ -94,57 +94,33 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                   No visits yet. Share a car from its page and the numbers appear here within a minute or two.
                 </p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Car</TableHead>
-                      <TableHead className="text-right">Views</TableHead>
-                      <TableHead className="text-right">Link clicks</TableHead>
-                      <TableHead className="text-right">Chats</TableHead>
-                      {SOURCES.map((s) => (
-                        <TableHead key={s} className="text-right">
-                          {SOURCE_LABEL[s]}
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {result.data.listings.map((l) => {
-                      const car = carBySlug.get(l.carSlug)
-                      return (
-                        <TableRow key={l.carSlug}>
-                          <TableCell className="max-w-64 truncate font-medium">
-                            <a href={tenantUrl(ctx.dealer.slug, `/${l.carSlug}`)} target="_blank" rel="noreferrer" className="hover:underline">
-                              {car?.title ?? l.carSlug}
-                            </a>
-                            {car && car.status !== "live" ? <span className="ml-2 text-xs text-muted-foreground">{car.status}</span> : null}
-                          </TableCell>
-                          <TableCell className="text-right">{n(l.views)}</TableCell>
-                          <TableCell className="text-right">{n(l.shareClicks)}</TableCell>
-                          <TableCell className="text-right">{n(l.chats)}</TableCell>
-                          {SOURCES.map((s) => (
-                            <TableCell key={s} className={cn("text-right tabular-nums", s === l.topSource && "font-semibold")}>
-                              {pair(l.sources[s])}
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                  <TableFooter>
-                    <TableRow>
-                      <TableCell className="font-medium">All listings</TableCell>
-                      <TableCell className="text-right">{n(result.data.totals.views)}</TableCell>
-                      <TableCell className="text-right">{n(result.data.totals.shareClicks)}</TableCell>
-                      <TableCell className="text-right">{n(result.data.totals.chats)}</TableCell>
-                      {SOURCES.map((s) => (
-                        <TableCell key={s} className="text-right tabular-nums">
-                          {pair(result.data.sourceTotals[s])}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  </TableFooter>
-                </Table>
+                <SimpleTable
+                  searchPlaceholder="Search listings..."
+                  columns={[{ title: "Car" }, { title: "Views", align: "right" }, { title: "Link clicks", align: "right" }, { title: "Chats", align: "right" }, ...SOURCES.map((s) => ({ title: SOURCE_LABEL[s], align: "right" as const }))]}
+                  rows={result.data.listings.map((l) => {
+                    const car = carBySlug.get(l.carSlug)
+                    return {
+                      id: l.carSlug,
+                      cells: [
+                        <span key="car" className="block max-w-64 truncate font-medium">
+                          <a href={tenantUrl(ctx.dealer.slug, `/${l.carSlug}`)} target="_blank" rel="noreferrer" className="hover:underline">
+                            {car?.title ?? l.carSlug}
+                          </a>
+                          {car && car.status !== "live" ? <span className="ml-2 text-xs text-muted-foreground">{car.status}</span> : null}
+                        </span>,
+                        n(l.views),
+                        n(l.shareClicks),
+                        n(l.chats),
+                        ...SOURCES.map((s) => (
+                          <span key={s} className={cn("tabular-nums", s === l.topSource && "font-semibold")}>
+                            {pair(l.sources[s])}
+                          </span>
+                        )),
+                      ],
+                    }
+                  })}
+                  footer={[<span key="all" className="font-medium">All listings</span>, n(result.data.totals.views), n(result.data.totals.shareClicks), n(result.data.totals.chats), ...SOURCES.map((s) => pair(result.data.sourceTotals[s]))]}
+                />
               )}
             </CardContent>
           </Card>

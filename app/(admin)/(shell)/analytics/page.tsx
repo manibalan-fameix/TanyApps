@@ -10,6 +10,7 @@ import { scopedDb } from "@/lib/db/scoped"
 import { requireRestaurant } from "@/lib/restaurant/guard"
 import { FULFILMENT_LABEL, type Fulfilment } from "@/lib/restaurant/settings"
 import { averageOrderValue, countBy, dailyOrders, ordersByHour, ordersByWeekday, repeatStats, revenueByDish, startOfDayIst } from "@/lib/restaurant/stats"
+import { orderPhoneKey } from "@/lib/restaurant/order-phone"
 
 export const metadata = { title: "Analytics" }
 export const dynamic = "force-dynamic"
@@ -23,7 +24,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const rows = await scopedDb(dealer.id).orders.select(gte(orders.createdAt, since), { orderBy: [desc(orders.createdAt)], limit: 5000 })
   const kept = rows.filter((o) => o.status !== "cancelled")
   const revenue = kept.reduce((n, o) => n + o.total, 0)
-  const repeat = repeatStats(rows)
+  const repeat = repeatStats(rows.map((o) => ({ ...o, customerPhone: orderPhoneKey(o) })))
   return (
     <div className="flex w-full flex-col gap-4">
       <PageHeader title="Analytics" description={`Worked out from your orders in the last ${days} days${rows.length >= 5000 ? " (latest 5,000)" : ""}. Cancelled orders are left out of sales.`}>

@@ -18,14 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { SimpleTable } from "@/components/data-table/simple-table"
 import { PLANS, SELLABLE_PLAN_KEYS, planPrice } from "@/lib/plans"
 import { loadOverview } from "@/lib/super/data"
 import {
@@ -119,26 +112,10 @@ export default async function RevenuePage() {
             <CardTitle className="text-base">Plan mix</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Plan</TableHead>
-                  <TableHead className="text-right">Businesses</TableHead>
-                  <TableHead className="text-right">MRR</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {o.byPlan.map((p) => (
-                  <TableRow key={p.plan}>
-                    <TableCell className="font-medium">{p.label}</TableCell>
-                    <TableCell className="text-right">{num(p.count)}</TableCell>
-                    <TableCell className="text-right">
-                      {p.mrr ? rupees(p.mrr) : "—"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <SimpleTable
+              columns={[{ title: "Plan" }, { title: "Businesses", align: "right" }, { title: "MRR", align: "right" }]}
+              rows={o.byPlan.map((p) => ({ id: p.plan, cells: [<span key="n" className="font-medium">{p.label}</span>, num(p.count), p.mrr ? rupees(p.mrr) : "—"] }))}
+            />
           </CardContent>
         </Card>
         <MixCard
@@ -163,44 +140,10 @@ export default async function RevenuePage() {
               No paying business yet.
             </p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Business</TableHead>
-                  <TableHead>Plan</TableHead>
-                  <TableHead>Cycle</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Paid through</TableHead>
-                  <TableHead className="text-right">MRR</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {o.paying.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="font-medium">
-                      <Link href={link(r.id)} className="hover:underline">
-                        {r.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{r.planLabel}</TableCell>
-                    <TableCell className="capitalize">
-                      {r.billingCycle}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={r.phase === "active" ? "default" : "secondary"}
-                      >
-                        {PHASE_LABEL[r.phase]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{fmtDate(r.paidThrough)}</TableCell>
-                    <TableCell className="text-right">
-                      {rupees(r.mrr)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <SimpleTable
+              columns={[{ title: "Business" }, { title: "Plan" }, { title: "Cycle" }, { title: "Status" }, { title: "Paid through" }, { title: "MRR", align: "right" }]}
+              rows={o.paying.map((r) => ({ id: r.id, cells: [<Link key="n" href={link(r.id)} className="font-medium hover:underline">{r.name}</Link>, r.planLabel, <span key="c" className="capitalize">{r.billingCycle}</span>, <Badge key="s" variant={r.phase === "active" ? "default" : "secondary"}>{PHASE_LABEL[r.phase]}</Badge>, fmtDate(r.paidThrough), rupees(r.mrr)] }))}
+            />
           )}
         </CardContent>
       </Card>
@@ -272,34 +215,10 @@ export default async function RevenuePage() {
             <CardTitle className="text-base">Price list</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Plan</TableHead>
-                  <TableHead className="text-right">Monthly</TableHead>
-                  <TableHead className="text-right">Yearly</TableHead>
-                  <TableHead className="text-right">Live cars</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {SELLABLE_PLAN_KEYS.map((k) => (
-                  <TableRow key={k}>
-                    <TableCell className="font-medium">
-                      {PLANS[k].label}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {rupees(planPrice(k, "monthly"))}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {rupees(planPrice(k, "yearly"))}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {PLANS[k].maxLiveCars}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <SimpleTable
+              columns={[{ title: "Plan" }, { title: "Monthly", align: "right" }, { title: "Yearly", align: "right" }, { title: "Live cars", align: "right" }]}
+              rows={SELLABLE_PLAN_KEYS.map((k) => ({ id: k, cells: [<span key="n" className="font-medium">{PLANS[k].label}</span>, rupees(planPrice(k, "monthly")), rupees(planPrice(k, "yearly")), PLANS[k].maxLiveCars] }))}
+            />
             <p className="pt-3 text-xs text-muted-foreground">
               Prices exclude GST. Change them in lib/plans.ts.
             </p>

@@ -93,7 +93,7 @@ export default async function CarPage({
           <CardContent>
             <dl className="divide-y divide-border">
               <Row label="Buyer" value={booking.buyerName} />
-              <Row label="Phone" value={tryDecrypt(booking.buyerPhone)} />
+              <Row label="Phone" value={tryDecrypt(booking.buyerPhone, ctx.dealer.id)} />
               <Row label="Amount" value={`₹${formatInr(booking.amount)}`} />
               <Row label="Status" value={<span className="capitalize">{booking.status === "refund_pending" ? refundLabel(booking.refundStatus) : booking.status}</span>} />
             </dl>

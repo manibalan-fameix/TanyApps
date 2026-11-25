@@ -32,7 +32,7 @@ export default async function BookingDetail({ params }: { params: Promise<{ id: 
   if (!detail) notFound()
   const { trip, events, fare } = detail
   const [customer] = await db.customers.select(eq(customers.id, trip.customerId), { limit: 1 })
-  const phone = customer ? decrypt(customer.phoneEnc) : ""
+  const phone = customer ? decrypt(customer.phoneEnc, dealer.id) : ""
   const total = effectiveTotalPaise(trip)
 
   return (
@@ -51,7 +51,7 @@ export default async function BookingDetail({ params }: { params: Promise<{ id: 
           {trip.returnAt ? <p>Return: {when(trip.returnAt)}</p> : null}
           <p>{trip.pax} passengers, {trip.bags} bags · {trip.className}</p>
           {trip.notes ? <p className="text-muted-foreground">Notes: {trip.notes}</p> : null}
-          {trip.holdExpiresAt && ["requested", "confirmed"].includes(trip.status) ? <p className="text-amber-700 dark:text-amber-300">Answer by {when(trip.holdExpiresAt)} or it is released.</p> : null}
+          {trip.holdExpiresAt && ["requested", "confirmed"].includes(trip.status) ? <p className="text-primary">Answer by {when(trip.holdExpiresAt)} or it is released.</p> : null}
           {trip.rejectReason ? <p className="text-muted-foreground">Rejected: {trip.rejectReason}</p> : null}
           {trip.cancelledReason ? <p className="text-muted-foreground">Cancelled: {trip.cancelledReason}</p> : null}
         </CardContent>

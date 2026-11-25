@@ -11,7 +11,7 @@ export default async function StorefrontSettingsPage() {
   return (
     <SettingsPage
       title="Storefront"
-      description="The words and contact details guests see on your menu page. Your logo and colours are under Theme."
+      description="The words and contact details guests see on your menu page. Your logo and business name are under Business details, and colours are under Theme."
       note={owner ? undefined : "Only the owner can change these."}
     >
       <ProfileForm initial={readProfile(dealer.profile)} disabled={!owner} />

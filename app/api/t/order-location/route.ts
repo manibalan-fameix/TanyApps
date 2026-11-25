@@ -9,13 +9,14 @@ import { roadRoute } from "@/lib/restaurant/route"
 import { readServiceArea, distanceKm } from "@/lib/restaurant/service-area"
 import { etaMinutes, isFresh } from "@/lib/restaurant/tracking"
 import { rateLimit } from "@/lib/core/rate-limit"
+import { ORDER_INDUSTRIES } from "@/lib/verticals"
 
 const json = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } })
 
 // What a guest's order page polls: where the rider is, how far, and roughly when. The 6-character order code is
 // the guest's key, the same one that opens their order page. Only that one order is ever answered.
 export async function GET(req: Request) {
-  const tenant = await tenantFrom(req.headers, "restaurants")
+  const tenant = await tenantFrom(req.headers, ORDER_INDUSTRIES)
   if (!tenant) return json({ ok: false }, 404)
   const { dealer, ip } = tenant
 

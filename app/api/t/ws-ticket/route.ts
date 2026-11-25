@@ -9,6 +9,7 @@ import { TICKET_TTL_S, signTicket } from "@/lib/restaurant/ws-ticket"
 import { TOKEN_RE, hashRiderToken, sharingAllowed } from "@/lib/restaurant/tracking"
 import { orderByRiderToken } from "@/lib/restaurant/trip"
 import { rateLimit } from "@/lib/core/rate-limit"
+import { ORDER_INDUSTRIES } from "@/lib/verticals"
 
 const json = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } })
 
@@ -19,7 +20,7 @@ const socketUrl = () => process.env.TRACKER_WS_URL?.trim() ?? ""
 // their private link's token, a guest needs their order code. Without TRACKER_WS_URL and TRACKER_SECRET (local
 // development) it answers `live: false` and the pages keep using plain HTTP polling.
 async function dealerFor(req: Request) {
-  return (await tenantFrom(req.headers, "restaurants"))?.dealer ?? null
+  return (await tenantFrom(req.headers, ORDER_INDUSTRIES))?.dealer ?? null
 }
 
 /** Rider: POST { token }. */

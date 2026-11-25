@@ -1,0 +1,221 @@
+import * as React from "react";
+
+import { getRootFontScale } from "@/lib/data-grid-utils";
+
+const MAX_CACHED_BADGE_WIDTHS = 1000;
+const badgeWidthCache = new Map<string, number>();
+
+const DEFAULT_CONTAINER_PADDING = 16; // px-2 on both sides.
+const DEFAULT_BADGE_GAP = 4; // gap-1.
+const DEFAULT_OVERFLOW_BADGE_WIDTH = 40; // Approx. "+N" badge width.
+const BADGE_CHROME_WIDTH = 12 + 2; // px-1.5 + 1px border, each side.
+const BADGE_ICON_GAP = 4; // gap-1 between icon and text.
+const BADGE_FONT_SIZE = 12; // text-xs.
+const BADGE_FONT_WEIGHT = 500; // font-medium.
+
+interface GetBadgeListWidthProps<T> {
+  items: T[];
+  getLabel: (item: T) => string;
+  cacheKeyPrefix?: string;
+  iconSize?: number;
+  maxWidth?: number;
+  containerPadding?: number;
+  badgeGap?: number;
+}
+
+export function getBadgeListWidth<T>({
+  items,
+  getLabel,
+  cacheKeyPrefix = "",
+  iconSize,
+  maxWidth,
+  containerPadding = DEFAULT_CONTAINER_PADDING,
+  badgeGap = DEFAULT_BADGE_GAP,
+}: GetBadgeListWidthProps<T>): number {
+  if (items.length === 0) return 0;
+
+  let width = containerPadding;
+  for (const item of items) {
+    const label = getLabel(item);
+    width +=
+      measureBadgeWidth({
+        label,
+        cacheKey: cacheKeyPrefix ? `${cacheKeyPrefix}:${label}` : label,
+        iconSize,
+        maxWidth,
+      }) + badgeGap;
+  }
+
+  return width * getRootFontScale();
+}
+
+interface UseBadgeOverflowProps<T> extends GetBadgeListWidthProps<T> {
+  containerWidth: number;
+  lineCount: number;
+  overflowBadgeWidth?: number;
+}
+
+interface UseBadgeOverflowReturn<T> {
+  visibleItems: T[];
+  hiddenCount: number;
+  containerWidth: number;
+}
+
+export function getBadgeOverflow<T>({
+  items,
+  getLabel,
+  containerWidth: outerWidth,
+  lineCount,
+  cacheKeyPrefix = "",
+  containerPadding = DEFAULT_CONTAINER_PADDING,
+  badgeGap = DEFAULT_BADGE_GAP,
+  overflowBadgeWidth = DEFAULT_OVERFLOW_BADGE_WIDTH,
+  iconSize,
+  maxWidth,
+}: UseBadgeOverflowProps<T>): UseBadgeOverflowReturn<T> {
+  const containerWidth = Math.max(
+    0,
+    outerWidth / getRootFontScale() - containerPadding,
+  );
+
+  if (!containerWidth || items.length === 0) {
+    return { visibleItems: items, hiddenCount: 0, containerWidth };
+  }
+
+  let currentLineWidth = 0;
+  let currentLine = 1;
+  const visible: T[] = [];
+
+  for (const item of items) {
+    const label = getLabel(item);
+    const cacheKey = cacheKeyPrefix ? `${cacheKeyPrefix}:${label}` : label;
+    const badgeWidth = Math.min(
+      containerWidth - badgeGap,
+      measureBadgeWidth({ label, cacheKey, iconSize, maxWidth }),
+    );
+    const widthWithGap = badgeWidth + badgeGap;
+
+    if (currentLineWidth + widthWithGap <= containerWidth) {
+      currentLineWidth += widthWithGap;
+      visible.push(item);
+    } else if (currentLine < lineCount) {
+      currentLine++;
+      currentLineWidth = widthWithGap;
+      visible.push(item);
+    } else {
+      if (
+        currentLineWidth + overflowBadgeWidth > containerWidth &&
+        visible.length > 1
+      ) {
+        visible.pop();
+      }
+
+      break;
+    }
+  }
+
+  return {
+    visibleItems: visible,
+    hiddenCount: Math.max(0, items.length - visible.length),
+    containerWidth,
+  };
+}
+
+export function useBadgeOverflow<T>({
+  items,
+  getLabel,
+  containerWidth,
+  lineCount,
+  cacheKeyPrefix,
+  containerPadding,
+  badgeGap,
+  overflowBadgeWidth,
+  iconSize,
+  maxWidth,
+}: UseBadgeOverflowProps<T>): UseBadgeOverflowReturn<T> {
+  return React.useMemo(
+    () =>
+      getBadgeOverflow({
+        items,
+        getLabel,
+        containerWidth,
+        lineCount,
+        cacheKeyPrefix,
+        containerPadding,
+        badgeGap,
+        overflowBadgeWidth,
+        iconSize,
+        maxWidth,
+      }),
+    [
+      items,
+      getLabel,
+      containerWidth,
+      lineCount,
+      cacheKeyPrefix,
+      containerPadding,
+      badgeGap,
+      overflowBadgeWidth,
+      iconSize,
+      maxWidth,
+    ],
+  );
+}
+
+export function clearBadgeWidthCache(): void {
+  badgeWidthCache.clear();
+}
+
+interface MeasureBadgeWidthProps {
+  label: string;
+  cacheKey: string;
+  iconSize?: number;
+  maxWidth?: number;
+}
+
+function measureBadgeWidth({
+  label,
+  cacheKey,
+  iconSize,
+  maxWidth,
+}: MeasureBadgeWidthProps): number {
+  const cached = badgeWidthCache.get(cacheKey);
+  if (cached !== undefined) {
+    badgeWidthCache.delete(cacheKey);
+    badgeWidthCache.set(cacheKey, cached);
+    return cached;
+  }
+
+  const textWidth = measureTextWidth(label);
+  const width = Math.ceil(
+    BADGE_CHROME_WIDTH +
+      (iconSize ? iconSize + BADGE_ICON_GAP : 0) +
+      (maxWidth ? Math.min(textWidth, maxWidth) : textWidth),
+  );
+
+  if (document.fonts?.status !== "loading") {
+    if (badgeWidthCache.size >= MAX_CACHED_BADGE_WIDTHS) {
+      const oldestKey = badgeWidthCache.keys().next().value;
+      if (oldestKey !== undefined) badgeWidthCache.delete(oldestKey);
+    }
+    badgeWidthCache.set(cacheKey, width);
+  }
+  return width;
+}
+
+let measureContext: CanvasRenderingContext2D | null = null;
+let measureFont: string | null = null;
+
+function measureTextWidth(text: string): number {
+  if (!measureContext) {
+    measureContext = document.createElement("canvas").getContext("2d");
+  }
+  if (!measureContext) return text.length * 7;
+
+  if (!measureFont) {
+    const fontFamily = getComputedStyle(document.body).fontFamily;
+    measureFont = `${BADGE_FONT_WEIGHT} ${BADGE_FONT_SIZE}px ${fontFamily}`;
+  }
+  measureContext.font = measureFont;
+  return measureContext.measureText(text).width;
+}

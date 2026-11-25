@@ -4,17 +4,18 @@ import { z } from "zod"
 import { linkIdentity, openLink } from "@/lib/cabs/identity"
 import { upsertCustomer } from "@/lib/cabs/trips"
 import { clientIp } from "@/lib/core/guards"
-import { resolveLoginHost } from "@/lib/core/login/host"
+import { LOGIN_INDUSTRIES, resolveLoginHost } from "@/lib/core/login/host"
 import { sameOrigin } from "@/lib/core/login/origin"
 import { issueTicket, safeNext } from "@/lib/core/login/ticket"
 import { otpServer } from "@/lib/core/login/otp-provider"
 import { rateLimit } from "@/lib/core/rate-limit"
 import { scopedDb } from "@/lib/db/scoped"
+import { getDealerBySlug } from "@/lib/tenant/dealer"
 import { getRootDomain, protocolFor } from "@/lib/env"
 
 const json = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } })
 
-const body = z.object({ provider: z.enum(["firebase", "msg91"]).default("firebase"), idToken: z.string().min(20).max(4096), host: z.string().min(3).max(253), state: z.string().min(16).max(64), next: z.string().max(300).optional(), link: z.string().max(2000).optional() })
+const body = z.object({ provider: z.enum(["firebase", "msg91"]).default("firebase"), idToken: z.string().min(20).max(4096), host: z.string().min(3).max(253), state: z.string().min(16).max(64), next: z.string().max(300).optional(), name: z.string().trim().min(2).max(60).optional(), link: z.string().max(2000).optional() })
 
 /**
  * Central login, last step: the browser proved a phone number to Firebase and sends the proof here, from the app host.
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
   const parsed = body.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return json({ ok: false, error: "bad_request" }, 400)
 
-  const target = await resolveLoginHost(parsed.data.host, "cabs")
+  const target = await resolveLoginHost(parsed.data.host, LOGIN_INDUSTRIES)
   if (!target) return json({ ok: false, error: "unknown_site" }, 404)
   // +91 only: the verifier returns null for any other country, so a proof for a foreign number is no proof.
   const phone = await otpServer(parsed.data.provider).verify(parsed.data.idToken)
@@ -44,8 +45,12 @@ export async function POST(req: Request) {
     await linkIdentity(db, customer.id, link.provider, link.uid)
   }
 
+  // Shops (not cab operators) always need the customer's name along with the verified number.
+  const dealer = await getDealerBySlug(target.slug)
+  if (dealer && dealer.industry !== "cabs" && !parsed.data.name) return json({ ok: false, error: "name_required" }, 400)
+
   const next = safeNext(parsed.data.next)
-  const ticket = await issueTicket({ phone, host: target.host, state: parsed.data.state, next })
+  const ticket = await issueTicket({ phone, host: target.host, state: parsed.data.state, next, name: parsed.data.name })
   const scheme = protocolFor(getRootDomain() ?? "localhost")
   return json({ ok: true, url: `${scheme}://${target.host}/api/t/auth/callback?ticket=${encodeURIComponent(ticket)}` })
 }

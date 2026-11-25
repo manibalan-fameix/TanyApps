@@ -2,6 +2,7 @@ import { and, asc, eq, inArray } from "drizzle-orm"
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 
+import { customerPaymentsEnabled } from "@/lib/core/payments/customer-payments"
 import { HERO_ANGLE } from "@/lib/angles"
 import { BuyerBottomBar } from "@/components/cars/buyer-bottom-bar"
 import { BuyerGallery } from "@/components/cars/buyer-gallery"
@@ -265,7 +266,7 @@ export default async function CarPage({
               booking={{
                 dealerSlug: dealer.slug,
                 carSlug,
-                canPayOnline: dealer.razorpayAccountStatus === "activated",
+                canPayOnline: customerPaymentsEnabled() && dealer.razorpayAccountStatus === "activated",
               }}
             />
           </div>

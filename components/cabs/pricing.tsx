@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { DataTableRowActions } from "@/components/data-table/data-table-row-actions"
+import { SimpleTable } from "@/components/data-table/simple-table"
 import { deleteRateCard, deleteSurcharge, saveRateCard, saveSurcharge, setRateCardActive, setSurchargeActive } from "@/lib/cabs/admin-actions"
 import type { FareSurcharge } from "@/lib/cabs/fare"
 import { formatPaise, paiseToRupeesText, bpsToPercentText } from "@/lib/cabs/money"
@@ -146,36 +147,22 @@ export function RateCardsManager({ cards, classes, owner }: { cards: StoredRateC
   return (
     <div className="flex flex-col gap-3">
       {owner ? <div className="flex justify-end"><Button onClick={() => setOpen("new")}>Add rate card</Button></div> : <p className="text-sm text-muted-foreground">Only the owner can change prices.</p>}
-      <div className="rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow><TableHead>Class</TableHead><TableHead>Trip type</TableHead><TableHead>Rates</TableHead><TableHead>Valid</TableHead><TableHead>Status</TableHead>{owner ? <TableHead className="text-right">Actions</TableHead> : null}</TableRow>
-          </TableHeader>
-          <TableBody>
-            {cards.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-muted-foreground">No rate cards yet. Nothing can be priced until you add one: this app never assumes a price.</TableCell></TableRow>
-            ) : (
-              cards.map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell className="font-medium">{className.get(c.vehicleClassId) ?? "—"}</TableCell>
-                  <TableCell>{TRIP_TYPE_LABEL[c.tripType]}</TableCell>
-                  <TableCell className="text-muted-foreground">{summary(c)}</TableCell>
-                  <TableCell className="text-muted-foreground">{c.validFrom || c.validTo ? `${c.validFrom ?? "…"} to ${c.validTo ?? "…"}` : "Always"}</TableCell>
-                  <TableCell>{c.active ? <Badge>In use</Badge> : <Badge variant="secondary">Off</Badge>}</TableCell>
-                  {owner ? (
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button size="sm" variant="outline" onClick={() => setOpen(c)}>Edit</Button>
-                        <Button size="sm" variant="ghost" onClick={() => run(() => setRateCardActive(c.id, !c.active), { success: c.active ? "Switched off." : "Switched on." })}>{c.active ? "Switch off" : "Switch on"}</Button>
-                        <Button size="sm" variant="ghost" onClick={() => run(() => deleteRateCard(c.id), { success: "Rate card deleted.", confirm: "Delete this rate card?" })}>Delete</Button>
-                      </div>
-                    </TableCell>
-                  ) : null}
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+      <div>
+        <SimpleTable
+          empty="No rate cards yet. Nothing can be priced until you add one: this app never assumes a price."
+          columns={[{ title: "Class" }, { title: "Trip type" }, { title: "Rates" }, { title: "Valid" }, { title: "Status" }, ...(owner ? [{ title: "" }] : [])]}
+          rows={cards.map((c) => ({
+            id: c.id,
+            cells: [
+              <span key="class" className="font-medium">{className.get(c.vehicleClassId) ?? "—"}</span>,
+              TRIP_TYPE_LABEL[c.tripType],
+              <span key="rates" className="text-muted-foreground">{summary(c)}</span>,
+              <span key="valid" className="text-muted-foreground">{c.validFrom || c.validTo ? `${c.validFrom ?? "…"} to ${c.validTo ?? "…"}` : "Always"}</span>,
+              c.active ? <Badge key="s">In use</Badge> : <Badge key="s" variant="secondary">Off</Badge>,
+              ...(owner ? [<DataTableRowActions key="actions" label="Rate card actions" actions={[{ label: "Edit", onClick: () => setOpen(c) }, { label: "Status", value: c.active ? "on" : "off", options: [{ value: "on", label: "In use" }, { value: "off", label: "Off" }], onSelect: (v) => run(() => setRateCardActive(c.id, v === "on"), { success: v === "on" ? "Switched on." : "Switched off." }) }, { label: "Delete", destructive: true, confirm: { title: "Delete this rate card?" }, onClick: () => run(() => deleteRateCard(c.id), { success: "Rate card deleted." }) }]} />] : []),
+            ],
+          }))}
+        />
       </div>
       <Sheet open={open !== null} onOpenChange={(o) => !o && setOpen(null)}>
         <SheetContent className="overflow-y-auto">
@@ -315,33 +302,21 @@ export function SurchargesManager({ rows, classes, owner }: { rows: ChargeRow[];
   return (
     <div className="flex flex-col gap-3">
       {owner ? <div className="flex justify-end"><Button onClick={() => setOpen("new")}>Add charge</Button></div> : <p className="text-sm text-muted-foreground">Only the owner can change prices.</p>}
-      <div className="rounded-lg border">
-        <Table>
-          <TableHeader><TableRow><TableHead>Charge</TableHead><TableHead>Amount</TableHead><TableHead>When</TableHead><TableHead>Status</TableHead>{owner ? <TableHead className="text-right">Actions</TableHead> : null}</TableRow></TableHeader>
-          <TableBody>
-            {rows.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="text-muted-foreground">No extra charges. Night, hill, permit, airport and festival charges you add here are applied to fares automatically.</TableCell></TableRow>
-            ) : (
-              rows.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell><div className="font-medium">{s.label}</div><div className="text-xs text-muted-foreground">{KIND_LABEL[s.kind]}</div></TableCell>
-                  <TableCell>{s.amountPaise !== null ? formatPaise(s.amountPaise) : `${bpsToPercentText(s.bps)}%`}</TableCell>
-                  <TableCell className="text-muted-foreground">{describe(s)}</TableCell>
-                  <TableCell>{s.active ? <Badge>In use</Badge> : <Badge variant="secondary">Off</Badge>}</TableCell>
-                  {owner ? (
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button size="sm" variant="outline" onClick={() => setOpen(s)}>Edit</Button>
-                        <Button size="sm" variant="ghost" onClick={() => run(() => setSurchargeActive(s.id, !s.active), { success: s.active ? "Switched off." : "Switched on." })}>{s.active ? "Switch off" : "Switch on"}</Button>
-                        <Button size="sm" variant="ghost" onClick={() => run(() => deleteSurcharge(s.id), { success: "Charge deleted.", confirm: `Delete ${s.label}?` })}>Delete</Button>
-                      </div>
-                    </TableCell>
-                  ) : null}
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+      <div>
+        <SimpleTable
+          empty="No extra charges. Night, hill, permit, airport and festival charges you add here are applied to fares automatically."
+          columns={[{ title: "Charge" }, { title: "Amount" }, { title: "When" }, { title: "Status" }, ...(owner ? [{ title: "" }] : [])]}
+          rows={rows.map((s) => ({
+            id: s.id,
+            cells: [
+              <div key="charge"><div className="font-medium">{s.label}</div><div className="text-xs text-muted-foreground">{KIND_LABEL[s.kind]}</div></div>,
+              s.amountPaise !== null ? formatPaise(s.amountPaise) : `${bpsToPercentText(s.bps)}%`,
+              <span key="when" className="text-muted-foreground">{describe(s)}</span>,
+              s.active ? <Badge key="s">In use</Badge> : <Badge key="s" variant="secondary">Off</Badge>,
+              ...(owner ? [<DataTableRowActions key="actions" label={`Actions for ${s.label}`} actions={[{ label: "Edit", onClick: () => setOpen(s) }, { label: "Status", value: s.active ? "on" : "off", options: [{ value: "on", label: "In use" }, { value: "off", label: "Off" }], onSelect: (v) => run(() => setSurchargeActive(s.id, v === "on"), { success: v === "on" ? "Switched on." : "Switched off." }) }, { label: "Delete", destructive: true, confirm: { title: `Delete ${s.label}?` }, onClick: () => run(() => deleteSurcharge(s.id), { success: "Charge deleted." }) }]} />] : []),
+            ],
+          }))}
+        />
       </div>
       <Sheet open={open !== null} onOpenChange={(o) => !o && setOpen(null)}>
         <SheetContent className="overflow-y-auto">

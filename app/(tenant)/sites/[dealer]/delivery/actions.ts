@@ -10,10 +10,11 @@ import { deliveryPartners, orders } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
 import { rateLimit } from "@/lib/core/rate-limit"
 import { RIDER_COOKIE, RIDER_SESSION_SECONDS, readRiderSession, riderNext, signRiderSession } from "@/lib/restaurant/rider-session"
+import { ORDER_INDUSTRIES } from "@/lib/verticals"
 
 type Result = { ok: true } | { ok: false; error: string }
 
-const tenant = () => tenantContext("restaurants")
+const tenant = () => tenantContext(ORDER_INDUSTRIES)
 
 /** The signed-in rider for this restaurant, or null. A token for one restaurant never works on another. */
 export async function currentRider() {
@@ -59,7 +60,7 @@ export async function riderUpdate(orderId: string, collectedCash: boolean): Prom
   const next = riderNext(order.status)
   if (!next) return { ok: false, error: "Nothing to update on this order." }
   await db.orders.update(
-    { status: next, updatedAt: new Date(), ...(next === "completed" && collectedCash && order.paymentStatus !== "paid" ? { paymentStatus: "paid", paidAt: new Date() } : {}) },
+    { status: next, updatedAt: new Date(), ...(next === "completed" ? { deliveredAt: new Date() } : {}), ...(next === "completed" && collectedCash && order.paymentStatus !== "paid" ? { paymentStatus: "paid", paidAt: new Date() } : {}) },
     eq(orders.id, orderId),
   )
   revalidatePath("/delivery", "layout")
@@ -70,5 +71,5 @@ export async function riderOrders() {
   const r = await currentRider()
   if (!r) return null
   const rows = await scopedDb(r.dealer.id).orders.select(and(eq(orders.partnerId, r.partner.id), inArray(orders.status, ["confirmed", "preparing", "ready", "out_for_delivery"])))
-  return rows.map((o) => ({ id: o.id, code: o.code, customerName: o.customerName, phone: o.customerPhone, address: o.address ?? "", pincode: o.pincode ?? "", lat: o.latitude, lng: o.longitude, note: o.note, total: o.total, paid: o.paymentStatus === "paid", status: o.status, items: o.lines.map((l) => `${l.qty}× ${l.name}${l.portion ? ` (${l.portion})` : ""}`).join(", ") }))
+  return rows.map((o) => ({ id: o.id, code: o.code, customerName: o.customerName, phone: o.customerPhone, address: o.address ?? "", pincode: o.pincode ?? "", lat: o.latitude, lng: o.longitude, note: o.note, total: o.total, tip: o.tip, paid: o.paymentStatus === "paid", status: o.status, items: o.lines.map((l) => `${l.qty}× ${l.name}${l.portion ? ` (${l.portion})` : ""}`).join(", ") }))
 }

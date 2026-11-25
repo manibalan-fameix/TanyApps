@@ -8,7 +8,7 @@ export default function Page() {
   return (
     <TextPage title="About us">
       <p>
-        {copy.brand.name} is a software service for local businesses in India{company.legalName && <>, run by {company.legalName}</>}. It is built for car dealers, restaurants and cab operators to publish their own web page and to manage enquiries, orders and bookings.
+        {copy.brand.name} is a software service for local businesses in India{company.legalName && <>, run by {company.legalName}</>}. Car dealers, restaurants, cab operators and shops use it to publish their own web page and to manage enquiries, orders and bookings.
       </p>
       <h2>What we sell</h2>
       <p>We sell subscriptions to our software. Businesses pick a plan and pay us for the use of the platform.</p>

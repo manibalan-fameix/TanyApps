@@ -250,7 +250,7 @@ export async function requestBooking(raw: unknown, classId: string, expectedTota
       event: "trip.requested",
       recipientType: "customer",
       recipientId: customer.id,
-      recipient: decrypt(customer.phoneEnc),
+      recipient: decrypt(customer.phoneEnc, p.w.dealer.id),
       channel: "wa_link",
       template: "trip_requested_customer",
       payload: { tripId: trip.id, code: trip.code, text: bookingMessage(isLang(customer.language) ? customer.language : "en", "requestedToCustomer", { code: trip.code, operator: p.w.dealer.displayName }) },
@@ -292,7 +292,7 @@ export async function saveAddress(input: { label: string; place: string }): Prom
   const place = parsed.success ? await openPlace(parsed.data.place) : null
   if (!parsed.success || !place) return { ok: false }
   if ((await w.db.customerAddresses.count(eq(customerAddresses.customerId, c.id))) >= 10) return { ok: false }
-  await w.db.customerAddresses.insert({ customerId: c.id, label: parsed.data.label, addressEnc: encrypt(JSON.stringify({ name: place.name, address: place.address, stateCode: place.stateCode })), lat: place.lat, lng: place.lng, placeId: place.placeId })
+  await w.db.customerAddresses.insert({ customerId: c.id, label: parsed.data.label, addressEnc: encrypt(JSON.stringify({ name: place.name, address: place.address, stateCode: place.stateCode }), w.dealer.id), lat: place.lat, lng: place.lng, placeId: place.placeId })
   return { ok: true }
 }
 
@@ -313,7 +313,7 @@ export async function saveContact(input: { name: string; phone: string }): Promi
   if (!parsed.success || !phone) return { ok: false, error: "phone" }
   if ((await w.db.customerContacts.count(eq(customerContacts.customerId, c.id))) >= 5) return { ok: false, error: "limit" }
   try {
-    await w.db.customerContacts.insert({ customerId: c.id, name: parsed.data.name, phoneEnc: encrypt(phone), phoneHash: phoneHash(phone) })
+    await w.db.customerContacts.insert({ customerId: c.id, name: parsed.data.name, phoneEnc: encrypt(phone, w.dealer.id), phoneHash: phoneHash(phone) })
   } catch {
     return { ok: false, error: "phone" } // the same number twice
   }

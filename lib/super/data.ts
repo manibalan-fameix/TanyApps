@@ -28,7 +28,6 @@ import {
 } from "../db/schema"
 import { billingState, effectivePlanKey } from "../billing/state"
 import { PLANS, type PlanKey, getPlan, monthlyPriceFor, yearlyMonthsFor } from "../plans"
-import { tryDecrypt } from "../crypto"
 import { ATTENTION_LABEL, bookingAttention, type RefundAttention } from "../bookings/exceptions"
 import { requireSuperAdmin } from "./guard"
 
@@ -588,7 +587,7 @@ export async function loadBusiness(id: string): Promise<BusinessDetail | null> {
     recentLeads: leadRows.map((l) => ({
       id: l.id,
       name: l.name,
-      phone: maskPhone(tryDecrypt(l.phone)),
+      phone: "", // customers' numbers are the business's own: the platform never decrypts them
       car: carTitle.get(l.carId) ?? "",
       source: l.source,
       status: l.status,
@@ -597,8 +596,8 @@ export async function loadBusiness(id: string): Promise<BusinessDetail | null> {
     recentOrders: orderRows.map((o) => ({
       id: o.id,
       code: o.code,
-      customer: o.customerName,
-      phone: maskPhone(o.customerPhone),
+      customer: "Guest",
+      phone: "",
       total: o.total,
       status: o.status,
       payment: `${o.paymentMethod} · ${o.paymentStatus}`,
@@ -732,7 +731,7 @@ export async function loadLeads(dealerId?: string): Promise<LeadListRow[]> {
   return rows.map(({ lead, make, model, year, dealer }) => ({
     id: lead.id,
     name: lead.name,
-    phone: maskPhone(tryDecrypt(lead.phone)),
+    phone: "",
     business: dealer,
     businessId: lead.dealerId,
     car: [year, make, model].filter(Boolean).join(" ") || "Untitled car",
@@ -769,8 +768,8 @@ export async function loadOrders(dealerId?: string): Promise<OrderListRow[]> {
   return rows.map(({ o, dealer }) => ({
     id: o.id,
     code: o.code,
-    customer: o.customerName,
-    phone: maskPhone(o.customerPhone),
+    customer: "Guest",
+    phone: "",
     business: dealer,
     businessId: o.dealerId,
     fulfilment: o.fulfilment,
@@ -822,7 +821,7 @@ export async function loadBookings(
   return rows.map(({ b, dealer, make, model, year }) => ({
     id: b.id,
     buyer: b.buyerName,
-    phone: maskPhone(tryDecrypt(b.buyerPhone)),
+    phone: "",
     business: dealer,
     businessId: b.dealerId,
     car: [year, make, model].filter(Boolean).join(" ") || "Untitled car",

@@ -16,12 +16,12 @@ import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = {
   title: "TanyApps | Online pages and software for local businesses",
-  description: "Software for car dealers, restaurants and cab operators in India: your own web page to show what you offer and take enquiries, orders and bookings.",
+  description: "Software for car dealers, restaurants, cab operators and shops in India: your own web page to show what you offer and take enquiries, orders and bookings.",
 }
 
 const STEPS = [
   { title: "Create your account", body: "Sign in, choose your type of business and enter its name and contact number." },
-  { title: "Add what you offer", body: "List your cars, dishes or cab vehicles with photos and prices." },
+  { title: "Add what you offer", body: "List your cars, dishes, vehicles or products with photos and prices." },
   { title: "Share your link", body: "Send your page on WhatsApp and Instagram, then manage what comes in from one dashboard." },
 ]
 
@@ -34,7 +34,7 @@ export default function Home() {
           Your business online, on <span className="text-primary">your own link</span>
         </h1>
         <p className="text-lg text-pretty text-muted-foreground">
-          TanyApps gives car dealers, restaurants and cab operators their own web page and a dashboard to manage enquiries, orders and bookings.
+          TanyApps gives car dealers, restaurants, cab operators and shops their own web page and a dashboard to manage enquiries, orders and bookings.
         </p>
         <div className="flex flex-wrap justify-center gap-3">
           {/* Plain anchor: the admin app is on another subdomain. */}
@@ -56,7 +56,7 @@ export default function Home() {
           <h2 id="products" className="text-center text-3xl font-semibold tracking-tight">
             One platform, built for your kind of business
           </h2>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             {verticalList.map((v) => {
               const product = productForIndustry(v.key)
               return (

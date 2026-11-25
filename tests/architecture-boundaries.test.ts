@@ -15,14 +15,8 @@ type Product = (typeof PRODUCTS)[number]
 const KNOWN_EDGES = new Set([
   "lib/cabs/admin-actions.ts -> restaurant",
   "components/cabs/fleet.tsx -> restaurant",
-  "components/cabs/fleet.tsx -> cars",
-  "components/cabs/drivers.tsx -> restaurant",
-  "components/cabs/drivers.tsx -> cars",
   "components/cabs/dashboard.tsx -> restaurant",
   "components/cabs/tenant/backdrop-map.tsx -> restaurant",
-  "components/restaurant/ops-grids.tsx -> cars",
-  "components/restaurant/data-grid.tsx -> cars",
-  "components/restaurant/restaurant-grids.tsx -> cars",
 ])
 
 // lib/core is the shared platform. These are the places where it reaches into a product (the scheduled jobs are product-aware by
@@ -30,6 +24,7 @@ const KNOWN_EDGES = new Set([
 const KNOWN_CORE_EDGES = new Set([
   "lib/core/geo/google.ts -> ../../cabs/states",
   "lib/core/geo/osm.ts -> ../../cabs/states",
+  "lib/core/jobs/create-monthly-orders.ts -> ../../restaurant/monthly-orders",
   "lib/core/jobs/expire-trip-holds.ts -> ../../cabs/trips",
   "lib/core/jobs/expire-unpaid-orders.ts -> ../../restaurant/payments",
   "lib/core/jobs/retry-order-refunds.ts -> ../../restaurant/payments",

@@ -15,3 +15,7 @@ export async function setDealerHours(dealerId: string, hours: BusinessHours): Pr
 export async function setDealerTheme(dealerId: string, theme: DealerTheme): Promise<void> {
   await unscopedDb.update(dealers).set({ theme }).where(eq(dealers.id, dealerId))
 }
+
+export async function setDealerDetails(dealerId: string, details: Partial<Pick<typeof dealers.$inferInsert, "displayName" | "city" | "phone" | "businessType" | "logoUrl">>): Promise<void> {
+  await unscopedDb.update(dealers).set(details).where(eq(dealers.id, dealerId))
+}

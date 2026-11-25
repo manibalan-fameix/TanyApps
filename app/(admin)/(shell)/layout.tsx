@@ -24,6 +24,7 @@ import type { IndustryKey } from "@/lib/industries"
 import { billingState, effectivePlanKey } from "@/lib/billing/state"
 import { bookingsBanner, bookingsUsage } from "@/lib/cabs/limits"
 import { monthlyBookingCount, recordBookingsThreshold } from "@/lib/cabs/usage"
+import { isOrderIndustry } from "@/lib/verticals"
 
 const DEMO_CARS = [
   { id: "demo-1", year: 2017, regPrefix: "tn11", shortCode: "k7x2m" },
@@ -81,7 +82,7 @@ export default async function ShellLayout({ children }: { children: React.ReactN
     await recordBookingsThreshold(db, usage, now).catch(() => false)
   }
 
-  const restaurant = ctx.status === "ok" && ctx.dealer.industry === "restaurants"
+  const restaurant = ctx.status === "ok" && isOrderIndustry(ctx.dealer.industry)
   const switcher =
     ctx.status === "ok" && ctx.businesses
       ? {
@@ -91,9 +92,9 @@ export default async function ShellLayout({ children }: { children: React.ReactN
         }
       : undefined
   const shell = (
-    <SidebarProvider>
+    <SidebarProvider data-store-backend="">
       <AppSidebar switcher={switcher} dealerName={dealerName} dealerLogoUrl={ctx.status === "ok" ? ctx.dealer.logoUrl : null} planLabel={planLabel} publicUrl={publicUrl} user={user} recentCars={recentCars} industry={ctx.status === "ok" ? (ctx.dealer.industry as IndustryKey) : undefined} />
-      <SidebarInset>
+      <SidebarInset className="min-w-0">
         <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 bg-background/90 pt-[var(--safe-area-inset-top)] backdrop-blur max-md:border-b max-md:border-border md:static md:h-16 md:bg-transparent md:pt-0 md:backdrop-blur-none">
           <div className="flex items-center gap-2 px-4 md:px-10">
             <SidebarTrigger className="-ml-1 max-md:hidden" />
@@ -107,7 +108,7 @@ export default async function ShellLayout({ children }: { children: React.ReactN
         </header>
         {/* Uploads run for the whole admin session, so they carry on while the dealer navigates. */}
         <UploadProvider>
-          <div className="flex flex-1 flex-col gap-4 p-4 pt-4 pb-[calc(5.5rem+var(--safe-area-inset-bottom))] md:px-10 md:pt-0 md:pb-8">
+          <div className="flex min-w-0 flex-1 flex-col gap-4 p-4 pt-4 pb-[calc(5.5rem+var(--safe-area-inset-bottom))] md:px-10 md:pt-0 md:pb-8">
             {banner ? (
               <Alert variant={banner.destructive ? "destructive" : "default"}>
                 <AlertTitle>{banner.title}</AlertTitle>

@@ -27,6 +27,7 @@
     --color-border: var(--border);
     --color-destructive: var(--destructive);
     --color-success: var(--success);
+    --color-info: var(--info);
     --color-accent-foreground: var(--accent-foreground);
     --color-accent: var(--accent);
     --color-muted-foreground: var(--muted-foreground);
@@ -108,14 +109,15 @@
     --accent-foreground: oklch(0.21 0.006 285.885);
     --destructive: oklch(0.577 0.245 27.325);
     --success: oklch(0.527 0.154 150.069);
+    --info: oklch(0.546 0.215 262.881);
     --border: oklch(0.92 0.004 286.32);
     --input: oklch(0.92 0.004 286.32);
     --ring: oklch(0.705 0.015 286.067);
-    --chart-1: oklch(0.871 0.006 286.286);
-    --chart-2: oklch(0.552 0.016 285.938);
-    --chart-3: oklch(0.442 0.017 285.786);
-    --chart-4: oklch(0.37 0.013 285.805);
-    --chart-5: oklch(0.274 0.006 286.033);
+    --chart-1: var(--brand);
+    --chart-2: color-mix(in oklab, var(--brand), white 45%);
+    --chart-3: color-mix(in oklab, var(--brand), black 38%);
+    --chart-4: color-mix(in oklab, var(--brand), white 70%);
+    --chart-5: color-mix(in oklab, var(--brand), black 62%);
     --radius: 0.625rem;
     --safe-area-inset-top: env(safe-area-inset-top);
     --safe-area-inset-bottom: env(safe-area-inset-bottom);
@@ -159,14 +161,15 @@
     --accent-foreground: oklch(0.985 0 0);
     --destructive: oklch(0.704 0.191 22.216);
     --success: oklch(0.723 0.219 149.579);
+    --info: oklch(0.707 0.165 254.624);
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.552 0.016 285.938);
-    --chart-1: oklch(0.871 0.006 286.286);
-    --chart-2: oklch(0.552 0.016 285.938);
-    --chart-3: oklch(0.442 0.017 285.786);
-    --chart-4: oklch(0.37 0.013 285.805);
-    --chart-5: oklch(0.274 0.006 286.033);
+    --chart-1: var(--brand);
+    --chart-2: color-mix(in oklab, var(--brand), white 45%);
+    --chart-3: color-mix(in oklab, var(--brand), black 28%);
+    --chart-4: color-mix(in oklab, var(--brand), white 70%);
+    --chart-5: color-mix(in oklab, var(--brand), white 22%);
     --sidebar: oklch(0.21 0.006 285.885);
     --sidebar-foreground: oklch(0.985 0 0);
     --sidebar-primary: #E5270B;
@@ -175,6 +178,47 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.552 0.016 285.938);
+}
+
+/*
+ * Store backend (the shop owner's admin): Tany brand colours only. Red is the one colour; everything else is neutral.
+ * Matched on body so that dialogs, menus, sheets and toasts, which render outside the shell, follow it too.
+ */
+body:has([data-store-backend]) {
+    --success: var(--foreground);
+    --info: var(--brand);
+    --destructive: var(--brand);
+    --sileo-state-success: var(--brand);
+    --sileo-state-error: var(--brand);
+    --sileo-state-warning: var(--brand);
+    --sileo-state-info: var(--brand);
+    --sileo-state-action: var(--brand);
+}
+
+/* Category tiles take their colours inline, so the brand tint has to be forced. */
+body:has([data-store-backend]) [data-category-icon] {
+    --tile: color-mix(in oklab, var(--brand) 12%, transparent) !important;
+    --ink: var(--brand) !important;
+    --ink-dark: color-mix(in oklab, var(--brand), white 45%) !important;
+}
+
+/* A slim scroll bar for panels that scroll inside a card, instead of a wide bar fixed to the edge. */
+.thin-scroll {
+    scrollbar-color: var(--border) transparent;
+    scrollbar-width: thin;
+}
+
+.thin-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.thin-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.thin-scroll::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 999px;
 }
 
 .onboarding-product-grid {
@@ -213,36 +257,6 @@
     @apply font-sans;
     }
 }
-/* AG Grid: keep the header filter button next to the label instead of the far edge. */
-.ag-header-cell .ag-cell-label-container {
-  /* The container is row-reverse, so flex-end packs label + button to the left. */
-  justify-content: flex-end;
-  gap: 0.25rem;
-}
-.ag-header-cell .ag-header-cell-label {
-  flex: 0 1 auto;
-}
-
-/* AG Grid header icons: masked so they follow the text colour in light and dark. */
-.ag-header-cell.hdr-icon .ag-header-cell-text::before {
-  content: "";
-  display: inline-block;
-  width: 1rem;
-  height: 1rem;
-  margin-right: 0.375rem;
-  vertical-align: -0.2em;
-  background-color: currentColor;
-  opacity: 0.5;
-  -webkit-mask: var(--hdr-icon) center / contain no-repeat;
-  mask: var(--hdr-icon) center / contain no-repeat;
-}
-
-/* AG Grid: vertically centre every cell's content within the row. */
-.ag-row .ag-cell {
-  display: flex;
-  align-items: center;
-}
-
 /* "Scroll Products" hint: eases down and back, softly and repeatedly. */
 @keyframes scroll-hint-nudge {
   0%,

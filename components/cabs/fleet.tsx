@@ -3,14 +3,10 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMemo, useState } from "react"
-import type { ColDef } from "ag-grid-community"
-import type { CustomCellRendererProps } from "ag-grid-react"
-import { Car01Icon, CheckmarkBadge01Icon, File02Icon } from "@hugeicons/core-free-icons"
 
-import { optionsFilter } from "@/components/cars/cars-grid"
 import { DocumentUpload, ExpiryBadge, ExpirySummary, FileLink, SelectField, TextField, istDateTime, localToIst, useAction } from "@/components/cabs/kit"
 import type { BlockedRow, ClassOption, ClassRow, DocRow, VehicleRow } from "@/components/cabs/types"
-import { DataGrid } from "@/components/restaurant/data-grid"
+import { type ColDef, type CustomCellRendererProps, DataGrid, optionsFilter } from "@/components/data-table/data-grid"
 import { ImageUpload } from "@/components/restaurant/image-upload"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -18,7 +14,8 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { DataTableRowActions, rowActionsColumn } from "@/components/data-table/data-table-row-actions"
+import { SimpleTable } from "@/components/data-table/simple-table"
 import { Textarea } from "@/components/ui/textarea"
 import { addBlockedPeriod, addVehicleDocument, deleteBlockedPeriod, deleteVehicle, deleteVehicleClass, deleteVehicleDocument, requestClassImageUpload, saveVehicle, saveVehicleClass, setVehicleStatus } from "@/lib/cabs/admin-actions"
 import { VEHICLE_DOC_LABEL, VEHICLE_DOC_TYPES } from "@/lib/cabs/schemas"
@@ -81,42 +78,22 @@ export function ClassesManager({ rows }: { rows: ClassRow[] }) {
       <div className="flex justify-end">
         <Button onClick={() => setOpen("new")}>Add vehicle class</Button>
       </div>
-      <div className="rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Class</TableHead>
-              <TableHead>Seats</TableHead>
-              <TableHead>Bags</TableHead>
-              <TableHead>AC</TableHead>
-              <TableHead>Vehicles</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((r) => (
-              <TableRow key={r.id}>
-                <TableCell className="font-medium">{r.name}</TableCell>
-                <TableCell>{r.seats}</TableCell>
-                <TableCell>{r.bags}</TableCell>
-                <TableCell>{r.ac ? "Yes" : "No"}</TableCell>
-                <TableCell>{r.vehicles}</TableCell>
-                <TableCell>{r.active ? <Badge>Offered</Badge> : <Badge variant="secondary">Hidden</Badge>}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button size="sm" variant="outline" onClick={() => setOpen(r)}>
-                      Edit
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => run(() => deleteVehicleClass(r.id), { success: "Class deleted.", confirm: `Delete ${r.name}?` })}>
-                      Delete
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      <div>
+        <SimpleTable
+          columns={[{ title: "Class" }, { title: "Seats" }, { title: "Bags" }, { title: "AC" }, { title: "Vehicles" }, { title: "Status" }, { title: "" }]}
+          rows={rows.map((r) => ({
+            id: r.id,
+            cells: [
+              <span key="name" className="font-medium">{r.name}</span>,
+              r.seats,
+              r.bags,
+              r.ac ? "Yes" : "No",
+              r.vehicles,
+              r.active ? <Badge key="s">Offered</Badge> : <Badge key="s" variant="secondary">Hidden</Badge>,
+              <DataTableRowActions key="actions" label={`Actions for ${r.name}`} actions={[{ label: "Edit", onClick: () => setOpen(r) }, { label: "Delete", destructive: true, confirm: { title: `Delete ${r.name}?` }, onClick: () => run(() => deleteVehicleClass(r.id), { success: "Class deleted." }) }]} />,
+            ],
+          }))}
+        />
       </div>
       <Sheet open={open !== null} onOpenChange={(o) => !o && setOpen(null)}>
         <SheetContent className="overflow-y-auto">
@@ -202,7 +179,6 @@ export function VehiclesGrid({ rows, classes, usage }: { rows: VehicleRow[]; cla
       {
         field: "makeModel",
         headerName: "Vehicle",
-        headerClass: "hdr-icon hdr-car",
         minWidth: 200,
         flex: 1,
         cellRenderer: ({ data }: CustomCellRendererProps<VehicleRow>) =>
@@ -213,18 +189,18 @@ export function VehiclesGrid({ rows, classes, usage }: { rows: VehicleRow[]; cla
             </div>
           ) : null,
       },
-      { field: "className", headerName: "Class", headerClass: "hdr-icon hdr-car", width: 140 },
-      { field: "ownership", headerName: "Ownership", headerClass: "hdr-icon hdr-car", width: 120, valueFormatter: (p) => (p.value === "own" ? "Owned" : "Attached") },
-      { field: "odometerKm", headerName: "Odometer", headerClass: "hdr-icon hdr-car", width: 120, valueFormatter: (p) => `${Number(p.value).toLocaleString("en-IN")} km` },
-      { field: "docs", headerName: "Documents", headerClass: "hdr-icon hdr-doc", width: 220, sortable: false, cellRenderer: ({ data }: CustomCellRendererProps<VehicleRow>) => (data ? <ExpirySummary {...data.docs} /> : null) },
+      { field: "className", headerName: "Class", width: 140 },
+      { field: "ownership", headerName: "Ownership", width: 120, valueFormatter: (p) => (p.value === "own" ? "Owned" : "Attached") },
+      { field: "odometerKm", headerName: "Odometer", width: 120, valueFormatter: (p) => `${Number(p.value).toLocaleString("en-IN")} km` },
+      { field: "docs", headerName: "Documents", width: 220, sortable: false, cellRenderer: ({ data }: CustomCellRendererProps<VehicleRow>) => (data ? <ExpirySummary {...data.docs} /> : null) },
       {
         field: "status",
         headerName: "Status",
-        headerClass: "hdr-icon hdr-status",
         width: 140,
         cellRenderer: ({ data }: CustomCellRendererProps<VehicleRow>) => (data ? <Badge variant={STATUS_BADGE[data.status]} className="capitalize">{data.status}</Badge> : null),
         ...(optionsFilter({ options: ["active", "maintenance", "inactive"] }) as Partial<ColDef<VehicleRow>>),
       },
+      rowActionsColumn<VehicleRow>((r) => ({ label: `Actions for ${r.makeModel}`, actions: [{ label: "View", href: `/cabs/vehicles/${r.id}` }] })),
     ],
     [],
   )
@@ -241,12 +217,9 @@ export function VehiclesGrid({ rows, classes, usage }: { rows: VehicleRow[]; cla
       <DataGrid<VehicleRow>
         rows={rows}
         columns={columns}
-        icons={{ car: Car01Icon, doc: File02Icon, status: CheckmarkBadge01Icon }}
         tabs={[{ key: "all", label: "All" }, { key: "active", label: "Active" }, { key: "maintenance", label: "Maintenance" }, { key: "inactive", label: "Inactive" }]}
         searchPlaceholder="Search vehicles…"
         noMatches="No vehicles match your filters."
-        rowHeight={60}
-        onRowClick={(r) => router.push(`/cabs/vehicles/${r.id}`)}
         toolbar={
           <Button disabled={full} onClick={() => setAdding(true)}>
             Add vehicle
@@ -307,35 +280,22 @@ export function VehicleDocuments({ vehicleId, docs, storageReady }: { vehicleId:
           </FieldGroup>
         </div>
       ) : null}
-      <div className="rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Document</TableHead>
-              <TableHead>Number</TableHead>
-              <TableHead>Valid till</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>File</TableHead>
-              <TableHead className="text-right" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {docs.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-muted-foreground">No documents yet. Add the RC, insurance, permit and fitness certificate so you hear before they expire.</TableCell></TableRow>
-            ) : (
-              docs.map((d) => (
-                <TableRow key={d.id}>
-                  <TableCell className="font-medium">{d.typeLabel}</TableCell>
-                  <TableCell>{d.number || "—"}</TableCell>
-                  <TableCell>{d.validTill ?? "—"}</TableCell>
-                  <TableCell><ExpiryBadge status={d.status} /></TableCell>
-                  <TableCell><FileLink fileKey={d.fileKey} /></TableCell>
-                  <TableCell className="text-right"><Button size="sm" variant="ghost" onClick={() => run(() => deleteVehicleDocument(d.id), { success: "Document deleted.", confirm: `Delete the ${d.typeLabel}?` })}>Delete</Button></TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+      <div>
+        <SimpleTable
+          empty="No documents yet. Add the RC, insurance, permit and fitness certificate so you hear before they expire."
+          columns={[{ title: "Document" }, { title: "Number" }, { title: "Valid till" }, { title: "Status" }, { title: "File" }, { title: "" }]}
+          rows={docs.map((d) => ({
+            id: d.id,
+            cells: [
+              <span key="type" className="font-medium">{d.typeLabel}</span>,
+              d.number || "—",
+              d.validTill ?? "—",
+              <ExpiryBadge key="status" status={d.status} />,
+              <FileLink key="file" fileKey={d.fileKey} />,
+              <DataTableRowActions key="actions" label={`Actions for the ${d.typeLabel}`} actions={[{ label: "Delete", destructive: true, confirm: { title: `Delete the ${d.typeLabel}?` }, onClick: () => run(() => deleteVehicleDocument(d.id), { success: "Document deleted." }) }]} />,
+            ],
+          }))}
+        />
       </div>
     </div>
   )
@@ -366,22 +326,19 @@ export function BlockedPeriods({ resourceType, resourceId, rows }: { resourceTyp
           </FieldGroup>
         </div>
       ) : null}
-      <div className="rounded-lg border">
-        <Table>
-          <TableBody>
-            {rows.length === 0 ? (
-              <TableRow><TableCell className="text-muted-foreground">Nothing blocked. Trips can be given at any time.</TableCell></TableRow>
-            ) : (
-              rows.map((b) => (
-                <TableRow key={b.id}>
-                  <TableCell>{istDateTime(b.startsAt)} → {istDateTime(b.endsAt)}</TableCell>
-                  <TableCell className="text-muted-foreground">{b.reason || "—"}</TableCell>
-                  <TableCell className="text-right"><Button size="sm" variant="ghost" onClick={() => run(() => deleteBlockedPeriod(b.id), { success: "Removed." })}>Remove</Button></TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+      <div>
+        <SimpleTable
+          empty="Nothing blocked. Trips can be given at any time."
+          columns={[{ title: "Blocked" }, { title: "Reason" }, { title: "" }]}
+          rows={rows.map((b) => ({
+            id: b.id,
+            cells: [
+              `${istDateTime(b.startsAt)} → ${istDateTime(b.endsAt)}`,
+              <span key="why" className="text-muted-foreground">{b.reason || "—"}</span>,
+              <DataTableRowActions key="actions" label="Blocked period actions" actions={[{ label: "Remove", destructive: true, confirm: { title: "Remove this blocked period?" }, onClick: () => run(() => deleteBlockedPeriod(b.id), { success: "Removed." }) }]} />,
+            ],
+          }))}
+        />
       </div>
     </div>
   )

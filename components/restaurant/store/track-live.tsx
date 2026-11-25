@@ -6,6 +6,12 @@ import { useRouter } from "next/navigation"
 import { openLiveSocket } from "@/lib/restaurant/live-socket"
 import { LiveMap, type MapMarker } from "@/components/restaurant/live-map"
 import { ago } from "@/lib/restaurant/tracking"
+import { OrderSheet } from "@/components/restaurant/store/order-sheet"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { Call02Icon, UserIcon } from "@hugeicons/core-free-icons"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { buttonVariants } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 type Live = {
   status: string
@@ -25,7 +31,7 @@ const POLL_WITH_SOCKET_MS = 15_000
 const FRESH_MS = 45_000
 
 /** Live view of the delivery for the guest: rider on the map, distance, ETA, and a call button. Re-renders the page when the status changes. */
-export function TrackLive({ code, status, initialRider }: { code: string; status: string; initialRider: { name: string; phone: string } | null }) {
+export function TrackLive({ code, status, initialRider, children }: { code: string; status: string; initialRider: { name: string; phone: string } | null; children?: React.ReactNode }) {
   const router = useRouter()
   const [live, setLive] = useState<Live | null>(null)
   const [pushed, setPushed] = useState<{ lat: number; lng: number; heading: number | null; at: number; fresh: boolean } | null>(null)
@@ -97,33 +103,38 @@ export function TrackLive({ code, status, initialRider }: { code: string; status
   ]
 
   return (
-    <section className="grid gap-3 rounded-2xl border bg-card p-4" aria-label="Live delivery">
-      {rider ? (
-        <div className="flex items-center justify-between gap-3 text-sm">
-          <p>
-            <span className="font-medium">{rider.name}</span> is bringing your order
-          </p>
-          <a href={`tel:${rider.phone}`} className="inline-flex h-8 shrink-0 items-center rounded-full bg-primary px-3 text-xs font-medium text-primary-foreground">Call {rider.name.split(" ")[0]}</a>
-        </div>
-      ) : null}
+    <div aria-label="Live delivery">
       {markers.length > 0 ? (
-        <>
-          <LiveMap markers={markers} routes={live?.route ? [{ id: "route", points: live.route, stale: !loc || !loc.fresh }] : []} focusId={loc ? "rider" : null} label="Live map of your delivery" className="h-64" />
-          {loc ? (
-            <p role="status" className="text-sm">
-              {live?.etaMinutes != null ? <span className="font-medium">About {live.etaMinutes} min away</span> : null}
-              {live?.distanceKm != null ? ` · ${live.distanceKm.toFixed(1)} km` : ""}
-              <span className="text-muted-foreground"> · {loc.fresh ? `updated ${ago(loc.at)}` : `last seen ${ago(loc.at)}`}</span>
-            </p>
-          ) : (
-            <p role="status" className="text-sm text-muted-foreground">
-              Your rider has left the restaurant.{live?.etaMinutes != null ? ` Expected in about ${live.etaMinutes} min.` : ""} The rider&apos;s live position appears here as soon as they start sharing it.
-            </p>
-          )}
-        </>
+        <LiveMap markers={markers} routes={live?.route ? [{ id: "route", points: live.route, stale: !loc || !loc.fresh }] : []} focusId={loc ? "rider" : null} label="Live map of your delivery" className="h-72 overflow-hidden rounded-3xl" />
       ) : (
-        <p className="text-sm text-muted-foreground">Your rider is on the way. The map appears here shortly.</p>
+        <div className="flex h-40 items-center justify-center rounded-3xl bg-muted text-sm text-muted-foreground">The map appears here shortly.</div>
       )}
-    </section>
+      <OrderSheet overlap>
+        {children}
+        <p role="status" className="text-sm text-muted-foreground">
+          {loc ? (
+            <>
+              {live?.etaMinutes != null ? <span className="font-medium text-foreground">About {live.etaMinutes} min away</span> : null}
+              {live?.distanceKm != null ? ` · ${live.distanceKm.toFixed(1)} km` : ""}
+              {` · ${loc.fresh ? `updated ${ago(loc.at)}` : `last seen ${ago(loc.at)}`}`}
+            </>
+          ) : (
+            <>Your rider has left the restaurant.{live?.etaMinutes != null ? ` Expected in about ${live.etaMinutes} min.` : ""} Live position appears as soon as they start sharing it.</>
+          )}
+        </p>
+        {rider ? (
+          <div className="flex items-center gap-3 border-t pt-4">
+            <Avatar><AvatarFallback><HugeiconsIcon icon={UserIcon} className="size-4" /></AvatarFallback></Avatar>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{rider.name}</p>
+              <p className="text-xs text-muted-foreground">Your delivery partner</p>
+            </div>
+            <a href={`tel:${rider.phone}`} aria-label={`Call ${rider.name}`} className={cn(buttonVariants({ variant: "secondary", size: "icon" }), "rounded-full")}>
+              <HugeiconsIcon icon={Call02Icon} className="size-4" />
+            </a>
+          </div>
+        ) : null}
+      </OrderSheet>
+    </div>
   )
 }

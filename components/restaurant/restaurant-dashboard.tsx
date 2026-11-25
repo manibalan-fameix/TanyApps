@@ -27,6 +27,7 @@ import { STATUS_LABEL, type OrderStatus } from "@/lib/restaurant/orders"
 import { countBy, dailyOrders, startOfDayIst, summariseOrders, topDishes } from "@/lib/restaurant/stats"
 import { summariseCustomers } from "@/lib/restaurant/customers"
 import { cn } from "@/lib/utils"
+import { storeTerms } from "@/lib/verticals/terms"
 
 const DAYS = 30
 const n = (v: number) => v.toLocaleString("en-IN")
@@ -47,7 +48,8 @@ export async function RestaurantDashboard({ dealer, role }: { dealer: typeof dea
   // An online order nobody has paid for yet is not on the list.
   const recent = allRecent.filter((o) => o.status !== "pending_payment")
   const plan = effectivePlanKey(dealer) as PlanKey
-  const limit = menuItemLimit(plan)
+  const limit = menuItemLimit(plan, dealer.industry)
+  const t = storeTerms(dealer.industry, dealer.businessType)
   const billing = billingState(dealer)
   const stats = summariseOrders(recent)
   const customers = summariseCustomers(recent)
@@ -69,13 +71,13 @@ export async function RestaurantDashboard({ dealer, role }: { dealer: typeof dea
     { icon: Wallet01Icon, label: "Last 7 days", value: money(stats.weekRevenue) },
     {
       icon: Restaurant01Icon,
-      label: "Dishes on menu",
+      label: `${t.Items} listed`,
       value: limit === null ? String(dishes) : `${dishes} / ${limit}`,
       pill: limit === null ? "Unlimited" : undefined,
       progress: limit === null ? undefined : (dishes / limit) * 100,
       href: "/menu",
     },
-    { icon: UserMultiple02Icon, label: `Guests · ${DAYS} days`, value: String(customers.length), pill: `${customers.filter((c) => c.orders > 1).length} returning`, href: "/customers" },
+    { icon: UserMultiple02Icon, label: `${dealer.industry === "retail" ? "Customers" : "Guests"} · ${DAYS} days`, value: String(customers.length), pill: `${customers.filter((c) => c.orders > 1).length} returning`, href: "/customers" },
     { icon: StarIcon, label: "Reviews to approve", value: String(pendingReviews), pill: newEnquiries ? `${newEnquiries} new ${newEnquiries === 1 ? "message" : "messages"}` : undefined, href: "/reviews" },
   ]
 
@@ -90,20 +92,20 @@ export async function RestaurantDashboard({ dealer, role }: { dealer: typeof dea
         planLabel={PLANS[plan].label}
         maxLiveCars={PLANS[plan].maxLiveCars}
         free={billing.phase === "free"}
-        industry="restaurants"
+        industry={dealer.industry}
         menuLimit={limit}
       />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Welcome, {dealer.displayName}</h1>
-          <p className="text-sm text-muted-foreground">Here is how your restaurant is doing.</p>
+          <p className="text-sm text-muted-foreground">Here is how your {t.business} is doing.</p>
         </div>
         <div className="flex gap-2">
           <a href={publicUrl} target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "outline" }))}>
-            Open my menu page
+            Open my {dealer.industry === "retail" ? "store" : "menu"} page
           </a>
           <Link href="/menu/new" className={cn(buttonVariants())}>
-            Add a dish
+            Add {t.item === "dish" ? "a dish" : `a ${t.item}`}
           </Link>
         </div>
       </div>
@@ -130,7 +132,7 @@ export async function RestaurantDashboard({ dealer, role }: { dealer: typeof dea
           </CardHeader>
           <CardContent className="flex flex-col divide-y text-sm">
             {recent.length === 0 ? (
-              <p className="text-muted-foreground">No orders yet. Share your menu link to get started.</p>
+              <p className="text-muted-foreground">No orders yet. Share your {dealer.industry === "retail" ? "store" : "menu"} link to get started.</p>
             ) : (
               recent.slice(0, 5).map((o) => (
                 <Link key={o.id} href={`/orders/${o.id}`} className="flex items-center justify-between gap-3 py-2 hover:underline">

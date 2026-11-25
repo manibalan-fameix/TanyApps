@@ -23,6 +23,8 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
   // The dev badge floats over the bottom-left corner, where the camera's Skip button sits.
   ...(process.env.E2E === "1" ? { devIndicators: false as const } : {}),
+  // Dev only: lets a phone on the same Wi-Fi load dev assets and HMR from the Mac's LAN IP (no effect in production builds).
+  allowedDevOrigins: ["192.168.*.*", "10.*.*.*", "**.nip.io"],
   // The Cloudflare (workerd) bundle resolves pg's socket shim through this condition; tracing
   // would otherwise keep only the empty Node stub and the bundle step fails.
   outputFileTracingIncludes: { "/*": ["./node_modules/pg-cloudflare/**/*"] },

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { useState } from "react"
 
 import type { NavMainItem } from "@/components/admin/nav-config"
+import { ReturnsWaitingBadge } from "@/components/restaurant/order-alerts"
 import {
   Collapsible,
   CollapsibleContent,
@@ -22,7 +23,7 @@ import {
 } from "@/components/ui/sidebar"
 import { copy } from "@/lib/copy"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowRight01Icon } from "@hugeicons/core-free-icons"
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons"
 
 export function NavMain({ items, label }: { items: NavMainItem[]; label?: string }) {
   const pathname = usePathname()
@@ -57,14 +58,14 @@ export function NavMain({ items, label }: { items: NavMainItem[]; label?: string
                   render={
                     <SidebarMenuButton
                       tooltip={item.title}
-                      className="aria-expanded:[&>svg:last-child]:rotate-90"
+                      className="aria-expanded:[&>svg:last-child]:rotate-180"
                     />
                   }
                 >
                   <HugeiconsIcon icon={item.icon} strokeWidth={2} />
                   <span>{item.title}</span>
                   <HugeiconsIcon
-                    icon={ArrowRight01Icon}
+                    icon={ArrowDown01Icon}
                     strokeWidth={2}
                     className="ml-auto transition-transform"
                   />
@@ -92,6 +93,7 @@ export function NavMain({ items, label }: { items: NavMainItem[]; label?: string
               >
                 <HugeiconsIcon icon={item.icon} strokeWidth={2} />
                 <span>{item.title}</span>
+                {item.badge === "returns" ? <ReturnsWaitingBadge /> : null}
               </SidebarMenuButton>
             )}
           </Collapsible>

@@ -11,7 +11,7 @@ import { createTrialSubscription } from "@/lib/billing/razorpay"
 import { getDealerContext } from "@/lib/auth/context"
 import { onboardSchema, slugSchema } from "@/lib/dealers/onboard"
 import { tenantUrl } from "@/lib/env"
-import { getStorage } from "@/lib/storage"
+import { storeLogo } from "@/lib/dealers/logo"
 import { rateLimit } from "@/lib/core/rate-limit"
 import { BrokenLinkError, recommendProduct } from "@/lib/ai/recommend-product"
 import type { ProductKey } from "@/lib/products"
@@ -65,7 +65,7 @@ export async function verifyDealerPhone(
     ok: true,
     phone: identity.phone.replace(/\D/g, "").slice(-10),
     notice: product
-      ? `This number is already associated with ${product}. You can continue setting up your Tany${industry === "cabs" ? "Cabs" : industry === "motors" ? "Motos" : "Eats"} account.`
+      ? `This number is already associated with ${product}. You can continue setting up your Tany${industry === "cabs" ? "Cabs" : industry === "motors" ? "Motos" : industry === "retail" ? "Retail" : "Eats"} account.`
       : undefined,
   }
 }
@@ -76,28 +76,6 @@ export type TrialCheckout = { subscriptionId: string; keyId: string }
 export type CreateResult =
   | { ok: true; url: string; checkout: TrialCheckout | null }
   | { ok: false; error?: string; fieldErrors?: Record<string, string> }
-
-const MAX_LOGO_BYTES = 300_000
-const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47]
-
-/** Stores a client-resized PNG logo and returns its public URL. Anything that is not a small, real PNG is rejected. */
-async function storeLogo(
-  dataUrl: string,
-  slug: string
-): Promise<string | null> {
-  const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl)
-  if (!match) return null
-  const bytes = Buffer.from(match[1], "base64")
-  if (
-    bytes.length > MAX_LOGO_BYTES ||
-    !PNG_MAGIC.every((b, i) => bytes[i] === b)
-  )
-    return null
-  const key = `logos/${slug}-${crypto.randomUUID()}.png`
-  const storage = getStorage()
-  await storage.put(key, bytes, "image/png")
-  return storage.publicUrl(key)
-}
 
 export async function createDealership(
   draft: unknown,

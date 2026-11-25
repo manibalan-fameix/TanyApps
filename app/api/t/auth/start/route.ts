@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { LOGIN_INDUSTRIES } from "@/lib/core/login/host"
 import { tenantFrom } from "@/lib/core/guards"
 import { cookieOptions, stateCookieName } from "@/lib/core/login/customer-session"
 import { randomToken } from "@/lib/core/login/sign"
@@ -12,7 +13,7 @@ import { adminUrl } from "@/lib/env"
  * person who finishes the login is the browser that started it.
  */
 export async function GET(req: Request) {
-  const ctx = await tenantFrom(req.headers, "cabs")
+  const ctx = await tenantFrom(req.headers, LOGIN_INDUSTRIES)
   if (!ctx) return new NextResponse("Not found", { status: 404 })
   const url = new URL(req.url)
   const host = (req.headers.get("host") ?? "").toLowerCase()

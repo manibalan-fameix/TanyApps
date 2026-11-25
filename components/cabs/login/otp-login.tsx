@@ -16,9 +16,10 @@ type Lang = "en" | "ta"
  * Phone, then a 6-digit code (invisible reCAPTCHA and App Check through Firebase), then the server swaps the proof for a one-minute
  * ticket for the business's own site and the browser goes there. Only +91 numbers are accepted, here and again on the server.
  */
-export function OtpLogin({ config, emulator, appCheckSiteKey, host, state, next, lang, link }: { config: FirebaseWebConfig | null; emulator: string | null; appCheckSiteKey: string | null; host: string; state: string; next: string; lang: Lang; link?: string }) {
+export function OtpLogin({ config, emulator, appCheckSiteKey, host, state, next, lang, link, askName }: { config: FirebaseWebConfig | null; emulator: string | null; appCheckSiteKey: string | null; host: string; state: string; next: string; lang: Lang; link?: string; askName?: boolean }) {
   const c = bookingText(lang)
   const t = { sending: c.searching, title: c.loginTitle, phone: c.loginPhone, send: c.loginSend, sent: c.loginSent, verify: c.loginVerify, checking: c.loginChecking, resend: c.loginResend, resendIn: c.loginResendIn, change: c.loginChange, bad: c.loginBad, fail: c.loginFail, off: c.loginOff }
+  const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
   const [code, setCode] = useState("")
   const [sent, setSent] = useState(false)
@@ -67,7 +68,7 @@ export function OtpLogin({ config, emulator, appCheckSiteKey, host, state, next,
     run(async () => {
       if (!otp || value.length !== 6) return
       const idToken = await otp.confirm(value)
-      const res = await fetch("/api/id/ticket", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: otp.name, idToken, host, state, next, link }) })
+      const res = await fetch("/api/id/ticket", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: otp.name, idToken, host, state, next, link, ...(askName ? { name: name.trim() } : {}) }) })
       const data = (await res.json().catch(() => null)) as { ok: boolean; url?: string } | null
       if (!res.ok || !data?.ok || !data.url) return setProblem(res.status === 429 ? friendlyAuthError({ code: "auth/too-many-requests" }) : t.fail)
       window.location.assign(data.url)
@@ -106,6 +107,12 @@ export function OtpLogin({ config, emulator, appCheckSiteKey, host, state, next,
         </>
       ) : (
         <>
+          {askName ? (
+            <Field>
+              <FieldLabel htmlFor="login-name">{c.yourName}</FieldLabel>
+              <Input id="login-name" autoComplete="name" maxLength={60} value={name} onChange={(e) => setName(e.target.value)} className="h-11 text-base" required />
+            </Field>
+          ) : null}
           <Field>
             <FieldLabel htmlFor="login-phone">{t.phone}</FieldLabel>
             <div className="flex items-center gap-2">
@@ -114,7 +121,7 @@ export function OtpLogin({ config, emulator, appCheckSiteKey, host, state, next,
             </div>
           </Field>
           <Field>
-            <Button type="button" className="h-11 text-base" disabled={busy || phone.length !== 10} onClick={sendCode}>
+            <Button type="button" className="h-11 text-base" disabled={busy || phone.length !== 10 || (askName && name.trim().length < 2)} onClick={sendCode}>
               {busy ? t.sending : t.send}
             </Button>
           </Field>

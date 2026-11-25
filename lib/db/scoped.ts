@@ -4,6 +4,7 @@ import { z } from "zod"
 
 import { unscopedDb, type Db } from "./client.ts"
 import { CHILD_TENANT_TABLES, DIRECT_TENANT_TABLES } from "./tenant-tables.ts"
+import { openRow, sealValues, SEALED_COLUMNS } from "./sealed.ts"
 import { cars } from "./schema/index.ts"
 
 export class TenantViolationError extends Error {
@@ -64,19 +65,28 @@ export function scopedDb(dealerId: string, db: Db = unscopedDb) {
         .where(and(eq(cars.id, carIdColumn), eq(cars.dealerId, dealerId))),
     )
 
-  function direct<T extends DirectTable>(table: T) {
+  /** Wraps a read so the table's sealed columns (lib/db/sealed.ts) come back opened. Still awaitable and still inspectable via toSQL(). */
+  function opened<T extends PgTable>(name: string, q: ScopedSelect<T>): ScopedSelect<T> {
+    if (!SEALED_COLUMNS[name]) return q
+    return {
+      then: (res, rej) => q.then((rows) => rows.map((r) => openRow(name, r as Record<string, unknown>, dealerId) as T["$inferSelect"])).then(res, rej),
+      toSQL: () => q.toSQL(),
+    }
+  }
+
+  function direct<T extends DirectTable>(table: T, name: string) {
     const scope = eq(table.dealerId, dealerId)
     return {
-      select: (where?: SQL, opts?: SelectOptions) => read(table, and(scope, where) as SQL, opts),
+      select: (where?: SQL, opts?: SelectOptions) => opened(name, read(table, and(scope, where) as SQL, opts)),
       count: async (where?: SQL) => {
         const [row] = await db.select({ n: count() }).from(table as PgTable).where(and(scope, where))
         return Number(row?.n ?? 0)
       },
       insert: (values: Omit<T["$inferInsert"], "dealerId">) =>
-        db.insert(table).values({ ...values, dealerId } as T["$inferInsert"]),
+        db.insert(table).values(sealValues(name, { ...values, dealerId }, dealerId) as T["$inferInsert"]),
       // dealer_id is stripped at runtime too: a row can never be moved to another dealer.
       update: (set: Partial<Omit<T["$inferInsert"], "dealerId">>, where: SQL) =>
-        db.update(table).set(omitKey(set, "dealerId") as Partial<T["$inferInsert"]>).where(and(scope, where)),
+        db.update(table).set(sealValues(name, omitKey(set, "dealerId"), dealerId) as Partial<T["$inferInsert"]>).where(and(scope, where)),
       delete: (where: SQL) => db.delete(table).where(and(scope, where)),
     }
   }
@@ -121,7 +131,7 @@ export function scopedDb(dealerId: string, db: Db = unscopedDb) {
   type Direct = typeof DIRECT_TENANT_TABLES
   type Child = typeof CHILD_TENANT_TABLES
   // One scoped repository per registered table, keyed by the name it has in lib/db/tenant-tables.ts.
-  const directRepos = Object.fromEntries(Object.entries(DIRECT_TENANT_TABLES).map(([name, table]) => [name, direct(table)])) as {
+  const directRepos = Object.fromEntries(Object.entries(DIRECT_TENANT_TABLES).map(([name, table]) => [name, direct(table, name)])) as {
     [K in keyof Direct]: ReturnType<typeof direct<Direct[K]>>
   }
   const childRepos = Object.fromEntries(Object.entries(CHILD_TENANT_TABLES).map(([name, table]) => [name, child(table)])) as {

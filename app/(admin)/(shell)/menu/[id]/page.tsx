@@ -1,3 +1,4 @@
+import { storeTerms } from "@/lib/verticals"
 import { requireRestaurant } from "@/lib/restaurant/guard"
 import { eq } from "drizzle-orm"
 import { notFound } from "next/navigation"
@@ -9,10 +10,11 @@ import { SettingsPage } from "@/components/settings/settings-page"
 import { menuCategories, menuItems } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
 
-export const metadata = { title: "Edit dish" }
+export const metadata = { title: "Edit item" }
 
 export default async function EditDishPage({ params }: { params: Promise<{ id: string }> }) {
   const { dealer } = await requireRestaurant()
+  const t = storeTerms(dealer.industry, dealer.businessType)
   const { id } = await params
   if (!z.string().uuid().safeParse(id).success) notFound()
   const db = scopedDb(dealer.id)
@@ -22,8 +24,10 @@ export default async function EditDishPage({ params }: { params: Promise<{ id: s
   ])
   if (!item) notFound()
   return (
-    <SettingsPage title="Edit dish" description={item.name}>
+    <SettingsPage title={`Edit ${t.item}`} description={item.name}>
       <MenuItemForm
+        industry={dealer.industry}
+        businessType={dealer.businessType}
         itemId={item.id}
         categories={categories.map((c) => ({ id: c.id, name: c.name }))}
         initial={{

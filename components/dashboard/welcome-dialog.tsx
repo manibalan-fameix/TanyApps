@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { type IndustryKey, getVertical } from "@/lib/verticals"
+import { storeTerms } from "@/lib/verticals/terms"
 
 const subscribe = () => () => {}
 const seenKey = (dealerId: string) => `tany:welcome-seen:${dealerId}`
@@ -48,11 +49,12 @@ export function WelcomeDialog({
   menuLimit?: number | null
 }) {
   const vertical = getVertical(industry)
+  const terms = storeTerms(industry)
   const capText =
     vertical.planLimit === "menu_items"
       ? menuLimit == null
-        ? "unlimited dishes"
-        : `up to ${menuLimit} dishes`
+        ? `unlimited ${terms.items}`
+        : `up to ${menuLimit.toLocaleString("en-IN")} ${terms.items}`
       : `up to ${maxLiveCars} cars live`
   // Hidden on the server and until the browser says this dealer has not seen it, so there is no flash or mismatch.
   const seen = useSyncExternalStore(

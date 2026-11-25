@@ -98,9 +98,9 @@ export function SelectField({ id, label, value, onChange, options, error, placeh
 }
 
 const TONE: Record<ExpiryStatus, "secondary" | "destructive" | "default" | "outline"> = { none: "outline", expired: "destructive", soon: "default", ok: "secondary" }
-const TONE_CLASS: Record<ExpiryStatus, string> = { none: "text-muted-foreground", expired: "", soon: "bg-amber-500/15 text-amber-700 dark:text-amber-300", ok: "" }
+const TONE_CLASS: Record<ExpiryStatus, string> = { none: "text-muted-foreground", expired: "", soon: "border-primary/40 bg-transparent text-primary", ok: "" }
 
-/** Expired (red), expiring within 30 days (amber), valid, or no expiry. */
+/** Expired (tinted red), expiring within 30 days (red outline), valid, or no expiry. */
 export function ExpiryBadge({ status, className }: { status: ExpiryStatus; className?: string }) {
   return (
     <Badge variant={TONE[status]} className={cn(TONE_CLASS[status], className)}>

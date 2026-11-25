@@ -11,6 +11,7 @@ export type StoreDish = {
   isFeatured: boolean
   categoryId: string | null
   categoryName: string
+  details: { brand?: string; barcode?: string; hsn?: string; gst?: number; packSize?: string; shelfLife?: string; origin?: string; unit?: string }
 }
 
 export type StoreCategory = { id: string; name: string; slug: string; count: number }

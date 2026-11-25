@@ -67,7 +67,7 @@ export async function claimVerifiedPhone(
   return { ok: true }
 }
 
-const productName = (value: string) => `Tany${value === "motors" ? "Motos" : value === "restaurants" ? "Eats" : "Cabs"}`
+const productName = (value: string) => `Tany${value === "motors" ? "Motos" : value === "restaurants" ? "Eats" : value === "retail" ? "Retail" : "Cabs"}`
 
 /** Returns the other Tany product already owned by this same verified user, if any. */
 export async function getOtherProductForUser(userId: string, industry: IndustryKey): Promise<string | null> {

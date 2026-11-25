@@ -1,11 +1,13 @@
 "use server"
 
 import { industrySession } from "@/lib/core/guards"
-import { and, asc, desc, eq, gt, inArray, ne } from "drizzle-orm"
+import { and, asc, desc, eq, gte, inArray, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
-import { bannerSchema, cleanLink } from "@/lib/restaurant/banners"
+import { MAX_BANNERS, bannerSchema, cleanLink } from "@/lib/restaurant/banners"
+import { allSections, homepageSchema } from "@/lib/restaurant/homepage"
+import { returnSettingsSchema } from "@/lib/returns/rules"
 import { banners, coupons, deliveryPartners, deliveryZones, enquiries, menuItems, orders, reviews, tableBookings } from "@/lib/db/schema"
 import { hashPassword } from "@/lib/auth/password"
 import { nextPartnerCode, parsePincodes, partnerSchema, pinSchema, zoneSchema } from "@/lib/restaurant/delivery"
@@ -14,9 +16,9 @@ import { refundOrder } from "@/lib/restaurant/payments"
 import { audit } from "@/lib/core/audit"
 import { canRefund, REFUND_DENIED } from "@/lib/core/permissions"
 import { cancelAndRestock } from "@/lib/restaurant/stock-server"
-import { scopedDb } from "@/lib/db/scoped"
+import { scopedDb, scopedTransaction } from "@/lib/db/scoped"
 import { ORDER_STATUSES, type OrderStatus, nextStatuses } from "@/lib/restaurant/orders"
-import { type Fulfilment, orderSettingsSchema } from "@/lib/restaurant/settings"
+import { type Fulfilment, monthlyOfferSchema, orderSettingsSchema, readOrderSettings } from "@/lib/restaurant/settings"
 import { profileSchema } from "@/lib/restaurant/profile"
 import { type Place, reverseGeocode, searchPlaces } from "@/lib/restaurant/geocode"
 import { validCoords } from "@/lib/restaurant/location"
@@ -31,6 +33,7 @@ import { dealers } from "@/lib/db/schema"
 import { isOwnImage } from "@/lib/restaurant/images"
 import { getStorage } from "@/lib/storage"
 import { unscopedDb } from "@/lib/db/client"
+import { ORDER_INDUSTRIES } from "../verticals"
 
 type Result = { ok: true } | { ok: false; error: string }
 const uuid = z.string().uuid()
@@ -38,7 +41,7 @@ const denied: Result = { ok: false, error: "Please sign in again." }
 const ownerOnly: Result = { ok: false, error: "Only the owner can change this." }
 
 /** The signed-in restaurant. The dealer id comes from the session, never from the request. */
-const session = () => industrySession("restaurants")
+const session = () => industrySession(ORDER_INDUSTRIES)
 
 function refresh(...paths: string[]) {
   for (const p of paths) revalidatePath(p)
@@ -88,7 +91,7 @@ export async function setOrderStatus(id: string, status: string): Promise<Result
   }
   // A finished or cancelled trip no longer shows where the rider is.
   if (status === "completed" || status === "cancelled") await dropFix(s.dealer.id, id)
-  refresh("/orders", `/orders/${id}`, "/inventory", "/live-deliveries")
+  refresh("/orders", `/orders/${id}`, "/menu", "/live-deliveries")
   return { ok: true }
 }
 
@@ -253,7 +256,7 @@ export async function adjustStock(itemId: string, delta: number, reason: string)
     .returning({ id: menuItems.id })
   if (rows.length === 0) return { ok: false, error: "Stock changed while you were editing. Try again." }
   await db.stockAdjustments.insert({ itemId, delta, quantityAfter: next.quantity, reason: why })
-  refresh("/inventory", "/menu", "/")
+  refresh("/menu", "/")
   return { ok: true }
 }
 
@@ -268,7 +271,7 @@ export async function setStockTracking(itemId: string, quantity: number | null):
   if (!item) return { ok: false, error: "Dish not found." }
   await db.menuItems.update(quantity === null ? { stockQuantity: null } : { stockQuantity: quantity, isAvailable: quantity > 0 }, eq(menuItems.id, itemId))
   await db.stockAdjustments.insert({ itemId, delta: quantity === null ? 0 : quantity - (item.stockQuantity ?? 0), quantityAfter: quantity ?? 0, reason: quantity === null ? "Stopped tracking" : "Started tracking" })
-  refresh("/inventory", "/menu", "/")
+  refresh("/menu", "/")
   return { ok: true }
 }
 
@@ -412,19 +415,64 @@ export async function deleteCoupon(id: string): Promise<Result> {
 
 // ---------- banners (owner) ----------
 
+/** Checks what the owner typed, for both adding and editing. `keptImage` is the picture the banner already has, which stays allowed. */
+function readBanner(input: unknown, dealerId: string, keptImage: string | null = null) {
+  const parsed = bannerSchema.safeParse(input)
+  if (!parsed.success) return { ok: false as const, error: parsed.error.issues[0].message }
+  const linkUrl = cleanLink(parsed.data.linkUrl)
+  if (parsed.data.linkUrl.trim() !== "" && linkUrl === "") return { ok: false as const, error: "Use a page on your site (like /menu) or a link starting with https://." }
+  if (parsed.data.buttonLabel && !linkUrl) return { ok: false as const, error: "Choose where the button should take guests, or clear the button text." }
+  if (parsed.data.imageUrl !== keptImage && !isOwnImage(getStorage(), dealerId, parsed.data.imageUrl)) return { ok: false as const, error: "Upload the image again." }
+  return { ok: true as const, values: { ...parsed.data, linkUrl, imageUrl: parsed.data.imageUrl || null } }
+}
+
 export async function createBanner(input: unknown): Promise<Result> {
   const s = await session()
   if (!s) return denied
   if (!s.owner) return ownerOnly
-  const parsed = bannerSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
-  const linkUrl = cleanLink(parsed.data.linkUrl)
-  if (parsed.data.linkUrl.trim() !== "" && linkUrl === "") return { ok: false, error: "Use a page on your site (like /menu) or a link starting with https://." }
-  if (parsed.data.buttonLabel && !linkUrl) return { ok: false, error: "Choose where the button should take guests, or clear the button text." }
-  if (!isOwnImage(getStorage(), s.dealer.id, parsed.data.imageUrl)) return { ok: false, error: "Upload the image again." }
+  const read = readBanner(input, s.dealer.id)
+  if (!read.ok) return read
   const db = scopedDb(s.dealer.id)
-  await db.banners.insert({ ...parsed.data, linkUrl, imageUrl: parsed.data.imageUrl || null, sortOrder: await db.banners.count() })
+  const existing = await db.banners.select()
+  if (existing.length >= MAX_BANNERS) return { ok: false, error: `You can have up to ${MAX_BANNERS} banners. Delete one to add another.` }
+  // Last in the list. Counting is not enough: after a delete it could repeat a position already taken.
+  await db.banners.insert({ ...read.values, sortOrder: Math.max(-1, ...existing.map((b) => b.sortOrder)) + 1 })
   refresh("/banners", "/")
+  return { ok: true }
+}
+
+export async function updateBanner(id: string, input: unknown): Promise<Result> {
+  const s = await session()
+  if (!s) return denied
+  if (!s.owner) return ownerOnly
+  if (!uuid.safeParse(id).success) return { ok: false, error: "Banner not found." }
+  const db = scopedDb(s.dealer.id)
+  const [current] = await db.banners.select(eq(banners.id, id))
+  if (!current) return { ok: false, error: "Banner not found." }
+  const read = readBanner(input, s.dealer.id, current.imageUrl)
+  if (!read.ok) return read
+  await db.banners.update(read.values, eq(banners.id, id))
+  refresh("/banners", "/")
+  return { ok: true }
+}
+
+/** Saves the order the owner dragged the banners into. The home page lists them in this order. */
+export async function reorderBanners(ids: string[]): Promise<Result> {
+  const s = await session()
+  if (!s) return denied
+  if (!s.owner) return ownerOnly
+  const failed: Result = { ok: false, error: "Could not save the new order. Refresh and try again." }
+  const parsed = z.array(uuid).max(100).safeParse(ids)
+  if (!parsed.success || new Set(parsed.data).size !== parsed.data.length) return failed
+  const saved = await scopedTransaction(s.dealer.id, async (db) => {
+    const owned = new Set((await db.banners.select()).map((b) => b.id))
+    // Every banner exactly once, so a list that is out of date (or names someone else's banner) changes nothing.
+    if (owned.size !== parsed.data.length || parsed.data.some((id) => !owned.has(id))) return false
+    for (const [sortOrder, id] of parsed.data.entries()) await db.banners.update({ sortOrder }, eq(banners.id, id))
+    return true
+  })
+  if (!saved) return failed
+  refresh("/banners", "/", "/offers", "/menu")
   return { ok: true }
 }
 
@@ -434,7 +482,7 @@ export async function setBannerActive(id: string, isActive: boolean): Promise<Re
   if (!s.owner) return ownerOnly
   if (!uuid.safeParse(id).success) return { ok: false, error: "Banner not found." }
   await scopedDb(s.dealer.id).banners.update({ isActive }, eq(banners.id, id))
-  refresh("/banners")
+  refresh("/banners", "/")
   return { ok: true }
 }
 
@@ -444,7 +492,7 @@ export async function deleteBanner(id: string): Promise<Result> {
   if (!s.owner) return ownerOnly
   if (!uuid.safeParse(id).success) return { ok: false, error: "Banner not found." }
   await scopedDb(s.dealer.id).banners.delete(eq(banners.id, id))
-  refresh("/banners")
+  refresh("/banners", "/")
   return { ok: true }
 }
 
@@ -486,8 +534,23 @@ export async function saveOrderSettings(input: unknown): Promise<Result> {
   const parsed = orderSettingsSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
   // The dealers table is the tenant root: it is updated by the id taken from the session, never from the request.
-  await unscopedDb.update(dealers).set({ orderSettings: parsed.data }).where(eq(dealers.id, s.dealer.id))
+  // The monthly offer has its own page, so this form never changes it, even from a stale tab.
+  const current = readOrderSettings(s.dealer.orderSettings)
+  await unscopedDb.update(dealers).set({ orderSettings: { ...parsed.data, monthly: current.monthly } }).where(eq(dealers.id, s.dealer.id))
   refresh("/settings/ordering", "/")
+  return { ok: true }
+}
+
+/** The subscriber offer for monthly groceries. Owner only; leaves every other ordering setting as it is. */
+export async function saveMonthlyOffer(input: unknown): Promise<Result> {
+  const s = await session()
+  if (!s) return denied
+  if (!s.owner) return ownerOnly
+  const parsed = monthlyOfferSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+  const current = readOrderSettings(s.dealer.orderSettings)
+  await unscopedDb.update(dealers).set({ orderSettings: { ...current, monthly: parsed.data } }).where(eq(dealers.id, s.dealer.id))
+  refresh("/monthly", "/settings/ordering", "/", "/monthly-groceries")
   return { ok: true }
 }
 
@@ -499,8 +562,41 @@ export async function saveProfile(input: unknown): Promise<Result> {
   if (!s.owner) return ownerOnly
   const parsed = profileSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
-  await unscopedDb.update(dealers).set({ profile: parsed.data }).where(eq(dealers.id, s.dealer.id))
-  refresh("/settings/storefront", "/", "/about", "/contact")
+  // Photos must be files this shop uploaded: a link to someone else's picture, or another shop's file, is refused.
+  if (!parsed.data.photos.every((p) => p !== "" && isOwnImage(getStorage(), s.dealer.id, p))) return { ok: false, error: "Upload the photos again." }
+  // The home page layout and the return rules live beside these words in the same field, and are saved from their own screens: keep them.
+  await unscopedDb.update(dealers).set({ profile: { ...(s.dealer.profile ?? {}), ...parsed.data } }).where(eq(dealers.id, s.dealer.id))
+  refresh("/settings/storefront", "/", "/about", "/contact", "/info")
+  return { ok: true }
+}
+
+// ---------- home page (owner) ----------
+
+/** Saves the owner's home page layout: which sections show, their order, headings and chosen products. */
+export async function saveHomepage(input: unknown): Promise<Result> {
+  const s = await session()
+  if (!s) return denied
+  if (!s.owner) return ownerOnly
+  const parsed = homepageSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+  const profile = { ...(s.dealer.profile ?? {}), homepage: { ...parsed.data, sections: allSections(parsed.data.sections) } }
+  await unscopedDb.update(dealers).set({ profile }).where(eq(dealers.id, s.dealer.id))
+  refresh("/homepage", "/")
+  return { ok: true }
+}
+
+// ---------- returns (owner) ----------
+
+/** The shop's return rules. They live on the business's own record beside the home page layout. */
+export async function saveReturnSettings(input: unknown): Promise<Result> {
+  const s = await session()
+  if (!s) return denied
+  if (!s.owner) return ownerOnly
+  const parsed = returnSettingsSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+  await unscopedDb.update(dealers).set({ profile: { ...(s.dealer.profile ?? {}), returns: parsed.data } }).where(eq(dealers.id, s.dealer.id))
+  refresh("/settings/returns", "/returns", "/orders")
+  revalidatePath("/", "layout")
   return { ok: true }
 }
 
@@ -515,7 +611,9 @@ export async function fetchOrderAlerts(since: string | null): Promise<{ ok: true
   const after = since ? new Date(since) : null
   // An unpaid online order is announced when it is paid, not when it is started.
   const placed = ne(orders.status, "pending_payment")
-  const rows = await scopedDb(s.dealer.id).orders.select(after && !Number.isNaN(after.getTime()) ? and(gt(orders.createdAt, after), placed) : placed, { orderBy: [desc(orders.createdAt)], limit: 20 })
+  // The database keeps microseconds but `since` only milliseconds, so "later than since" would match the last announced order
+  // again on every poll. Start from the next millisecond instead.
+  const rows = await scopedDb(s.dealer.id).orders.select(after && !Number.isNaN(after.getTime()) ? and(gte(orders.createdAt, new Date(after.getTime() + 1)), placed) : placed, { orderBy: [desc(orders.createdAt)], limit: 20 })
   return {
     ok: true,
     alerts: rows.map((o) => ({ id: o.id, code: o.code, customerName: o.customerName, itemCount: o.lines.reduce((n, l) => n + l.qty, 0), total: o.total, fulfilment: o.fulfilment, createdAt: o.createdAt.toISOString() })),

@@ -3,7 +3,7 @@ import Link from "next/link"
 import { PageHeader, EmptyState } from "@/components/restaurant/page-header"
 import { Badge } from "@/components/ui/badge"
 import { buttonVariants } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { SimpleTable } from "@/components/data-table/simple-table"
 import { INBOX_LABEL, INBOX_TABS, isInboxTab, loadInbox } from "@/lib/cabs/booking-admin-data"
 import { formatPaise } from "@/lib/cabs/money"
 import { OPERATOR_STATUS, STATUS_TONE } from "@/lib/cabs/trip-labels"
@@ -38,41 +38,30 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
       {rows.length === 0 ? (
         <EmptyState title="Nothing here" body={tab === "new" ? "New requests from customers appear here the moment they are made." : "No bookings in this view."} />
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Code</TableHead>
-                <TableHead>Pickup</TableHead>
-                <TableHead>Trip</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Fare</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((r) => (
-                <TableRow key={r.id} data-testid={`booking-row-${r.code}`}>
-                  <TableCell>
-                    <Link href={`/cabs/bookings/${r.id}`} className="font-mono font-semibold underline-offset-4 hover:underline">{r.code}</Link>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">{when(r.startAt)}</TableCell>
-                  <TableCell>
-                    <span className="font-medium">{[r.pickup, r.drop].filter(Boolean).join(" → ")}</span>
-                    <br />
-                    <span className="text-xs text-muted-foreground">{r.className} · {r.pax} pax</span>
-                  </TableCell>
-                  <TableCell>
-                    {r.customerName || "—"}
-                    <br />
-                    <span className="text-xs text-muted-foreground">{r.customerPhone}</span>
-                  </TableCell>
-                  <TableCell className="tabular-nums">{formatPaise(effectiveTotalPaise(r))}</TableCell>
-                  <TableCell><Badge variant={STATUS_TONE[r.status]}>{OPERATOR_STATUS[r.status]}</Badge></TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div>
+          <SimpleTable
+          columns={[{ title: "Code" }, { title: "Pickup" }, { title: "Trip" }, { title: "Customer" }, { title: "Fare" }, { title: "Status" }]}
+          rows={rows.map((r) => ({
+            id: r.id,
+            testId: `booking-row-${r.code}`,
+            cells: [
+              <Link key="code" href={`/cabs/bookings/${r.id}`} className="font-mono font-semibold underline-offset-4 hover:underline">{r.code}</Link>,
+              <span key="when" className="whitespace-nowrap">{when(r.startAt)}</span>,
+              <span key="trip">
+                <span className="font-medium">{[r.pickup, r.drop].filter(Boolean).join(" → ")}</span>
+                <br />
+                <span className="text-xs text-muted-foreground">{r.className} · {r.pax} pax</span>
+              </span>,
+              <span key="who">
+                {r.customerName || "—"}
+                <br />
+                <span className="text-xs text-muted-foreground">{r.customerPhone}</span>
+              </span>,
+              <span key="fare" className="tabular-nums">{formatPaise(effectiveTotalPaise(r))}</span>,
+              <Badge key="status" variant={STATUS_TONE[r.status]}>{OPERATOR_STATUS[r.status]}</Badge>,
+            ],
+          }))}
+        />
         </div>
       )}
     </div>

@@ -1,0 +1,58 @@
+name: Assign QA
+
+# When a task on the "Tany Delivery" project is moved to the QA status, add Mala (the QA) as an assignee, alongside whoever
+# already owns it. Existing assignees are never removed. A user-owned project cannot trigger workflows, so this polls the board.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qa-assign
+  cancel-in-progress: false
+
+env:
+  PROJECT_OWNER: manibalan-fameix
+  PROJECT_NUMBER: "3"
+  QA_STATUS: QA
+  QA_LOGIN: Malamanibalan
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Add the QA assignee to tasks in QA
+        env:
+          # Classic personal access token with `repo` and `project` (GITHUB_TOKEN cannot read or write user-owned projects).
+          GH_TOKEN: ${{ secrets.QA_ASSIGN_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN}" ]; then echo "::error::Secret QA_ASSIGN_TOKEN is not set."; exit 1; fi
+
+          # Open issues whose Status is QA and that do not yet have the QA assignee, as "owner/repo#number" lines.
+          gh api graphql --paginate -F owner="$PROJECT_OWNER" -F number="$PROJECT_NUMBER" -f query='
+            query($owner:String!,$number:Int!,$endCursor:String){
+              user(login:$owner){ projectV2(number:$number){
+                items(first:100, after:$endCursor){
+                  pageInfo{ hasNextPage endCursor }
+                  nodes{
+                    status: fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue{ name } }
+                    content{ ... on Issue{ number state repository{ nameWithOwner } assignees(first:20){ nodes{ login } } } }
+                  }
+                }
+              } }
+            }' \
+          | jq -r --arg qa "$QA_STATUS" --arg login "$QA_LOGIN" '
+              .data.user.projectV2.items.nodes[]
+              | select(.status.name == $qa and .content.state == "OPEN")
+              | select(([.content.assignees.nodes[].login | ascii_downcase] | index($login | ascii_downcase)) | not)
+              | "\(.content.repository.nameWithOwner)#\(.content.number)"' \
+          | while IFS='#' read -r repo number; do
+              echo "Assigning ${QA_LOGIN} to ${repo}#${number}"
+              gh api -X POST "repos/${repo}/issues/${number}/assignees" -f "assignees[]=${QA_LOGIN}" --silent
+            done

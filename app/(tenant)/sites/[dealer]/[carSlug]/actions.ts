@@ -12,6 +12,7 @@ import { encrypt } from "@/lib/crypto"
 import { cars } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
 import { rateLimit } from "@/lib/core/rate-limit"
+import { customerPaymentsEnabled } from "@/lib/core/payments/customer-payments"
 import { createBookingOrder, verifyBookingPaymentSignature } from "@/lib/route/razorpay"
 import { getDealerBySlug } from "@/lib/tenant/dealer"
 
@@ -39,7 +40,7 @@ export async function createBooking(input: unknown): Promise<{ ok: true; checkou
 
   const dealer = await getDealerBySlug(dealerSlug)
   if (!dealer) return { ok: false, error: "Dealer not found." }
-  if (!dealer.razorpayAccountId || dealer.razorpayAccountStatus !== "activated") {
+  if (!customerPaymentsEnabled() || !dealer.razorpayAccountId || dealer.razorpayAccountStatus !== "activated") {
     return { ok: false, error: "Online booking is not set up for this dealer yet." }
   }
 
@@ -64,7 +65,7 @@ export async function createBooking(input: unknown): Promise<{ ok: true; checkou
     await db.bookings.insert({
       carId: car.id,
       buyerName,
-      buyerPhone: encrypt(buyerPhone),
+      buyerPhone: encrypt(buyerPhone, dealer.id),
       amount: bookingAmount,
       razorpayOrderId: order.orderId,
       status: "created",

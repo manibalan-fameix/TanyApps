@@ -1,44 +1,58 @@
-import Link from "next/link"
+import { getRetailType, storeTerms } from "@/lib/verticals"
 import { asc, desc } from "drizzle-orm"
 
 import { EmptyState, PageHeader } from "@/components/restaurant/page-header"
-import { type MenuRow, MenuGrid } from "@/components/restaurant/restaurant-grids"
-import { buttonVariants } from "@/components/ui/button"
+import { type MenuRow, ProductsGrid } from "@/components/restaurant/products-grid"
+import { MenuActions } from "@/components/restaurant/menu-actions"
 import { effectivePlanKey } from "@/lib/billing/state"
-import { menuCategories, menuItems } from "@/lib/db/schema"
+import { menuCategories, menuItems, stockAdjustments } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
 import type { PlanKey } from "@/lib/plans"
 import { requireRestaurant } from "@/lib/restaurant/guard"
-import { menuItemLimit, priceLabel } from "@/lib/restaurant/menu"
-import { cn } from "@/lib/utils"
+import { menuItemLimit } from "@/lib/restaurant/menu"
+import { stockState } from "@/lib/restaurant/stock"
 
-export const metadata = { title: "Menu" }
+export const metadata = { title: "Catalogue" }
 export const dynamic = "force-dynamic"
 
 export default async function MenuPage() {
   const { dealer } = await requireRestaurant()
+  const t = storeTerms(dealer.industry, dealer.businessType)
   const db = scopedDb(dealer.id)
-  const [items, categories] = await Promise.all([
-    db.menuItems.select(undefined, { orderBy: [desc(menuItems.createdAt)] }),
+  const [items, categories, adjustments] = await Promise.all([
+    // Newest first. Many can share a creation time (an import), so name and id settle the order: otherwise a saved row could move.
+    db.menuItems.select(undefined, { orderBy: [desc(menuItems.createdAt), asc(menuItems.name), asc(menuItems.id)] }),
     db.menuCategories.select(undefined, { orderBy: [asc(menuCategories.sortOrder)] }),
+    db.stockAdjustments.select(undefined, { orderBy: [desc(stockAdjustments.createdAt)], limit: 400 }),
   ])
-  const categoryName = new Map(categories.map((c) => [c.id, c.name]))
-  const limit = menuItemLimit(effectivePlanKey(dealer) as PlanKey)
+  const history = new Map<string, MenuRow["history"]>()
+  for (const a of adjustments) {
+    const list = history.get(a.itemId) ?? []
+    if (list.length < 8) list.push({ delta: a.delta, after: a.quantityAfter, reason: a.reason, at: a.createdAt.toISOString() })
+    history.set(a.itemId, list)
+  }
+  const limit = menuItemLimit(effectivePlanKey(dealer) as PlanKey, dealer.industry)
   const atLimit = limit !== null && items.length >= limit
+  const type = getRetailType(dealer.businessType)
+  const sample =
+    dealer.industry === "retail"
+      ? type.previewItems.slice(0, 3).map((p, i) => ({ name: p.name, category: type.starterCategories[i] ?? "", price: p.price }))
+      : [{ name: "Chicken Biryani", category: "Biryani", price: "250" }, { name: "Paneer Butter Masala", category: "Mains", price: "240" }]
 
   const rows: MenuRow[] = items.map((i) => ({
     id: i.id,
     name: i.name,
-    description: i.description,
     imageUrl: i.imageUrl,
     categoryId: i.categoryId,
-    category: i.categoryId ? (categoryName.get(i.categoryId) ?? "") : "",
     price: i.price,
-    priceText: priceLabel(i),
+    mrp: i.compareAtPrice,
+    quantity: i.stockQuantity,
     isVeg: i.isVeg,
     isAvailable: i.isAvailable,
     isFeatured: i.isFeatured,
-    status: i.isAvailable ? "available" : "sold_out",
+    description: i.description,
+    details: i.details ?? {},
+    history: history.get(i.id) ?? [],
     draft: {
       name: i.name,
       description: i.description,
@@ -52,24 +66,27 @@ export default async function MenuPage() {
       isFeatured: i.isFeatured,
     },
   }))
+  const low = items.filter((i) => ["low", "out"].includes(stockState(i.stockQuantity, i.isAvailable))).length
 
   return (
-    <div className="flex w-full flex-col gap-4">
+    <div className="flex w-full min-w-0 flex-col gap-4">
       <PageHeader
-        title="Menu"
-        description={`${items.length} ${items.length === 1 ? "dish" : "dishes"}${limit === null ? " · unlimited on your plan" : ` of ${limit} on your plan`}`}
+        title={t.catalogue}
+        description={`${items.length} ${items.length === 1 ? t.item : t.items}${limit === null ? " · unlimited on your plan" : ` of ${limit} on your plan`}${low ? ` · ${low} low or out of stock` : ""}`}
       >
-        <Link href="/categories" className={cn(buttonVariants({ variant: "outline" }))}>Categories</Link>
-        {atLimit ? (
-          <Link href="/settings/billing" className={cn(buttonVariants())}>Upgrade to add more</Link>
-        ) : (
-          <Link href="/menu/new" className={cn(buttonVariants())}>Add a dish</Link>
-        )}
+        <MenuActions
+          industry={dealer.industry}
+          businessType={dealer.businessType}
+          atLimit={atLimit}
+          categories={categories.map((c) => ({ id: c.id, name: c.name, itemCount: items.filter((i) => i.categoryId === c.id).length }))}
+          sample={sample}
+          products={items.map((i) => ({ id: i.id, name: i.name, hasPhoto: Boolean(i.imageUrl) }))}
+        />
       </PageHeader>
       {rows.length === 0 ? (
-        <EmptyState title="No dishes yet" body="Add your first dish in about a minute. It shows on your menu page straight away." />
+        <EmptyState title={`No ${t.items} yet`} body={`Add your first ${t.item} in about a minute. It shows on your ${dealer.industry === "retail" ? "store" : "menu"} page straight away.`} />
       ) : (
-        <MenuGrid rows={rows} categories={categories.map((c) => ({ id: c.id, name: c.name }))} />
+        <ProductsGrid industry={dealer.industry} businessType={dealer.businessType} rows={rows} categories={categories.map((c) => ({ id: c.id, name: c.name }))} canAdd={!atLimit} />
       )}
     </div>
   )

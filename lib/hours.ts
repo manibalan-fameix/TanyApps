@@ -12,6 +12,9 @@ function clock(t: string): string {
   return `${hour}${m ? `:${String(m).padStart(2, "0")}` : ""} ${h < 12 ? "am" : "pm"}`
 }
 
+/** "10:30" as "10:30 am". */
+export const formatClock = (t: string) => clock(t)
+
 /**
  * One line a guest can read: "Mon to Sat, 10 am to 7 pm". Days with different times are listed separately,
  * and an empty schedule gives null so the page can leave the line out.

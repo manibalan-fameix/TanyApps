@@ -3,11 +3,18 @@
 import Link from "next/link"
 import { useEffect, useState, useSyncExternalStore, useTransition } from "react"
 import { toast } from "@/lib/toast"
-import { HugeiconsIcon } from "@hugeicons/react"
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 import {
   Add01Icon,
   AiMagicIcon,
   GridViewIcon,
+  HammerIcon,
+  Notebook01Icon,
+  Package01Icon,
+  Shirt01Icon,
+  ShoppingBasket01Icon,
+  SmartPhone01Icon,
+  Store01Icon,
   ArrowRight01Icon,
   Calendar03Icon,
   CancelCircleIcon,
@@ -61,6 +68,8 @@ import { FindMyTany } from "@/components/onboarding/find-my-tany"
 import { PhoneVerify } from "@/components/onboarding/phone-verify"
 import { RestaurantPreview } from "@/components/onboarding/restaurant-preview"
 import { CabsPreview } from "@/components/onboarding/cabs-preview"
+import { RetailPreview } from "@/components/onboarding/retail-preview"
+import { getRetailType, retailTypeList, type RetailTypeKey } from "@/lib/verticals/retail-types"
 import { type IndustryKey, getIndustry } from "@/lib/industries"
 import type { FirebaseWebConfig } from "@/lib/firebase/client"
 import { PlanPicker } from "@/components/billing/plan-picker"
@@ -76,13 +85,31 @@ import {
 
 import { type SlugStatus, checkSlug, createDealership } from "./actions"
 
-const STEPS = [
-  "Explore your app",
-  "Your business",
-  "Contact details",
-  "Make it yours",
-  "Choose your plan",
-] as const
+/** An icon for each kind of shop on the picker cards. */
+const RETAIL_TYPE_ICON: Record<RetailTypeKey, IconSvgElement> = {
+  grocery: ShoppingBasket01Icon,
+  supermarket: Store01Icon,
+  textile: Shirt01Icon,
+  hardware: HammerIcon,
+  electronics: SmartPhone01Icon,
+  stationery: Notebook01Icon,
+  general: Package01Icon,
+}
+
+type Stage = "explore" | "type" | "business" | "contact" | "brand" | "plan"
+const STAGE_TITLE: Record<Stage, string> = {
+  explore: "Explore your app",
+  type: "Your kind of shop",
+  business: "Your business",
+  contact: "Contact details",
+  brand: "Make it yours",
+  plan: "Choose your plan",
+}
+/** The steps for an industry. Retail asks what kind of shop it is on its own step, before the name. */
+const stagesFor = (industry: IndustryKey | null): Stage[] =>
+  industry === "retail"
+    ? ["explore", "type", "business", "contact", "brand", "plan"]
+    : ["explore", "business", "contact", "brand", "plan"]
 const CITY_SUGGESTIONS = [
   "Chennai",
   "Bengaluru",
@@ -135,6 +162,11 @@ export function OnboardingWizard({
   const compact = useIsCompact()
   const [industry, setIndustry] = useState<IndustryKey | null>(initialIndustry ?? null)
   const ind = getIndustry(industry ?? "motors")
+  // Retail only: what kind of shop this is. It sets the words, sample products and starter categories.
+  const [businessType, setBusinessType] = useState<RetailTypeKey | null>(null)
+  const retailType = industry === "retail" && businessType ? getRetailType(businessType) : null
+  const stages = stagesFor(industry)
+  const stage: Stage = stages[step] ?? "plan"
 
   const [displayName, setDisplayName] = useState("")
   const [slug, setSlug] = useState("")
@@ -202,6 +234,7 @@ export function OnboardingWizard({
 
   const draft: OnboardDraft = {
     industry: industry ?? "motors",
+    businessType: industry === "retail" ? (businessType ?? undefined) : undefined,
     displayName,
     slug,
     city,
@@ -256,15 +289,17 @@ export function OnboardingWizard({
       return
     }
     const ok =
-      step === 0
+      stage === "explore"
         ? true
-        : step === 1
-          ? validate(["displayName", "slug"])
-          : step === 2
-            ? validate(["city", "phone"])
-            : step === 3
-              ? validate(["primary", "accent", "radius"])
-              : validate(["plan", "billingCycle"])
+        : stage === "type"
+          ? validate(["businessType"])
+          : stage === "business"
+            ? validate(["displayName", "slug"])
+            : stage === "contact"
+              ? validate(["city", "phone"])
+              : stage === "brand"
+                ? validate(["primary", "accent", "radius"])
+                : validate(["plan", "billingCycle"])
     if (ok) setStep((s) => s + 1)
   }
 
@@ -316,13 +351,14 @@ export function OnboardingWizard({
       }
       if (result.fieldErrors) {
         setErrors(result.fieldErrors as Errors)
-        setStep(
-          result.fieldErrors.slug || result.fieldErrors.displayName
-            ? 0
+        const target: Stage = result.fieldErrors.businessType
+          ? "type"
+          : result.fieldErrors.slug || result.fieldErrors.displayName
+            ? "business"
             : result.fieldErrors.logo
-              ? 2
-              : 1
-        )
+              ? "brand"
+              : "contact"
+        setStep(Math.max(stages.indexOf(target), 0))
       } else {
         setErrors({ form: result.error })
       }
@@ -335,6 +371,7 @@ export function OnboardingWizard({
         url={done}
         billingNote={billingNote}
         industry={industry ?? "motors"}
+        businessType={businessType}
         name={displayName}
         city={city}
         primary={primary}
@@ -349,11 +386,11 @@ export function OnboardingWizard({
         className="flex gap-2"
         role="progressbar"
         aria-valuemin={0}
-        aria-valuemax={STEPS.length}
+        aria-valuemax={stages.length}
         aria-valuenow={step + 1}
-        aria-label={`Step ${step + 1} of ${STEPS.length}`}
+        aria-label={`Step ${step + 1} of ${stages.length}`}
       >
-        {STEPS.map((name, i) => (
+        {stages.map((name, i) => (
           <span
             key={name}
             className={cn(
@@ -367,7 +404,7 @@ export function OnboardingWizard({
       </div>
       <div className="relative flex items-center justify-between">
         <p className="absolute left-1/2 hidden -translate-x-1/2 text-sm text-muted-foreground sm:block">
-          Step {step + 1} of {STEPS.length}
+          Step {step + 1} of {stages.length}
         </p>
         {step > 0 ? (
           <Button
@@ -393,7 +430,7 @@ export function OnboardingWizard({
             Have an account? Log in
           </Button>
         )}
-        {step < STEPS.length - 1 ? (
+        {step < stages.length - 1 ? (
           <Button
             type="button"
             size="lg"
@@ -446,6 +483,7 @@ export function OnboardingWizard({
       {pending ? <CreatingShowroom /> : null}
       <OnboardShell
         wide={step === 0}
+        roomy={stage === "type"}
         flush={step === 0 && exploreStory !== null}
         showAside={step > 0 || exploreStory !== null}
         balanced={step === 0}
@@ -470,6 +508,7 @@ export function OnboardingWizard({
                 accent={accent}
                 radius={radius}
                 logo={logo}
+                businessType={businessType}
               />
             </div>
           )
@@ -505,10 +544,12 @@ export function OnboardingWizard({
                 ) : (
                   "What kind of business do you run?"
                 )
-              ) : step === 1 ? (
+              ) : stage === "type" ? (
+                "What kind of shop do you run?"
+              ) : stage === "business" ? (
                 `Set up your ${ind.pageNoun}`
               ) : (
-                STEPS[step]
+                STAGE_TITLE[stage]
               )}
             </h1>
             <p
@@ -517,13 +558,15 @@ export function OnboardingWizard({
                 step === 0 && "hidden"
               )}
             >
-              {step === 1 &&
+              {stage === "type" &&
+                "We use this to set up your categories, units and wording. You can add anything else later."}
+              {stage === "business" &&
                 `This is what ${ind.customerNoun} will see. You can change it any time.`}
-              {step === 2 &&
+              {stage === "contact" &&
                 `${ind.customerNoun.charAt(0).toUpperCase()}${ind.customerNoun.slice(1)} call this number to reach you. Add your opening hours later in Settings.`}
-              {step === 3 &&
+              {stage === "brand" &&
                 `Pick a colour for your ${ind.pageNoun}. The preview updates live.`}
-              {step === 4 &&
+              {stage === "plan" &&
                 `Start free with ${freeTierPhrase(ind.key)}, no card needed. Paid plans include a ${TRIAL_DAYS}-day free trial.`}
             </p>
           </div>
@@ -534,7 +577,7 @@ export function OnboardingWizard({
               step === 0
                 ? "gap-9 max-lg:gap-8"
                 : "gap-8",
-              step === 0 ? "flex-1" : "overflow-y-auto p-1"
+              step === 0 ? "flex-1" : "thin-scroll overflow-y-auto p-1"
             )}
           >
             {step === 0 && (
@@ -594,14 +637,57 @@ export function OnboardingWizard({
               />
             )}
 
-            {step === 1 && (
+            {stage === "type" && (
+              <>
+                {industry === "retail" ? (
+                  <div className="grid gap-2">
+                    <Label id="business-type-label" className="sr-only">What kind of shop do you run?</Label>
+                    <div role="radiogroup" aria-labelledby="business-type-label" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {retailTypeList.map((t) => (
+                        <button
+                          key={t.key}
+                          type="button"
+                          role="radio"
+                          aria-checked={businessType === t.key}
+                          onClick={() => {
+                            setBusinessType(t.key)
+                            setErrors((e) => ({ ...e, businessType: undefined }))
+                          }}
+                          className={cn(
+                            "flex flex-col items-start gap-3 rounded-xl border bg-card p-4 text-left text-sm transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                            businessType === t.key && "border-primary bg-primary/5 ring-1 ring-primary"
+                          )}
+                        >
+                          <span
+                            aria-hidden
+                            className={cn(
+                              "flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground",
+                              businessType === t.key && "bg-primary text-primary-foreground"
+                            )}
+                          >
+                            <HugeiconsIcon icon={RETAIL_TYPE_ICON[t.key]} strokeWidth={1.75} className="size-5" />
+                          </span>
+                          <span className="flex min-w-0 flex-col gap-1">
+                            <span className="font-medium">{t.label}</span>
+                            <span className="text-xs text-muted-foreground">{t.examples}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    <FieldError message={errors.businessType} />
+                  </div>
+                ) : null}
+              </>
+            )}
+
+            {stage === "business" && (
               <>
                 <div className="grid gap-2">
                   <Label htmlFor="displayName">{ind.nameLabel}</Label>
                   <Input
                     id="displayName"
                     value={displayName}
-                    placeholder={ind.namePlaceholder}
+                    placeholder={retailType?.namePlaceholder ?? ind.namePlaceholder}
                     autoFocus
                     autoComplete="organization"
                     onChange={(e) => {
@@ -643,7 +729,7 @@ export function OnboardingWizard({
               </>
             )}
 
-            {step === 2 && (
+            {stage === "contact" && (
               <>
                 <div className="grid gap-2">
                   <Label htmlFor="city">City</Label>
@@ -689,7 +775,7 @@ export function OnboardingWizard({
               </>
             )}
 
-            {step === 3 && (
+            {stage === "brand" && (
               <>
                 <div className="grid gap-2">
                   <Label>Logo (optional)</Label>
@@ -818,7 +904,7 @@ export function OnboardingWizard({
               </>
             )}
 
-            {step === 4 && (
+            {stage === "plan" && (
               <>
                 <PlanPicker
                   industry={industry ?? "motors"}
@@ -854,6 +940,7 @@ function OnboardShell({
   aside,
   footer,
   wide,
+  roomy = false,
   flush,
   showAside = true,
   balanced = false,
@@ -865,6 +952,8 @@ function OnboardShell({
   /** Industry whose animation colour tints the whole page. */
   tinted?: ProductKey | null
   wide?: boolean
+  /** A wider form column without the full-height "wide" layout (the shop-type picker). */
+  roomy?: boolean
   flush?: boolean
   children: React.ReactNode
   aside: React.ReactNode
@@ -905,7 +994,7 @@ function OnboardShell({
           <div
             className={cn(
               "flex min-h-0 w-full min-w-0 flex-col",
-              wide ? "max-w-2xl" : "max-w-sm"
+              wide || roomy ? "max-w-2xl" : "max-w-sm"
             )}
           >
             {children}
@@ -1261,9 +1350,11 @@ function Preview({
 
 function IndustryPreview({
   industry,
+  businessType,
   ...props
 }: {
   industry: IndustryKey
+  businessType?: string | null
   name: string
   city: string
   primary: string
@@ -1273,6 +1364,8 @@ function IndustryPreview({
 }) {
   return industry === "restaurants" ? (
     <RestaurantPreview {...props} />
+  ) : industry === "retail" ? (
+    <RetailPreview {...props} businessType={businessType} />
   ) : industry === "cabs" ? (
     <CabsPreview {...props} />
   ) : (
@@ -1281,6 +1374,7 @@ function IndustryPreview({
 }
 
 function Success({
+  businessType,
   url,
   billingNote,
   industry,
@@ -1293,6 +1387,7 @@ function Success({
   url: string
   billingNote: "authorised" | "later" | "free"
   industry: IndustryKey
+  businessType?: string | null
   name: string
   city: string
   primary: string
@@ -1311,6 +1406,7 @@ function Success({
       aside={
         <IndustryPreview
           industry={industry}
+          businessType={businessType}
           name={name}
           city={city}
           primary={primary}

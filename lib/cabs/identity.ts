@@ -20,7 +20,7 @@ export async function phoneForIdentity(db: ScopedDb, uid: string): Promise<strin
   const [link] = await db.customerIdentities.select(eq(customerIdentities.subjectHash, identityHash(uid)), { limit: 1 })
   if (!link) return null
   const [customer] = await db.customers.select(eq(customers.id, link.customerId), { limit: 1 })
-  return customer ? decrypt(customer.phoneEnc) : null
+  return customer ? decrypt(customer.phoneEnc, db.dealerId) : null
 }
 
 export async function linkIdentity(db: ScopedDb, customerId: string, provider: SocialProvider, uid: string): Promise<void> {

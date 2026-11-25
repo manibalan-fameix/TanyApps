@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { DataTableRowActions } from "@/components/data-table/data-table-row-actions"
+import { SimpleTable } from "@/components/data-table/simple-table"
 import { Textarea } from "@/components/ui/textarea"
 import { deletePackage, savePackage } from "@/lib/cabs/admin-actions"
 import { formatPaise, paiseToRupeesText } from "@/lib/cabs/money"
@@ -73,32 +74,21 @@ export function PackagesManager({ rows, classes, owner }: { rows: PackageRow[]; 
   return (
     <div className="flex flex-col gap-3">
       {owner ? <div className="flex justify-end"><Button onClick={() => setOpen("new")}>Add package</Button></div> : <p className="text-sm text-muted-foreground">Only the owner can change prices.</p>}
-      <div className="rounded-lg border">
-        <Table>
-          <TableHeader><TableRow><TableHead>Package</TableHead><TableHead>Days</TableHead><TableHead>Prices</TableHead><TableHead>Status</TableHead>{owner ? <TableHead className="text-right">Actions</TableHead> : null}</TableRow></TableHeader>
-          <TableBody>
-            {rows.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="text-muted-foreground">No tour packages yet.</TableCell></TableRow>
-            ) : (
-              rows.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell className="font-medium">{p.name}</TableCell>
-                  <TableCell>{p.days}</TableCell>
-                  <TableCell className="text-muted-foreground">{classes.filter((c) => p.vehicleClassPrices[c.id] !== undefined).map((c) => `${c.name} ${formatPaise(p.vehicleClassPrices[c.id])}`).join(" · ") || "No prices set"}</TableCell>
-                  <TableCell>{p.active ? <Badge>Offered</Badge> : <Badge variant="secondary">Hidden</Badge>}</TableCell>
-                  {owner ? (
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button size="sm" variant="outline" onClick={() => setOpen(p)}>Edit</Button>
-                        <Button size="sm" variant="ghost" onClick={() => run(() => deletePackage(p.id), { success: "Package deleted.", confirm: `Delete ${p.name}?` })}>Delete</Button>
-                      </div>
-                    </TableCell>
-                  ) : null}
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+      <div>
+        <SimpleTable
+          empty="No tour packages yet."
+          columns={[{ title: "Package" }, { title: "Days" }, { title: "Prices" }, { title: "Status" }, ...(owner ? [{ title: "" }] : [])]}
+          rows={rows.map((p) => ({
+            id: p.id,
+            cells: [
+              <span key="name" className="font-medium">{p.name}</span>,
+              p.days,
+              <span key="prices" className="text-muted-foreground">{classes.filter((c) => p.vehicleClassPrices[c.id] !== undefined).map((c) => `${c.name} ${formatPaise(p.vehicleClassPrices[c.id])}`).join(" · ") || "No prices set"}</span>,
+              p.active ? <Badge key="s">Offered</Badge> : <Badge key="s" variant="secondary">Hidden</Badge>,
+              ...(owner ? [<DataTableRowActions key="actions" label={`Actions for ${p.name}`} actions={[{ label: "Edit", onClick: () => setOpen(p) }, { label: "Delete", destructive: true, confirm: { title: `Delete ${p.name}?` }, onClick: () => run(() => deletePackage(p.id), { success: "Package deleted." }) }]} />] : []),
+            ],
+          }))}
+        />
       </div>
       <Sheet open={open !== null} onOpenChange={(o) => !o && setOpen(null)}>
         <SheetContent className="overflow-y-auto">

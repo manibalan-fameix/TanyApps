@@ -13,10 +13,12 @@ declare global {
 function loadRazorpay(): Promise<boolean> {
   if (window.Razorpay) return Promise.resolve(true)
   return new Promise((resolve) => {
+    // A script that never answers (blocked or stalled on a phone) must not leave the guest on a spinner.
+    const timer = window.setTimeout(() => resolve(false), 12_000)
     const s = document.createElement("script")
     s.src = "https://checkout.razorpay.com/v1/checkout.js"
-    s.onload = () => resolve(true)
-    s.onerror = () => resolve(false)
+    s.onload = () => { window.clearTimeout(timer); resolve(true) }
+    s.onerror = () => { window.clearTimeout(timer); resolve(false) }
     document.body.appendChild(s)
   })
 }

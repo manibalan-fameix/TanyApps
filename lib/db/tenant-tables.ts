@@ -7,6 +7,8 @@ import {
   customerAddresses,
   customerContacts,
   customers,
+  monthlyPlans,
+  monthlyPlanItems,
   customerIdentities,
   tripEvents,
   trips,
@@ -32,6 +34,8 @@ import {
   notificationOptins,
   notifications,
   orderLocations,
+  orderReturnLines,
+  orderReturns,
   orders,
   packages,
   priceEvents,
@@ -39,6 +43,8 @@ import {
   rateCards,
   rateSurcharges,
   rcTransfers,
+  returnMedia,
+  returnMessages,
   reviews,
   routeDistances,
   securityAuditEvents,
@@ -71,7 +77,7 @@ const PLATFORM_DIRECT = { dealerUsers, dealerDomains, coupons, reviews, enquirie
 const MOTORS_DIRECT = { cars, leads, bookings } as const
 
 /** TanyEats. */
-const EATS_DIRECT = { tableBookings, menuCategories, menuItems, orders, deliveryPartners, deliveryZones, stockAdjustments, orderLocations } as const
+const EATS_DIRECT = { monthlyPlans, monthlyPlanItems, tableBookings, menuCategories, menuItems, orders, deliveryPartners, deliveryZones, stockAdjustments, orderLocations, orderReturns, orderReturnLines, returnMessages, returnMedia } as const
 
 /** TanyCabs. */
 const CABS_DIRECT = { vehicleClasses, vehicles, vehicleDocuments, blockedPeriods, drivers, driverDocuments, driverDutyLogs, rateCards, rateSurcharges, packages, cabSettings, customers, customerIdentities, customerAddresses, customerContacts, trips, tripEvents } as const

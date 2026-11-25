@@ -95,7 +95,7 @@ export function groupsFor(view: View, board: BoardData | null): Group[] {
       const people = (facts?.people ?? [])
         .map((p) => ({
           label: p.name,
-          note: [`${p.openInSprint} open`, p.overdue ? `${p.overdue} overdue` : "", p.blocked ? `${p.blocked} blocked` : ""].filter(Boolean).join(" · "),
+          note: [p.inProgress ? `${p.inProgress} in progress` : "", `${p.toDo} to do`, p.overdue ? `${p.overdue} overdue` : "", p.blocked ? `${p.blocked} blocked` : ""].filter(Boolean).join(" · "),
           items: pickCards(p.next.map((t) => t.n)),
         }))
         .filter((g) => g.items.length)

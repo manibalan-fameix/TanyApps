@@ -4,27 +4,13 @@ import { INDUSTRY_KEYS, getVertical } from "@/lib/verticals"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMemo } from "react"
-import type { ColDef } from "ag-grid-community"
-import type { CustomCellRendererProps } from "ag-grid-react"
 import {
-  Building03Icon,
-  Calendar03Icon,
-  Call02Icon,
-  Car01Icon,
-  CheckmarkBadge01Icon,
-  Clock01Icon,
   Download01Icon,
-  Mail01Icon,
-  Money03Icon,
-  StarIcon,
-  Tag01Icon,
-  User02Icon,
-  Wallet01Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
-import { optionsFilter } from "@/components/cars/cars-grid"
-import { DataGrid, type GridTab } from "@/components/restaurant/data-grid"
+import { rowActionsColumn } from "@/components/data-table/data-table-row-actions"
+import { type ColDef, type CustomCellRendererProps, DataGrid, type GridTab, optionsFilter } from "@/components/data-table/data-grid"
 import { buttonVariants } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -67,21 +53,6 @@ const bold = ({ value }: CustomCellRendererProps) => (
 )
 const yesNo = ({ value }: { value?: boolean }) => (value ? "Yes" : "No")
 
-const ICONS = {
-  name: Building03Icon,
-  plan: Tag01Icon,
-  status: CheckmarkBadge01Icon,
-  money: Money03Icon,
-  wallet: Wallet01Icon,
-  date: Calendar03Icon,
-  time: Clock01Icon,
-  person: User02Icon,
-  phone: Call02Icon,
-  mail: Mail01Icon,
-  car: Car01Icon,
-  star: StarIcon,
-}
-const h = (k: keyof typeof ICONS) => `hdr-icon hdr-${k}`
 
 const badge = (
   variant: "default" | "secondary" | "outline" | "destructive" = "secondary"
@@ -129,7 +100,6 @@ function Shell<T extends { id: string }>({
   tabField,
   search,
   none,
-  rowHeight = 52,
   scoped,
   open,
   rowTarget,
@@ -142,7 +112,6 @@ function Shell<T extends { id: string }>({
   tabField?: string
   search: string
   none: string
-  rowHeight?: number
   scoped?: boolean
   open: (id: string) => unknown
   rowTarget: (r: T) => string
@@ -152,15 +121,12 @@ function Shell<T extends { id: string }>({
   return (
     <DataGrid<T>
       rows={rows}
-      columns={columns}
-      icons={ICONS}
+      columns={scoped ? columns : [...columns, rowActionsColumn<T>((r) => ({ label: "Row actions", actions: [{ label: "View business", onClick: () => open(rowTarget(r)) }] }))]}
       tabs={tabs}
       tabField={tabField}
       searchPlaceholder={search}
       noMatches={none}
-      rowHeight={rowHeight}
       hideColumns={scoped ? ["business"] : undefined}
-      onRowClick={scoped ? undefined : (r) => open(rowTarget(r))}
       toolbar={
         exportKind && (!scoped || dealerId) ? (
           <ExportButton kind={exportKind} dealerId={dealerId} />
@@ -191,7 +157,6 @@ export function BusinessesGrid({ rows }: { rows: BusinessRow[] }) {
       {
         field: "name",
         headerName: "Business",
-        headerClass: h("name"),
         minWidth: 240,
         flex: 2,
         cellRenderer: ({ data }: CustomCellRendererProps<BusinessRow>) =>
@@ -212,7 +177,6 @@ export function BusinessesGrid({ rows }: { rows: BusinessRow[] }) {
       {
         field: "industry",
         headerName: "Industry",
-        headerClass: h("name"),
         width: 130,
         valueFormatter: labelled,
         ...options<BusinessRow>([...INDUSTRY_KEYS]),
@@ -220,13 +184,11 @@ export function BusinessesGrid({ rows }: { rows: BusinessRow[] }) {
       {
         field: "planLabel",
         headerName: "Plan",
-        headerClass: h("plan"),
         width: 120,
       },
       {
         field: "phase",
         headerName: "Billing",
-        headerClass: h("status"),
         width: 150,
         cellRenderer: ({ data }: CustomCellRendererProps<BusinessRow>) =>
           data ? (
@@ -247,7 +209,6 @@ export function BusinessesGrid({ rows }: { rows: BusinessRow[] }) {
       {
         field: "health",
         headerName: "Health",
-        headerClass: h("status"),
         width: 120,
         cellRenderer: ({ data }: CustomCellRendererProps<BusinessRow>) =>
           data ? (
@@ -270,15 +231,13 @@ export function BusinessesGrid({ rows }: { rows: BusinessRow[] }) {
       {
         field: "mrr",
         headerName: "MRR",
-        headerClass: h("wallet"),
         width: 110,
-        filter: "agNumberColumnFilter",
+        filter: "number",
         valueFormatter: ({ value }) => (value ? rupees(value) : "—"),
       },
       {
         field: "owner",
         headerName: "Owner",
-        headerClass: h("mail"),
         minWidth: 200,
         flex: 1,
         valueFormatter: dash,
@@ -286,14 +245,12 @@ export function BusinessesGrid({ rows }: { rows: BusinessRow[] }) {
       {
         field: "phone",
         headerName: "Phone",
-        headerClass: h("phone"),
         width: 150,
         valueFormatter: dash,
       },
-      { field: "city", headerName: "City", headerClass: h("name"), width: 120 },
+      { field: "city", headerName: "City", width: 120 },
       {
         headerName: "Listings",
-        headerClass: h("car"),
         width: 110,
         valueGetter: ({ data }) =>
           data
@@ -301,51 +258,45 @@ export function BusinessesGrid({ rows }: { rows: BusinessRow[] }) {
               ? data.menuItems
               : data.liveCars
             : 0,
-        filter: "agNumberColumnFilter",
+        filter: "number",
       },
       {
         field: "leads",
         headerName: "Leads",
-        headerClass: h("person"),
         width: 100,
-        filter: "agNumberColumnFilter",
+        filter: "number",
       },
       {
         field: "orders",
         headerName: "Orders",
-        headerClass: h("money"),
         width: 100,
-        filter: "agNumberColumnFilter",
+        filter: "number",
       },
       {
         headerName: "Sales",
-        headerClass: h("money"),
         width: 130,
         valueGetter: ({ data }) =>
           data ? data.orderValue + data.bookingValue : 0,
-        filter: "agNumberColumnFilter",
+        filter: "number",
         valueFormatter: ({ value }) => (value ? rupees(value) : "—"),
       },
       {
         field: "rating",
         headerName: "Rating",
-        headerClass: h("star"),
         width: 110,
-        filter: "agNumberColumnFilter",
+        filter: "number",
         valueFormatter: ({ value, data }) =>
           value ? `${value} (${data?.reviews})` : "—",
       },
       {
         field: "lastActivityAt",
         headerName: "Last active",
-        headerClass: h("time"),
         width: 140,
         valueFormatter: day,
       },
       {
         field: "createdAt",
         headerName: "Joined",
-        headerClass: h("date"),
         width: 140,
         valueFormatter: day,
       },
@@ -366,7 +317,6 @@ export function BusinessesGrid({ rows }: { rows: BusinessRow[] }) {
       tabField="phase"
       search="Search businesses"
       none="No businesses match."
-      rowHeight={60}
       open={open}
       rowTarget={(r) => r.id}
       exportKind="businesses"
@@ -383,7 +333,6 @@ export function UsersGrid({ rows }: { rows: UserRow[] }) {
       {
         field: "name",
         headerName: "Name",
-        headerClass: h("person"),
         minWidth: 180,
         flex: 1,
         valueFormatter: dash,
@@ -391,7 +340,6 @@ export function UsersGrid({ rows }: { rows: UserRow[] }) {
       {
         field: "email",
         headerName: "Email",
-        headerClass: h("mail"),
         minWidth: 220,
         flex: 1.5,
         valueFormatter: dash,
@@ -399,14 +347,12 @@ export function UsersGrid({ rows }: { rows: UserRow[] }) {
       {
         field: "phone",
         headerName: "Phone",
-        headerClass: h("phone"),
         width: 150,
         valueFormatter: dash,
       },
       {
         field: "business",
         headerName: "Business",
-        headerClass: h("name"),
         minWidth: 200,
         flex: 1.5,
         valueFormatter: dash,
@@ -414,7 +360,6 @@ export function UsersGrid({ rows }: { rows: UserRow[] }) {
       {
         field: "role",
         headerName: "Role",
-        headerClass: h("status"),
         width: 150,
         cellRenderer: badge(),
         ...options<UserRow>(["owner", "staff", "no business"]),
@@ -422,7 +367,6 @@ export function UsersGrid({ rows }: { rows: UserRow[] }) {
       {
         field: "verified",
         headerName: "Email verified",
-        headerClass: h("status"),
         width: 150,
         valueFormatter: yesNo,
       },
@@ -457,7 +401,6 @@ export function CarsGrid({ rows, scoped, dealerId }: Common<CarListRow>) {
       {
         field: "title",
         headerName: "Car",
-        headerClass: h("car"),
         minWidth: 240,
         flex: 2,
         cellRenderer: bold,
@@ -465,14 +408,12 @@ export function CarsGrid({ rows, scoped, dealerId }: Common<CarListRow>) {
       {
         field: "business",
         headerName: "Dealer",
-        headerClass: h("name"),
         minWidth: 200,
         flex: 1.5,
       },
       {
         field: "status",
         headerName: "Status",
-        headerClass: h("status"),
         width: 140,
         cellRenderer: badge(),
         ...options<CarListRow>([
@@ -486,46 +427,40 @@ export function CarsGrid({ rows, scoped, dealerId }: Common<CarListRow>) {
       {
         field: "km",
         headerName: "Km",
-        headerClass: h("time"),
         width: 120,
-        filter: "agNumberColumnFilter",
+        filter: "number",
         valueFormatter: ({ value }) =>
           value == null ? "—" : value.toLocaleString("en-IN"),
       },
       {
         field: "fuel",
         headerName: "Fuel",
-        headerClass: h("plan"),
         width: 110,
         valueFormatter: dash,
       },
       {
         field: "price",
         headerName: "Asking",
-        headerClass: h("money"),
         width: 140,
-        filter: "agNumberColumnFilter",
+        filter: "number",
         valueFormatter: money,
       },
       {
         field: "soldPrice",
         headerName: "Sold for",
-        headerClass: h("money"),
         width: 140,
-        filter: "agNumberColumnFilter",
+        filter: "number",
         valueFormatter: money,
       },
       {
         field: "rcVerified",
         headerName: "RC verified",
-        headerClass: h("status"),
         width: 140,
         valueFormatter: yesNo,
       },
       {
         field: "listedAt",
         headerName: "Listed",
-        headerClass: h("date"),
         width: 140,
         valueFormatter: day,
       },
@@ -539,7 +474,6 @@ export function CarsGrid({ rows, scoped, dealerId }: Common<CarListRow>) {
       tabs={tabsOf(["live", "Live"], ["draft", "Drafts"], ["sold", "Sold"])}
       search="Search cars or dealers"
       none="No cars match."
-      rowHeight={56}
       scoped={scoped}
       open={open}
       rowTarget={(r) => r.businessId}
@@ -558,7 +492,6 @@ export function LeadsGrid({ rows, scoped, dealerId }: Common<LeadListRow>) {
       {
         field: "name",
         headerName: "Buyer",
-        headerClass: h("person"),
         minWidth: 180,
         flex: 1,
         cellRenderer: bold,
@@ -566,28 +499,24 @@ export function LeadsGrid({ rows, scoped, dealerId }: Common<LeadListRow>) {
       {
         field: "phone",
         headerName: "Phone",
-        headerClass: h("phone"),
         width: 130,
         valueFormatter: dash,
       },
       {
         field: "car",
         headerName: "Car",
-        headerClass: h("car"),
         minWidth: 200,
         flex: 1.5,
       },
       {
         field: "business",
         headerName: "Dealer",
-        headerClass: h("name"),
         minWidth: 200,
         flex: 1.5,
       },
       {
         field: "source",
         headerName: "Source",
-        headerClass: h("plan"),
         width: 140,
         valueFormatter: labelled,
         ...options<LeadListRow>(["test_drive", "enquiry", "hold"], {
@@ -599,7 +528,6 @@ export function LeadsGrid({ rows, scoped, dealerId }: Common<LeadListRow>) {
       {
         field: "status",
         headerName: "Stage",
-        headerClass: h("status"),
         width: 140,
         cellRenderer: badge(),
         ...options<LeadListRow>(["new", "contacted", "visited", "won", "lost"]),
@@ -607,7 +535,6 @@ export function LeadsGrid({ rows, scoped, dealerId }: Common<LeadListRow>) {
       {
         field: "createdAt",
         headerName: "Received",
-        headerClass: h("time"),
         width: 170,
         valueFormatter: when,
       },
@@ -645,35 +572,30 @@ export function OrdersGrid({ rows, scoped, dealerId }: Common<OrderListRow>) {
       {
         field: "code",
         headerName: "Order",
-        headerClass: h("plan"),
         width: 130,
         cellRenderer: bold,
       },
       {
         field: "customer",
         headerName: "Guest",
-        headerClass: h("person"),
         minWidth: 170,
         flex: 1,
       },
       {
         field: "phone",
         headerName: "Phone",
-        headerClass: h("phone"),
         width: 130,
         valueFormatter: dash,
       },
       {
         field: "business",
         headerName: "Restaurant",
-        headerClass: h("name"),
         minWidth: 200,
         flex: 1.5,
       },
       {
         field: "fulfilment",
         headerName: "Type",
-        headerClass: h("plan"),
         width: 130,
         valueFormatter: labelled,
         ...options<OrderListRow>(["delivery", "pickup", "dine_in"]),
@@ -681,15 +603,13 @@ export function OrdersGrid({ rows, scoped, dealerId }: Common<OrderListRow>) {
       {
         field: "total",
         headerName: "Total",
-        headerClass: h("money"),
         width: 130,
-        filter: "agNumberColumnFilter",
+        filter: "number",
         valueFormatter: money,
       },
       {
         field: "payment",
         headerName: "Method",
-        headerClass: h("wallet"),
         width: 110,
         valueFormatter: ({ value }) =>
           value === "cod" ? "Cash" : label(String(value ?? "")),
@@ -697,7 +617,6 @@ export function OrdersGrid({ rows, scoped, dealerId }: Common<OrderListRow>) {
       {
         field: "paymentStatus",
         headerName: "Payment",
-        headerClass: h("wallet"),
         width: 130,
         cellRenderer: badge(),
         ...options<OrderListRow>(["pending", "paid", "refunded"]),
@@ -705,7 +624,6 @@ export function OrdersGrid({ rows, scoped, dealerId }: Common<OrderListRow>) {
       {
         field: "status",
         headerName: "Status",
-        headerClass: h("status"),
         width: 170,
         cellRenderer: badge(),
         ...options<OrderListRow>([
@@ -722,7 +640,6 @@ export function OrdersGrid({ rows, scoped, dealerId }: Common<OrderListRow>) {
       {
         field: "createdAt",
         headerName: "Placed",
-        headerClass: h("time"),
         width: 170,
         valueFormatter: when,
       },
@@ -764,7 +681,6 @@ export function BookingsGrid({
       {
         field: "buyer",
         headerName: "Buyer",
-        headerClass: h("person"),
         minWidth: 170,
         flex: 1,
         cellRenderer: bold,
@@ -772,36 +688,31 @@ export function BookingsGrid({
       {
         field: "phone",
         headerName: "Phone",
-        headerClass: h("phone"),
         width: 130,
         valueFormatter: dash,
       },
       {
         field: "car",
         headerName: "Car",
-        headerClass: h("car"),
         minWidth: 200,
         flex: 1.5,
       },
       {
         field: "business",
         headerName: "Dealer",
-        headerClass: h("name"),
         minWidth: 200,
         flex: 1.5,
       },
       {
         field: "amount",
         headerName: "Amount",
-        headerClass: h("money"),
         width: 130,
-        filter: "agNumberColumnFilter",
+        filter: "number",
         valueFormatter: money,
       },
       {
         field: "status",
         headerName: "Status",
-        headerClass: h("status"),
         width: 140,
         cellRenderer: badge(),
         ...options<BookingListRow>([
@@ -816,14 +727,12 @@ export function BookingsGrid({
       {
         field: "refund",
         headerName: "Refund",
-        headerClass: h("status"),
         width: 120,
         valueFormatter: dash,
       },
       {
         field: "attention",
         headerName: "Needs attention",
-        headerClass: h("status"),
         minWidth: 240,
         flex: 1.5,
         valueFormatter: dash,
@@ -831,21 +740,18 @@ export function BookingsGrid({
       {
         field: "razorpayOrderId",
         headerName: "Razorpay order",
-        headerClass: h("plan"),
         minWidth: 190,
         flex: 1,
       },
       {
         field: "createdAt",
         headerName: "Created",
-        headerClass: h("time"),
         width: 170,
         valueFormatter: when,
       },
       {
         field: "paidAt",
         headerName: "Paid",
-        headerClass: h("time"),
         width: 170,
         valueFormatter: when,
       },
@@ -883,7 +789,6 @@ export function MenuGrid({ rows, scoped, dealerId }: Common<MenuRow>) {
       {
         field: "name",
         headerName: "Dish",
-        headerClass: h("car"),
         minWidth: 220,
         flex: 2,
         cellRenderer: bold,
@@ -891,43 +796,37 @@ export function MenuGrid({ rows, scoped, dealerId }: Common<MenuRow>) {
       {
         field: "business",
         headerName: "Restaurant",
-        headerClass: h("name"),
         minWidth: 200,
         flex: 1.5,
       },
       {
         field: "category",
         headerName: "Category",
-        headerClass: h("plan"),
         width: 160,
         valueFormatter: dash,
       },
       {
         field: "veg",
         headerName: "Type",
-        headerClass: h("plan"),
         width: 120,
         valueFormatter: ({ value }) => (value ? "Veg" : "Non-veg"),
       },
       {
         field: "price",
         headerName: "Price",
-        headerClass: h("money"),
         width: 120,
-        filter: "agNumberColumnFilter",
+        filter: "number",
         valueFormatter: money,
       },
       {
         field: "compareAt",
         headerName: "Was",
-        headerClass: h("money"),
         width: 110,
         valueFormatter: money,
       },
       {
         field: "stock",
         headerName: "Stock",
-        headerClass: h("plan"),
         width: 100,
         valueFormatter: ({ value }) =>
           value == null ? "Not tracked" : String(value),
@@ -935,14 +834,12 @@ export function MenuGrid({ rows, scoped, dealerId }: Common<MenuRow>) {
       {
         field: "featured",
         headerName: "Bestseller",
-        headerClass: h("star"),
         width: 130,
         valueFormatter: yesNo,
       },
       {
         field: "status",
         headerName: "Status",
-        headerClass: h("status"),
         width: 130,
         valueFormatter: ({ value }) =>
           value === "available" ? "Available" : "Sold out",
@@ -954,7 +851,6 @@ export function MenuGrid({ rows, scoped, dealerId }: Common<MenuRow>) {
       {
         field: "createdAt",
         headerName: "Added",
-        headerClass: h("date"),
         width: 140,
         valueFormatter: day,
       },
@@ -987,7 +883,6 @@ export function CustomersGrid({ rows, scoped, dealerId }: Common<CustomerRow>) {
       {
         field: "name",
         headerName: "Guest",
-        headerClass: h("person"),
         minWidth: 180,
         flex: 1,
         cellRenderer: bold,
@@ -995,20 +890,17 @@ export function CustomersGrid({ rows, scoped, dealerId }: Common<CustomerRow>) {
       {
         field: "phone",
         headerName: "Phone",
-        headerClass: h("phone"),
         width: 130,
       },
       {
         field: "business",
         headerName: "Restaurant",
-        headerClass: h("name"),
         minWidth: 200,
         flex: 1.5,
       },
       {
         field: "segment",
         headerName: "Segment",
-        headerClass: h("status"),
         width: 130,
         cellRenderer: badge(),
         ...options<CustomerRow>(["loyal", "repeat", "new", "one-time"]),
@@ -1016,37 +908,32 @@ export function CustomersGrid({ rows, scoped, dealerId }: Common<CustomerRow>) {
       {
         field: "orders",
         headerName: "Orders",
-        headerClass: h("money"),
         width: 110,
-        filter: "agNumberColumnFilter",
+        filter: "number",
       },
       {
         field: "spent",
         headerName: "Spent",
-        headerClass: h("money"),
         width: 130,
-        filter: "agNumberColumnFilter",
+        filter: "number",
         valueFormatter: money,
       },
       {
         field: "avg",
         headerName: "Avg order",
-        headerClass: h("money"),
         width: 130,
-        filter: "agNumberColumnFilter",
+        filter: "number",
         valueFormatter: money,
       },
       {
         field: "firstOrderAt",
         headerName: "First order",
-        headerClass: h("date"),
         width: 140,
         valueFormatter: day,
       },
       {
         field: "lastOrderAt",
         headerName: "Last order",
-        headerClass: h("time"),
         width: 140,
         valueFormatter: day,
       },
@@ -1084,22 +971,19 @@ export function ReviewsGrid({ rows, scoped }: Common<ReviewRow>) {
       {
         field: "rating",
         headerName: "Rating",
-        headerClass: h("star"),
         width: 110,
-        filter: "agNumberColumnFilter",
+        filter: "number",
         valueFormatter: ({ value }) => `${value} ★`,
       },
       {
         field: "name",
         headerName: "Guest",
-        headerClass: h("person"),
         width: 160,
         cellRenderer: bold,
       },
       {
         field: "comment",
         headerName: "Review",
-        headerClass: h("mail"),
         minWidth: 320,
         flex: 3,
         valueFormatter: dash,
@@ -1107,14 +991,12 @@ export function ReviewsGrid({ rows, scoped }: Common<ReviewRow>) {
       {
         field: "business",
         headerName: "Restaurant",
-        headerClass: h("name"),
         minWidth: 200,
         flex: 1.5,
       },
       {
         field: "status",
         headerName: "Status",
-        headerClass: h("status"),
         width: 130,
         cellRenderer: badge(),
         ...options<ReviewRow>(["pending", "approved", "hidden"]),
@@ -1122,7 +1004,6 @@ export function ReviewsGrid({ rows, scoped }: Common<ReviewRow>) {
       {
         field: "createdAt",
         headerName: "Posted",
-        headerClass: h("time"),
         width: 140,
         valueFormatter: day,
       },
@@ -1157,34 +1038,29 @@ export function EnquiriesGrid({ rows, scoped }: Common<EnquiryRow>) {
       {
         field: "name",
         headerName: "From",
-        headerClass: h("person"),
         width: 170,
         cellRenderer: bold,
       },
       {
         field: "phone",
         headerName: "Phone",
-        headerClass: h("phone"),
         width: 130,
       },
       {
         field: "message",
         headerName: "Message",
-        headerClass: h("mail"),
         minWidth: 320,
         flex: 3,
       },
       {
         field: "business",
         headerName: "Restaurant",
-        headerClass: h("name"),
         minWidth: 200,
         flex: 1.5,
       },
       {
         field: "status",
         headerName: "Status",
-        headerClass: h("status"),
         width: 130,
         cellRenderer: badge(),
         ...options<EnquiryRow>(["new", "handled"]),
@@ -1192,7 +1068,6 @@ export function EnquiriesGrid({ rows, scoped }: Common<EnquiryRow>) {
       {
         field: "createdAt",
         headerName: "Received",
-        headerClass: h("time"),
         width: 170,
         valueFormatter: when,
       },
@@ -1223,20 +1098,17 @@ export function CouponsGrid({ rows, scoped }: Common<CouponRow>) {
       {
         field: "code",
         headerName: "Code",
-        headerClass: h("plan"),
         width: 150,
         cellRenderer: bold,
       },
       {
         field: "business",
         headerName: "Restaurant",
-        headerClass: h("name"),
         minWidth: 200,
         flex: 1.5,
       },
       {
         headerName: "Offer",
-        headerClass: h("money"),
         width: 160,
         valueGetter: ({ data }) =>
           data
@@ -1248,21 +1120,18 @@ export function CouponsGrid({ rows, scoped }: Common<CouponRow>) {
       {
         field: "minOrder",
         headerName: "Min order",
-        headerClass: h("money"),
         width: 130,
         valueFormatter: money,
       },
       {
         field: "used",
         headerName: "Used",
-        headerClass: h("plan"),
         width: 100,
-        filter: "agNumberColumnFilter",
+        filter: "number",
       },
       {
         field: "status",
         headerName: "Status",
-        headerClass: h("status"),
         width: 130,
         cellRenderer: badge(),
         ...options<CouponRow>(["active", "inactive", "expired"]),
@@ -1270,14 +1139,12 @@ export function CouponsGrid({ rows, scoped }: Common<CouponRow>) {
       {
         field: "expiresAt",
         headerName: "Expires",
-        headerClass: h("date"),
         width: 140,
         valueFormatter: day,
       },
       {
         field: "createdAt",
         headerName: "Created",
-        headerClass: h("date"),
         width: 140,
         valueFormatter: day,
       },
@@ -1312,43 +1179,37 @@ export function PartnersGrid({ rows, scoped }: Common<PartnerRow>) {
       {
         field: "name",
         headerName: "Rider",
-        headerClass: h("person"),
         minWidth: 170,
         flex: 1,
         cellRenderer: bold,
       },
-      { field: "code", headerName: "Code", headerClass: h("plan"), width: 110 },
+      { field: "code", headerName: "Code", width: 110 },
       {
         field: "phone",
         headerName: "Phone",
-        headerClass: h("phone"),
         width: 130,
       },
       {
         field: "vehicle",
         headerName: "Vehicle",
-        headerClass: h("car"),
         width: 150,
         valueFormatter: dash,
       },
       {
         field: "business",
         headerName: "Restaurant",
-        headerClass: h("name"),
         minWidth: 200,
         flex: 1.5,
       },
       {
         field: "deliveries",
         headerName: "Delivered",
-        headerClass: h("money"),
         width: 130,
-        filter: "agNumberColumnFilter",
+        filter: "number",
       },
       {
         field: "status",
         headerName: "Status",
-        headerClass: h("status"),
         width: 120,
         cellRenderer: badge(),
         ...options<PartnerRow>(["active", "inactive"]),
@@ -1356,7 +1217,6 @@ export function PartnersGrid({ rows, scoped }: Common<PartnerRow>) {
       {
         field: "createdAt",
         headerName: "Added",
-        headerClass: h("date"),
         width: 140,
         valueFormatter: day,
       },
@@ -1385,7 +1245,6 @@ export function ZonesGrid({ rows, scoped }: Common<ZoneRow>) {
       {
         field: "name",
         headerName: "Zone",
-        headerClass: h("name"),
         minWidth: 170,
         flex: 1,
         cellRenderer: bold,
@@ -1393,14 +1252,12 @@ export function ZonesGrid({ rows, scoped }: Common<ZoneRow>) {
       {
         field: "business",
         headerName: "Restaurant",
-        headerClass: h("name"),
         minWidth: 200,
         flex: 1.5,
       },
       {
         field: "pincodes",
         headerName: "Pincodes",
-        headerClass: h("plan"),
         minWidth: 220,
         flex: 2,
         valueFormatter: dash,
@@ -1408,28 +1265,24 @@ export function ZonesGrid({ rows, scoped }: Common<ZoneRow>) {
       {
         field: "fee",
         headerName: "Fee",
-        headerClass: h("money"),
         width: 110,
         valueFormatter: money,
       },
       {
         field: "minOrder",
         headerName: "Min order",
-        headerClass: h("money"),
         width: 130,
         valueFormatter: money,
       },
       {
         field: "eta",
         headerName: "ETA",
-        headerClass: h("time"),
         width: 110,
         valueFormatter: ({ value }) => (value ? `${value} min` : "—"),
       },
       {
         field: "status",
         headerName: "Status",
-        headerClass: h("status"),
         width: 120,
         cellRenderer: badge(),
         ...options<ZoneRow>(["active", "inactive"]),

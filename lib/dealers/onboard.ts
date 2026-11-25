@@ -1,7 +1,7 @@
 import { z } from "zod"
 
 import type { BusinessHours, DayKey } from "../hours"
-import { LIVE_INDUSTRY_KEYS, getVertical } from "../verticals"
+import { LIVE_INDUSTRY_KEYS, RETAIL_TYPE_KEYS, getVertical } from "../verticals"
 import { BILLING_CYCLES, SIGNUP_PLAN_KEYS, TRIAL_DAYS, isFreePlan } from "../plans"
 import { isValidSlug } from "../tenant/host"
 import { RADIUS_OPTIONS, type RadiusKey, dealerThemeSchema, readableOn } from "../theme/tokens"
@@ -52,18 +52,37 @@ export const slugSchema = z
   .min(2, "Use at least 2 characters.")
   .refine(isValidSlug, "Use letters, numbers and hyphens only. This name is not available.")
 
+const businessName = z.string().trim().min(2, "Enter your business name.").max(80)
+const cityName = z.string().trim().min(2, "Enter your city.").max(60)
+const mobile = z
+  .string()
+  .trim()
+  .transform((v) => v.replace(/[\s-]/g, ""))
+  .pipe(z.string().regex(/^(\+91|91|0)?[6-9][0-9]{9}$/, "Enter a valid 10-digit mobile number."))
+  .transform((v) => `+91${v.slice(-10)}`)
+
+/** What an owner can change after onboarding, under Settings → Business details. Same rules as when it was first asked. */
+export const businessDetailsSchema = z.object({
+  displayName: businessName,
+  city: cityName,
+  /** The 10 digits or full number. Checked only when it differs from the saved one, so an older number never blocks other edits. */
+  phone: z.string().trim().max(20),
+  /** Retail only. */
+  businessType: z.enum(RETAIL_TYPE_KEYS).optional(),
+  /** A new logo as a PNG data URL, null to remove it, or left out to keep the current one. */
+  logo: z.string().max(500_000).nullable().optional(),
+})
+export const mobileSchema = mobile
+
 export const onboardSchema = z
   .object({
     industry: z.enum(LIVE_INDUSTRY_KEYS).default("motors"),
-    displayName: z.string().trim().min(2, "Enter your business name.").max(80),
+    /** Which kind of shop, for retail only (see lib/verticals/retail-types.ts). */
+    businessType: z.enum(RETAIL_TYPE_KEYS).optional(),
+    displayName: businessName,
     slug: slugSchema,
-    city: z.string().trim().min(2, "Enter your city.").max(60),
-    phone: z
-      .string()
-      .trim()
-      .transform((v) => v.replace(/[\s-]/g, ""))
-      .pipe(z.string().regex(/^(\+91|91|0)?[6-9][0-9]{9}$/, "Enter a valid 10-digit mobile number."))
-      .transform((v) => `+91${v.slice(-10)}`),
+    city: cityName,
+    phone: mobile,
     hours: hoursSchema,
     primary: hex,
     accent: hex,
@@ -72,6 +91,7 @@ export const onboardSchema = z
     billingCycle: z.enum(BILLING_CYCLES),
   })
   .refine((v) => getVertical(v.industry).offeredPlans.includes(v.plan), { path: ["plan"], message: "That plan is not available for this kind of business." })
+  .refine((v) => v.industry !== "retail" || v.businessType !== undefined, { path: ["businessType"], message: "Choose what kind of shop you run." })
 
 export type OnboardInput = z.infer<typeof onboardSchema>
 export type OnboardDraft = z.input<typeof onboardSchema>
@@ -87,6 +107,8 @@ export function toDealerValues(input: OnboardInput, logoUrl?: string) {
   return {
     slug: input.slug,
     industry: input.industry,
+    // Only retail has business types; anything sent for another industry is dropped.
+    businessType: input.industry === "retail" ? (input.businessType ?? null) : null,
     displayName: input.displayName,
     city: input.city,
     phone: input.phone,

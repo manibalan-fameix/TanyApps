@@ -6,12 +6,41 @@ import { useRef, useState } from "react"
 import { BANNER_TONE_CLASS, type StoreBanner, isExternalLink } from "@/lib/restaurant/banners"
 import { cn } from "@/lib/utils"
 
-/** The Tany product colours the phone home cycles through, one per banner: a light ground, the deep colour on it, and the button's text. */
-const PRODUCT_LOOKS = ["tanyeats", "tanycabs", "tanyecom"] as const
+/** The Tany product colours the home banners cycle through, one per banner: a light ground, the deep colour on it, and the button's text. */
+const PRODUCT_LOOKS = ["tanyeats", "tanycabs", "tanyecom", "tanymotos", "tanyretail", "tanygaming"] as const
 
 function productStyle(i: number) {
   const k = PRODUCT_LOOKS[i % PRODUCT_LOOKS.length]
-  return { card: { backgroundColor: `var(--ground-${k})`, color: `var(--logo-${k})` }, button: { backgroundColor: `var(--logo-${k})`, color: `var(--logo-${k}-fg)` } }
+  return { card: { backgroundColor: `var(--ground-${k})`, color: `var(--logo-${k})` }, button: { backgroundColor: `var(--logo-${k})`, color: `var(--logo-${k}-fg)` }, panel: { backgroundColor: `var(--logo-${k})`, color: `var(--logo-${k}-fg)` } }
+}
+
+/** Splits the offer text into at most three lines of near-equal width, breaking only between words ("ZERO DELIVERY FEE*" -> ZERO / DELIVERY / FEE*). */
+function offerLines(text: string): string[] {
+  const words = text.trim().split(/\s+/).filter(Boolean)
+  if (words.length <= 3) return words
+  let best: string[] = [words.join(" ")]
+  let bestWidth = Infinity
+  for (let i = 1; i < words.length - 1; i++) {
+    for (let j = i + 1; j < words.length; j++) {
+      const lines = [words.slice(0, i).join(" "), words.slice(i, j).join(" "), words.slice(j).join(" ")]
+      const width = Math.max(...lines.map((l) => l.length))
+      if (width < bestWidth) { best = lines; bestWidth = width }
+    }
+  }
+  return best
+}
+
+/** The offer text: three bold lines, sized so the longest line fills the panel's width. */
+function OfferText({ text }: { text: string }) {
+  const lines = offerLines(text)
+  const longest = Math.max(...lines.map((l) => l.length), 1)
+  // Black-weight capitals are about 0.68em wide; 88cqw leaves a margin inside the panel.
+  const size = `min(calc(1.35rem + 10px), ${(96 / (longest * 0.68)).toFixed(1)}cqw)`
+  return (
+    <p style={{ fontSize: size }} className="w-full font-black leading-[1.15] tracking-tight uppercase [-webkit-text-stroke:1.2px_currentColor] [paint-order:stroke_fill]">
+      {lines.map((l, i) => <span key={i} className="block whitespace-nowrap">{l}</span>)}
+    </p>
+  )
 }
 
 /**
@@ -24,23 +53,27 @@ export function PromoBanner({ banner, className, look }: { banner: Omit<StoreBan
   const body = (
     <>
       <div className="flex min-w-0 flex-1 flex-col items-start justify-center gap-1 py-4 pr-2 pl-4">
-        <p className="line-clamp-2 text-[17px] leading-tight font-bold tracking-tight">{banner.title}</p>
-        {banner.subtitle ? <p className="line-clamp-2 text-sm leading-snug opacity-90">{banner.subtitle}</p> : null}
+        <p className="line-clamp-2 text-[19px] leading-[1.1] font-extrabold tracking-tight">{banner.title}</p>
+        {banner.subtitle ? <p className="line-clamp-2 text-xs leading-snug opacity-90">{banner.subtitle}</p> : null}
         {banner.buttonLabel && banner.linkUrl ? (
-          <span style={product?.button} className={cn("mt-2 inline-flex h-9 items-center rounded-full px-5 text-sm font-bold", !product && tone.button)}>{banner.buttonLabel}</span>
+          <span style={product?.button} className={cn("mt-2 inline-flex h-8 items-center rounded-full px-4 text-xs font-bold", !product && tone.button)}>{banner.buttonLabel}</span>
         ) : null}
       </div>
-      {banner.imageUrl ? (
-        <div className="relative w-[36%] shrink-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={banner.imageUrl} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
+      {banner.promoText || banner.imageUrl ? (
+        // The offer side: a solid dark panel carrying the big offer text, with the picture (if any) faded behind it.
+        <div style={product?.panel} className={cn("relative isolate flex w-[40%] shrink-0 items-center justify-center overflow-hidden p-3 text-center [container-type:inline-size]", !product && "bg-foreground text-background")}>
+          {banner.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={banner.imageUrl} alt="" loading="lazy" className={cn("absolute inset-0 -z-10 size-full object-cover", banner.promoText ? "opacity-30" : "opacity-100")} />
+          ) : null}
+          {banner.promoText ? <OfferText text={banner.promoText} /> : null}
         </div>
       ) : (
         <div className="w-4 shrink-0" />
       )}
     </>
   )
-  const base = cn("flex h-40 w-full overflow-hidden rounded-2xl", !product && tone.card, className)
+  const base = cn("flex h-40 w-full overflow-hidden rounded-2xl border border-foreground/10", !product && tone.card, className)
   if (!banner.linkUrl) return <div className={base} style={product?.card}>{body}</div>
   return isExternalLink(banner.linkUrl) ? (
     <a href={banner.linkUrl} target="_blank" rel="noopener noreferrer" className={base} style={product?.card} aria-label={banner.title}>
@@ -50,6 +83,30 @@ export function PromoBanner({ banner, className, look }: { banner: Omit<StoreBan
     <Link href={banner.linkUrl} className={base} style={product?.card} aria-label={banner.title}>
       {body}
     </Link>
+  )
+}
+
+/** A dot for each banner, with the one on show widened into a "1/5" count. Nothing is drawn for a single banner. */
+export function BannerDots({ count, active, onSelect }: { count: number; active: number; onSelect: (i: number) => void }) {
+  if (count < 2) return null
+  return (
+    <div className="mt-3 flex items-center justify-center gap-1.5" role="group" aria-label="Banner">
+      {Array.from({ length: count }, (_, i) => (
+        <button
+          key={i}
+          type="button"
+          onClick={() => onSelect(i)}
+          aria-label={`Banner ${i + 1} of ${count}`}
+          aria-current={active === i ? "true" : undefined}
+          className={cn(
+            "flex items-center justify-center rounded-full transition-all",
+            active === i ? "h-5 min-w-10 bg-primary px-2.5 text-xs leading-none font-semibold text-primary-foreground tabular-nums" : "size-1.5 bg-muted-foreground/30"
+          )}
+        >
+          {active === i ? `${i + 1}/${count}` : null}
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -83,25 +140,7 @@ export function PromoBanners({ banners }: { banners: StoreBanner[] }) {
           </li>
         ))}
       </ul>
-      {banners.length > 1 ? (
-        <div className="mt-3 flex items-center justify-center gap-1.5" role="group" aria-label="Banner">
-          {banners.map((b, i) => (
-            <button
-              key={b.id}
-              type="button"
-              onClick={() => go(i)}
-              aria-label={`Banner ${i + 1} of ${banners.length}`}
-              aria-current={active === i ? "true" : undefined}
-              className={cn(
-                "flex items-center justify-center rounded-full transition-all",
-                active === i ? "h-5 min-w-10 bg-primary px-2.5 text-xs leading-none font-semibold text-primary-foreground tabular-nums" : "size-1.5 bg-muted-foreground/30"
-              )}
-            >
-              {active === i ? `${i + 1}/${banners.length}` : null}
-            </button>
-          ))}
-        </div>
-      ) : null}
+      <BannerDots count={banners.length} active={active} onSelect={go} />
     </section>
   )
 }

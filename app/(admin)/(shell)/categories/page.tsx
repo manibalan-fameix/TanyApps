@@ -21,10 +21,10 @@ export default async function CategoriesPage() {
   for (const i of items) if (i.categoryId) counts.set(i.categoryId, (counts.get(i.categoryId) ?? 0) + 1)
   return (
     <div className="flex w-full flex-col gap-4">
-      <PageHeader title="Categories" description="Sections that group your dishes, like Starters or Biryani." />
+      <PageHeader title="Categories" description={dealer.industry === "retail" ? "Departments that group your products, like Rice & Grains or Snacks." : "Sections that group your dishes, like Starters or Biryani."} />
       <Card>
         <CardContent className="pt-6">
-          <CategoriesManager categories={categories.map((c) => ({ id: c.id, name: c.name, itemCount: counts.get(c.id) ?? 0 }))} />
+          <CategoriesManager industry={dealer.industry} businessType={dealer.businessType} categories={categories.map((c) => ({ id: c.id, name: c.name, itemCount: counts.get(c.id) ?? 0 }))} />
         </CardContent>
       </Card>
     </div>

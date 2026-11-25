@@ -437,7 +437,7 @@ describe("the project briefing", () => {
     const groups = groupsFor({ kind: "briefing" }, board)
     expect(groups[0].label).toBe("Needs your attention")
     expect(groups.map((g) => g.label).slice(1)).toEqual(["Gokul", "Pavi"])
-    expect(groups[1].note).toBe("2 open · 1 overdue")
+    expect(groups[1].note).toBe("2 to do · 1 overdue")
   })
 })
 
@@ -908,5 +908,15 @@ describe("slack replies", () => {
     await kv.put("replies", JSON.stringify([{ id: "1", from: "Gokul", text: "Done", about: "39", asked: "x", at: "", seen: false }, { id: "2", from: "Pavi", text: "ok", about: null, asked: "y", at: "", seen: true }]))
     const res = await worker.fetch(new Request("https://x/api/replies", { method: "POST", headers: { authorization: "Bearer p", "content-type": "application/json" }, body: "{}" }), { JARVIS_PASSPHRASE: "p", REPLIES: kv })
     expect(((await res.json()) as { replies: { id: string }[] }).replies.map((r) => r.id)).toEqual(["1"])
+  })
+})
+
+describe("carry-over of unfinished work", () => {
+  it("counts open work from a finished sprint, and work in progress, in the current sprint", async () => {
+    const { carryOver } = await import("../scripts/jarvis/lib.mjs")
+    const now = new Date("2026-11-16T10:00:00Z")
+    const mk = (o: object) => ({ number: 1, open: true, status: "Todo", sprint: "", ...o })
+    const out = carryOver([mk({ sprint: "Sprint 3" }), mk({ sprint: "Backlog", status: "In Progress" }), mk({ sprint: "Backlog" }), mk({ sprint: "Sprint 3", open: false }), mk({ sprint: "Sprint 4" })], now)
+    expect(out.map((i: { sprint: string }) => i.sprint)).toEqual(["Sprint 4", "Sprint 4", "Backlog", "Sprint 3", "Sprint 4"])
   })
 })

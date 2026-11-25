@@ -14,7 +14,7 @@ export default async function ReviewsPage() {
   const all = await scopedDb(dealer.id).reviews.select(undefined, { orderBy: [desc(reviews.createdAt)], limit: 200 })
   const approved = all.filter((r) => r.status === "approved")
   const avg = approved.length ? (approved.reduce((n, r) => n + r.rating, 0) / approved.length).toFixed(1) : null
-  const rows: ReviewRow[] = all.map((r) => ({ id: r.id, name: r.name, rating: r.rating, comment: r.comment, status: r.status as ReviewRow["status"], createdAt: r.createdAt.toISOString() }))
+  const rows: ReviewRow[] = all.map((r) => ({ id: r.id, name: r.name, rating: r.rating, comment: r.comment, media: r.media, status: r.status as ReviewRow["status"], createdAt: r.createdAt.toISOString() }))
   return (
     <div className="flex w-full flex-col gap-4">
       <PageHeader title="Reviews" description={`${avg ? `${avg} average from ${approved.length} showing. ` : ""}Guests can review after a completed order. Approve a review to show it on your menu page.`} />

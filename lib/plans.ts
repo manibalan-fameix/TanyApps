@@ -71,12 +71,25 @@ export const RESTAURANT_MENU_LIMITS: Record<PlanKey, number | null> = {
   scale: null,
 }
 
+/** Products a retail shop can list, per plan. Shops carry far more lines than a menu has dishes. Null means unlimited. */
+export const RETAIL_PRODUCT_LIMITS: Record<PlanKey, number | null> = {
+  free: 100,
+  starter: 1000,
+  growth: 5000,
+  pro: null,
+  scale: null,
+}
+
+/** Catalogue entries (dishes or products) a business may list on a plan. Null means unlimited. */
+export const catalogueLimit = (industry: string, key: PlanKey): number | null => (industry === "retail" ? RETAIL_PRODUCT_LIMITS[key] : RESTAURANT_MENU_LIMITS[key])
+const catalogueWord = (industry: string) => (industry === "retail" ? "products" : "menu items")
+
 /** The headline limit of a plan, worded for the industry: "Up to 50 menu items" or "Up to 25 cars live at once". */
 export function planLimitLabel(industry: string, key: PlanKey): string {
   switch (getVertical(industry).planLimit) {
     case "menu_items": {
-      const max = RESTAURANT_MENU_LIMITS[key]
-      return max === null ? "Unlimited menu items" : `Up to ${max} menu items`
+      const max = catalogueLimit(industry, key)
+      return max === null ? `Unlimited ${catalogueWord(industry)}` : `Up to ${max.toLocaleString("en-IN")} ${catalogueWord(industry)}`
     }
     case "vehicles": {
       const l = getVertical("cabs").cabLimits?.[key]
@@ -91,7 +104,7 @@ export function planLimitLabel(industry: string, key: PlanKey): string {
 export function freeTierPhrase(industry: string): string {
   switch (getVertical(industry).planLimit) {
     case "menu_items":
-      return `up to ${RESTAURANT_MENU_LIMITS.free} menu items`
+      return `up to ${catalogueLimit(industry, "free")} ${catalogueWord(industry)}`
     case "vehicles":
       return "a starter fleet" // cabs has no free plan, so this is not shown
     case "live_cars":

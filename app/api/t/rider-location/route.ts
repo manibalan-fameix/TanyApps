@@ -7,6 +7,7 @@ import { saveFix } from "@/lib/restaurant/live-location"
 import { TOKEN_RE, fixInputSchema, hashRiderToken, sharingAllowed, toFix } from "@/lib/restaurant/tracking"
 import { orderByRiderToken } from "@/lib/restaurant/trip"
 import { rateLimit } from "@/lib/core/rate-limit"
+import { ORDER_INDUSTRIES } from "@/lib/verticals"
 
 const body = z.object({ token: z.string().regex(TOKEN_RE) }).and(fixInputSchema)
 const json = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } })
@@ -14,7 +15,7 @@ const json = (data: unknown, status = 200) => NextResponse.json(data, { status, 
 // A rider's phone posts its position here every few seconds while the delivery link is open. The private link
 // itself is the credential, and it only ever reaches the one order it was made for.
 export async function POST(req: Request) {
-  const tenant = await tenantFrom(req.headers, "restaurants")
+  const tenant = await tenantFrom(req.headers, ORDER_INDUSTRIES)
   if (!tenant) return json({ ok: false }, 404)
   const { dealer } = tenant
 

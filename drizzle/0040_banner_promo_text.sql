@@ -1,0 +1,1 @@
+ALTER TABLE "banners" ADD COLUMN "promo_text" text DEFAULT '' NOT NULL;

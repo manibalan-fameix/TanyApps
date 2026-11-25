@@ -18,7 +18,7 @@ describe("migration files, journal and snapshots agree", () => {
   })
   it("the release migrations 0029 onward are the ones this release expects, in this order", () => {
     expect(journal.entries.slice(29).map((e) => e.tag.replace(/^\d{4}_/, "").replace(/_[a-z]+_[a-z]+$/, "")).length).toBeGreaterThanOrEqual(4)
-    expect(files.slice(30)).toEqual(["0030_booking_single_paid_and_refund_state.sql", "0031_trips_hold_alert_index.sql", "0032_eats_refund_state_and_payment_exceptions.sql", "0033_team_invites.sql", "0034_security_audit_events.sql", "0035_usage_accounting.sql", "0036_trips_idempotency_key.sql", "0037_banner_promo_fields.sql", "0038_table_bookings.sql"])
+    expect(files.slice(30)).toEqual(["0030_booking_single_paid_and_refund_state.sql", "0031_trips_hold_alert_index.sql", "0032_eats_refund_state_and_payment_exceptions.sql", "0033_team_invites.sql", "0034_security_audit_events.sql", "0035_usage_accounting.sql", "0036_trips_idempotency_key.sql", "0037_banner_promo_fields.sql", "0038_table_bookings.sql", "0039_retail_vertical.sql", "0040_banner_promo_text.sql", "0041_product_details.sql", "0042_monthly_groceries.sql", "0043_order_tip.sql", "0044_order_gst.sql", "0045_order_phone_hash.sql", "0046_shop_reviews.sql", "0047_review_media.sql", "0048_order_returns.sql"])
   })
 })
 

@@ -3,12 +3,16 @@ import { z } from "zod"
 
 export type VisionImage = { mediaType: "image/jpeg" | "image/png" | "image/webp"; base64: string }
 
+/** A PDF sent to the model as a document (an invoice, an ERP report). */
+export type VisionDocument = { mediaType: "application/pdf"; base64: string }
+
 export type VisionAudio = { mediaType: "audio/wav" | "audio/mp3" | "audio/aac"; base64: string }
 
 export type VisionRequest<T> = {
   system: string
   prompt: string
   images?: VisionImage[]
+  documents?: VisionDocument[]
   /** A spoken track (e.g. a creator's walkaround voice-over), sent after the images. */
   audio?: VisionAudio
   /** JSON Schema the model's answer must follow (structured outputs). */
@@ -37,6 +41,7 @@ export function createGeminiVision(apiKey: string, model: string, fetchFn: Gemin
           contents: [{
             role: "user",
             parts: [
+              ...(req.documents ?? []).map((doc) => ({ inlineData: { mimeType: doc.mediaType, data: doc.base64 } })),
               ...(req.images ?? []).map((img) => ({ inlineData: { mimeType: img.mediaType, data: img.base64 } })),
               ...(req.audio ? [{ inlineData: { mimeType: req.audio.mediaType, data: req.audio.base64 } }] : []),
               { text: req.prompt },

@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 
 import { getRootDomain } from "./lib/env"
 import { looksLikeShortCode } from "./lib/slug"
-import { TENANT_HEADER, classifyHost } from "./lib/tenant/host"
+import { TENANT_HEADER, type HostTarget, classifyHost, devLanSlug, isLocalNetworkIp } from "./lib/tenant/host"
 import { classifySource, deviceOf, isBot } from "./lib/analytics/events"
 import { recordEvent } from "./lib/analytics/track"
 import { resolveCustomDomain, resolveShortLink } from "./lib/tenant/lookup"
@@ -28,7 +28,14 @@ export async function proxy(request: NextRequest) {
   const headers = new Headers(request.headers)
   headers.delete(TENANT_HEADER) // never trust a client-supplied tenant
 
-  const target = classifyHost(request.headers.get("host"), root)
+  // Dev only: a phone on the same Wi-Fi reaches the dev server by the Mac's LAN IP, which would otherwise look like a custom domain.
+  // It gets the same view as http://localhost:3000.
+  if (process.env.NODE_ENV === "development" && isLocalNetworkIp(request.headers.get("host"))) {
+    return NextResponse.next({ request: { headers } })
+  }
+
+  const lanSlug = process.env.NODE_ENV === "development" ? devLanSlug(request.headers.get("host")) : null
+  const target: HostTarget = lanSlug ? { kind: "subdomain", slug: lanSlug } : classifyHost(request.headers.get("host"), root)
 
   switch (target.kind) {
     case "invalid":

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { getDealerBySlug } from "@/lib/tenant/dealer"
+import { isOrderIndustry } from "@/lib/verticals"
 
 export const dynamic = "force-dynamic"
 
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic"
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ dealer: string }> }) {
   const dealer = await getDealerBySlug((await params).dealer)
-  if (!dealer || (dealer.industry !== "cabs" && dealer.industry !== "restaurants")) return new NextResponse("Not found", { status: 404 })
+  if (!dealer || (dealer.industry !== "cabs" && !isOrderIndustry(dealer.industry))) return new NextResponse("Not found", { status: 404 })
   const body = {
     name: dealer.displayName,
     short_name: dealer.displayName.slice(0, 12),
@@ -21,8 +22,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ dealer:
     theme_color: dealer.theme.primary,
     lang: "en",
     icons: [
-      { src: "/brand/icon-192.png", sizes: "192x192", type: "image/png" },
-      { src: "/brand/icon-512.png", sizes: "512x512", type: "image/png" },
+      { src: "/pwa-icon?size=192&v=2", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/pwa-icon?size=512&v=2", sizes: "512x512", type: "image/png", purpose: "any" },
     ],
   }
   return new NextResponse(JSON.stringify(body), { headers: { "content-type": "application/manifest+json", "cache-control": "public, max-age=300" } })

@@ -23,6 +23,24 @@ import {
 import { DealerMark } from "@/components/dealer-mark"
 import { ProductSwitcher } from "@/components/product-switcher"
 import type { BusinessSummary } from "@/lib/auth/active-business"
+import { cn } from "@/lib/utils"
+
+/**
+ * Spacing and type of the left menu: 14px regular text in 30px rows with soft 16px icons, quiet 12px section headings, and
+ * sub-pages lined up under their parent's label. The open page is semibold in the brand colour. Set here, on the admin's menu only,
+ * so the shared sidebar component stays as shadcn ships it.
+ */
+const MENU_STYLE = cn(
+  // sections sit well apart; rows within one sit close together
+  "gap-5 [&_[data-sidebar=menu]]:gap-0",
+  "[&_[data-sidebar=group-label]]:text-xs [&_[data-sidebar=group-label]]:font-normal [&_[data-sidebar=group-label]]:tracking-normal [&_[data-sidebar=group-label]]:text-sidebar-foreground/70",
+  // rows (the collapsed icon-only sidebar keeps its own square size)
+  "[&_[data-sidebar=menu-button]]:h-[30px] [&_[data-sidebar=menu-button]]:gap-3 [&_[data-sidebar=menu-button]]:text-sm [&_[data-sidebar=menu-button]]:font-normal",
+  "[&_[data-sidebar=menu-button]_svg]:text-sidebar-foreground/70 [&_[data-sidebar=menu-button][data-active]]:font-semibold [&_[data-sidebar=menu-button][data-active]_svg]:text-primary",
+  // sub-pages: no guide line, text starting where the parent's label does (10px padding + 16px icon + 12px gap)
+  "[&_[data-sidebar=menu-sub]]:mx-0 [&_[data-sidebar=menu-sub]]:translate-x-0 [&_[data-sidebar=menu-sub]]:gap-0 [&_[data-sidebar=menu-sub]]:border-l-0 [&_[data-sidebar=menu-sub]]:px-0",
+  "[&_[data-sidebar=menu-sub-button]]:translate-x-0 [&_[data-sidebar=menu-sub-button]]:pl-[38px] [&_[data-sidebar=menu-sub-button]]:text-sm [&_[data-sidebar=menu-sub-button]]:font-normal [&_[data-sidebar=menu-sub-button][data-active]]:font-semibold"
+)
 
 // shadcn "sidebar-08" block, populated with the signed-in dealer's data.
 export function AppSidebar({
@@ -66,7 +84,7 @@ export function AppSidebar({
           </SidebarMenu>
         )}
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className={MENU_STYLE}>
         <div className="px-2 pt-0.5 pb-1">
           <Link
             href={nav.addItem.href}

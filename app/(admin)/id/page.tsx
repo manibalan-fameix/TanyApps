@@ -10,7 +10,7 @@ import { bookingText } from "@/lib/cabs/booking-copy"
 import { isLang } from "@/lib/cabs/lang"
 import { getFirebaseWebConfig } from "@/lib/auth/firebase"
 import { emulatorHost } from "@/lib/auth/firebase-phone"
-import { resolveLoginHost } from "@/lib/core/login/host"
+import { LOGIN_INDUSTRIES, resolveLoginHost } from "@/lib/core/login/host"
 import { safeNext } from "@/lib/core/login/ticket"
 import { getDealerBySlug } from "@/lib/tenant/dealer"
 import { themeToCssVars } from "@/lib/theme/tokens"
@@ -25,7 +25,7 @@ export const dynamic = "force-dynamic"
  */
 export default async function CentralLogin({ searchParams }: { searchParams: Promise<{ host?: string; state?: string; next?: string; lang?: string }> }) {
   const q = await searchParams
-  const target = await resolveLoginHost(q.host, "cabs")
+  const target = await resolveLoginHost(q.host, LOGIN_INDUSTRIES)
   if (!target || !q.state || q.state.length < 16 || q.state.length > 64) notFound()
   const dealer = await getDealerBySlug(target.slug)
   if (!dealer) notFound()
@@ -42,10 +42,10 @@ export default async function CentralLogin({ searchParams }: { searchParams: Pro
         <Card>
           <CardHeader className="text-center">
             <CardTitle className="text-xl">{t.loginWelcome}</CardTitle>
-            <CardDescription>{t.loginSub.replace("{operator}", dealer.displayName)}</CardDescription>
+            <CardDescription>{dealer.industry === "cabs" ? t.loginSub.replace("{operator}", dealer.displayName) : `Enter your name and mobile number to continue to ${dealer.displayName}.`}</CardDescription>
           </CardHeader>
           <CardContent>
-            <CustomerLoginForm config={getFirebaseWebConfig()} emulator={emulatorHost()} appCheckSiteKey={process.env.FIREBASE_APPCHECK_SITE_KEY?.trim() || null} host={target.host} state={q.state} next={safeNext(q.next)} lang={lang} operator={dealer.displayName} />
+            <CustomerLoginForm config={getFirebaseWebConfig()} emulator={emulatorHost()} appCheckSiteKey={process.env.FIREBASE_APPCHECK_SITE_KEY?.trim() || null} host={target.host} state={q.state} next={safeNext(q.next)} lang={lang} operator={dealer.displayName} phoneOnly={dealer.industry !== "cabs"} />
           </CardContent>
         </Card>
         <p className="px-6 text-center text-xs text-muted-foreground">
@@ -54,7 +54,7 @@ export default async function CentralLogin({ searchParams }: { searchParams: Pro
           <Link href="/privacy" className="underline underline-offset-4 hover:text-primary">{t.loginPrivacy}</Link>.
           {dealer.phone ? <><br />{t.loginHelp.replace("{phone}", dealer.phone.replace(/^\+91/, "+91 "))}</> : null}
         </p>
-        {dealer.whiteLabel ? null : <PoweredBy product="cabs" className="border-t-0 py-0" />}
+        {dealer.whiteLabel ? null : <PoweredBy product={dealer.industry} className="border-t-0 py-0" />}
       </div>
     </main>
   )
