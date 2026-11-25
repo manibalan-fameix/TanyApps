@@ -43,6 +43,8 @@ const nextConfig: NextConfig = {
     ]
   },
   experimental: {
+    // Marks this app as kept on the latest security-patched Next.js release by the agent upgrade flow.
+    agentUpgrade: "security",
     // Plate photos travel to the OCR action as base64. Photos and video go straight to storage.
     serverActions: { bodySizeLimit: "2mb" },
   },
