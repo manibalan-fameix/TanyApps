@@ -332,7 +332,8 @@ describe.skipIf(!url)("usage metering and cost protection (live database)", () =
         return out
       }
       const used = new Set<string>()
-      for (const f of ["app", "lib", "workers"].flatMap((d) => walk(path.join(root, d)))) for (const m of readFileSync(f, "utf8").matchAll(/feature:\s*"(\w+)"/g)) used.add(m[1])
+      // The data grid's table library has its own, unrelated "feature:" option.
+      for (const f of ["app", "lib", "workers"].flatMap((d) => walk(path.join(root, d))).filter((f) => !path.basename(f).startsWith("data-grid"))) for (const m of readFileSync(f, "utf8").matchAll(/feature:\s*"(\w+)"/g)) used.add(m[1])
       for (const feature of used) if (feature !== "not_a_feature") expect(Object.keys(usage.FEATURES), feature).toContain(feature)
       // The paid features are all metered at their call sites.
       for (const f of ["llm_chat_request", "vision_ocr_request", "rc_lookup_request", "llm_video_listing", "media_upload_bytes", "video_processing_seconds", "maps_places_request", "maps_route_request"]) expect([...used], f).toContain(f)
