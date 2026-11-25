@@ -47,6 +47,7 @@ const UPDATE_PAYLOAD: Record<string, object> = {
   coupons: { code: "x" },
   reviews: { name: "x" },
   enquiries: { name: "x" },
+  tableBookings: { name: "x" },
   banners: { title: "x" },
   deliveryPartners: { name: "x" },
   deliveryZones: { name: "x" },

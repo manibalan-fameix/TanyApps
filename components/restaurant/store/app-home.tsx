@@ -46,11 +46,13 @@ import {
   offerPercent,
 } from "@/lib/restaurant/storefront"
 import { distanceKm } from "@/lib/restaurant/service-area"
+import { isOpenAt, nextOpeningLabel } from "@/lib/hours"
 import { etaMinutes } from "@/lib/restaurant/tracking"
 import { cn } from "@/lib/utils"
 
 type Sort = "popular" | "low" | "high"
 type Diet = "all" | "veg" | "nonVeg"
+
 const MODE_ICON = {
   delivery: Scooter01Icon,
   pickup: Store01Icon,
@@ -68,7 +70,7 @@ const DIET_LABEL: Record<Diet, string> = {
 }
 
 const PILL =
-  "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-3.5 text-sm whitespace-nowrap text-foreground transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+  "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[8px] border border-border bg-background px-3.5 text-sm whitespace-nowrap text-foreground shadow-[0_0_6px_1px_color-mix(in_oklab,var(--foreground)_9%,transparent),0_0_2px_color-mix(in_oklab,var(--foreground)_10%,transparent)] transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
 const PILL_ON = "border-foreground bg-foreground text-background"
 
 type Props = {
@@ -111,22 +113,95 @@ export function StoreAppHome({
   const [best, setBest] = useState(false)
   const mainRef = useRef<HTMLElement>(null)
   const headRef = useRef<HTMLDivElement>(null)
+  const brandRef = useRef<HTMLDivElement>(null)
+  const stripRef = useRef<HTMLDivElement>(null)
 
-  // The tabs and category chips stick just under the pinned top bar, whatever height it has (a long name wraps to two lines).
+  // The header card sticks, but slides up until the brand name is gone: search and the order tabs stay pinned. The tabs and chips below
+  // stick just under whatever is left, so measure both (a long name wraps to two lines).
+  const [brandH, setBrandH] = useState(0)
+  // Open or closed right now, from the weekly hours. Read after mount (and every minute) so the server and first client render match.
+  const [inHours, setInHours] = useState<boolean | null>(null)
+  const [opensAt, setOpensAt] = useState<string | null>(null)
+  const schedule = info.schedule ?? null
+  useEffect(() => {
+    const tick = () => {
+      setInHours(isOpenAt(schedule))
+      setOpensAt(nextOpeningLabel(schedule))
+    }
+    tick()
+    const id = window.setInterval(tick, 60_000)
+    return () => window.clearInterval(id)
+  }, [schedule])
+  // No schedule means the owner never set hours, so a restaurant taking orders reads as open.
+  const hoursOpen = inHours ?? (schedule ? null : true)
+  const statusOf = (m: Fulfilment | "book"): boolean | null => {
+    if (hoursOpen === null) return null
+    return m === "book" ? hoursOpen : hoursOpen && canOrder
+  }
+  // Once the brand name has scrolled away the header is floating over the dishes, so it turns to frosted glass.
+  const [stuck, setStuck] = useState(false)
+  // Once the menu's own tabs (Categories / About / Reviews) reach the top and dock there, the order tabs and the delivery strip slide away
+  // so only those tabs stay fixed. Read from a marker that sits where those tabs naturally start, so docking never feeds back on itself.
+  const [docked, setDocked] = useState(false)
+  const dockedRef = useRef(false)
+  const fullRef = useRef(0)
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const on = () => {
+      const y = window.scrollY
+      setStuck(y > brandH)
+      const main = mainRef.current
+      // Pinned, the tabs below must start exactly where the strip's visible part ends (it loses 24px to the clip), so read it from the screen.
+      const strip = stripRef.current
+      if (strip && y > brandH && !dockedRef.current) fullRef.current = Math.max(strip.getBoundingClientRect().bottom - 24, 0)
+      const marker = sentinelRef.current
+      const d = marker ? marker.getBoundingClientRect().top <= fullRef.current + 52 + 1 : false
+      dockedRef.current = d
+      setDocked(d)
+      if (main) main.style.setProperty("--head-h", d ? `${strip ? Math.max(strip.getBoundingClientRect().bottom - 24, 0) : 0}px` : `${fullRef.current}px`)
+    }
+    on()
+    window.addEventListener("scroll", on, { passive: true })
+    window.addEventListener("resize", on)
+    return () => {
+      window.removeEventListener("scroll", on)
+      window.removeEventListener("resize", on)
+    }
+  }, [brandH, mode])
+  // Docking moves the strip on the next render, so measure again once it has landed.
+  useEffect(() => {
+    if (!docked) return
+    const id = requestAnimationFrame(() => {
+      const strip = stripRef.current
+      const main = mainRef.current
+      if (strip && main) main.style.setProperty("--head-h", `${Math.max(strip.getBoundingClientRect().bottom - 24, 0)}px`)
+    })
+    return () => cancelAnimationFrame(id)
+  }, [docked])
   useEffect(() => {
     const head = headRef.current
+    const brand = brandRef.current
     const main = mainRef.current
-    if (!head || !main) return
-    const apply = () =>
-      main.style.setProperty(
-        "--head-h",
-        `calc(${head.offsetHeight}px + var(--safe-area-inset-top, 0px))`
-      )
+    if (!head || !brand || !main) return
+    const strip = stripRef.current
+    const apply = () => {
+      setBrandH(brand.offsetHeight)
+      const card = head.offsetHeight - brand.offsetHeight - 6
+      // The delivery strip tucks 24px under the card and, when pinned, loses its bottom 24px to the clip, so only the middle of it adds to what the tabs below must clear.
+      const below = strip ? Math.max(strip.offsetHeight - 48, 0) : 0
+      main.style.setProperty("--card-h", `${card}px`)
+      if (!dockedRef.current) {
+        fullRef.current = card + below
+        main.style.setProperty("--head-h", `${card + below}px`)
+      }
+    }
     apply()
     const ro = new ResizeObserver(apply)
     ro.observe(head)
+    ro.observe(brand)
+    if (strip) ro.observe(strip)
     return () => ro.disconnect()
-  }, [])
+  }, [modes.length, mode])
 
   // Read after mount so the server and first client render match.
   useEffect(() => {
@@ -174,9 +249,11 @@ export function StoreAppHome({
     dishes.find((d) => d.categoryId === c.id && d.imageUrl)?.imageUrl ?? null
 
   return (
-    <main ref={mainRef} className="pb-40 md:hidden">
-      <div className="bg-primary px-4 pt-[calc(0.75rem+var(--safe-area-inset-top,0px))] pb-3">
-        <div className="flex items-center justify-center gap-3 pb-4">
+    <main ref={mainRef} className="relative pb-40 md:hidden">
+      {/* iOS 26 Safari ignores theme-color and tints its status bar from the fixed element at the top edge, so pin a brand-coloured one there. */}
+      <div aria-hidden className={cn("fixed inset-x-0 top-0 z-50 h-[max(env(safe-area-inset-top),0.5rem)] transition-colors", "bg-background")} />
+      <div ref={headRef} style={{ top: -(brandH + 4) }} className={cn("sticky z-40 transform-gpu transition-transform duration-300", docked && "pointer-events-none -translate-y-full", "rounded-b-3xl border-x border-b border-foreground/10 px-4 shadow-sm transition-colors", stuck ? "bg-background/70 backdrop-blur-3xl backdrop-saturate-200" : "bg-background", " pt-[calc(0.75rem+var(--safe-area-inset-top,0px))] pb-0")}>
+        <div ref={brandRef} className="flex items-center justify-center gap-3 pb-4">
           <div className="flex min-w-0 items-center gap-2.5">
             {logoUrl ? (
               <Link
@@ -195,66 +272,21 @@ export function StoreAppHome({
             <div className="flex min-w-0 flex-col items-center text-center">
               <Link
                 href="/"
-                className="line-clamp-2 text-3xl leading-tight font-bold tracking-tight text-primary-foreground [-webkit-text-stroke:0.75px_currentColor]"
+                className="line-clamp-2 text-3xl leading-tight font-bold tracking-tight text-primary [-webkit-text-stroke:0.75px_currentColor]"
               >
                 {restaurant}
               </Link>
             </div>
           </div>
         </div>
-        {modes.length > 1 ? (
-          <div
-            role="radiogroup"
-            aria-label="Order type"
-            className="relative isolate flex w-full rounded-full p-0.5"
-          >
-            {/* Light fill and outline are separate see-through layers (opacity works on every browser, unlike mixed colours). */}
-            <span
-              aria-hidden
-              className="absolute inset-0 -z-10 rounded-full bg-primary-foreground opacity-15"
-            />
-            <span
-              aria-hidden
-              className="absolute inset-0 -z-10 rounded-full border border-primary-foreground opacity-40"
-            />
-            {modes.map((m) => (
-              <button
-                key={m}
-                type="button"
-                role="radio"
-                aria-checked={mode === m}
-                onClick={() => pick(m)}
-                className={cn(
-                  "flex h-9 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-medium transition-colors",
-                  mode === m
-                    ? "bg-primary-foreground text-primary"
-                    : "text-primary-foreground"
-                )}
-              >
-                <HugeiconsIcon
-                  icon={MODE_ICON[m]}
-                  strokeWidth={2}
-                  className="size-4 shrink-0"
-                />
-                {FULFILMENT_LABEL[m]}
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </div>
-      {/* Only the search and the delivery strip stay pinned; the brand name and the order-type switch scroll away. The fill above covers the status bar. */}
-      <div
-        ref={headRef}
-        className="sticky top-[var(--safe-area-inset-top,0px)] z-40 grid gap-3 bg-primary px-4 pt-1 pb-3 shadow-md before:absolute before:bottom-full before:left-0 before:h-[var(--safe-area-inset-top,0px)] before:w-full before:bg-primary after:absolute after:top-full after:left-0 after:h-2 after:w-full after:bg-muted"
-      >
         <form
           action="/search"
           role="search"
-          className="relative isolate flex h-11 items-center gap-2.5 rounded-full px-4 text-primary-foreground"
+          className="relative isolate mt-1 mb-4 flex h-14 items-center gap-2.5 rounded-full px-4 text-foreground"
         >
           <span
             aria-hidden
-            className="absolute inset-0 -z-10 rounded-full bg-foreground opacity-20"
+            className="absolute inset-0 -z-10 rounded-full border-[1.5px] border-foreground/12 bg-muted shadow-[inset_0_1px_0_color-mix(in_oklab,var(--background)_90%,transparent)]"
           />
           <HugeiconsIcon
             icon={Search01Icon}
@@ -267,16 +299,137 @@ export function StoreAppHome({
             enterKeyHint="search"
             aria-label="Search dishes"
             placeholder={`Search ${restaurant}`}
-            className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-primary-foreground"
+            className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
           />
         </form>
-        {mode === "delivery" ? <DeliveryStrip origin={origin} /> : null}
+      {modes.length > 0 ? (
+        <div role="radiogroup" aria-label="Order type" className="-mx-4 flex px-4">
+          {modes.map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="radio"
+              aria-checked={mode === m}
+              onClick={() => pick(m)}
+              className="group relative flex min-w-0 flex-1 flex-col items-center gap-1 pt-1 pb-4 text-xs font-medium text-muted-foreground transition-colors aria-checked:font-semibold aria-checked:text-foreground focus-visible:outline-none"
+            >
+              <HugeiconsIcon
+                icon={MODE_ICON[m]}
+                strokeWidth={1.75}
+                className="size-6 shrink-0 group-aria-checked:[&_path]:fill-[var(--duo)]"
+                // Two shades of the product colour: the deep one draws the icon, the light one fills it when active.
+                style={{ color: `var(--logo-${m === "pickup" ? "tanyeats" : "tanymotos"})`, "--duo": `var(--logo-${m === "pickup" ? "tanyeats" : "tanymotos"}-fg)` } as React.CSSProperties}
+              />
+              {FULFILMENT_LABEL[m]}
+              <OpenTag open={statusOf(m)} />
+              <span aria-hidden className="absolute bottom-0 z-10 h-[3px] w-12 rounded-full bg-foreground opacity-0 transition-opacity group-aria-checked:opacity-100" />
+            </button>
+          ))}
+                    <Link
+            href="/book-table"
+            className="relative flex min-w-0 flex-1 flex-col items-center gap-1 pt-1 pb-4 text-xs font-medium text-muted-foreground transition-colors focus-visible:outline-none"
+          >
+            <HugeiconsIcon icon={RestaurantTableIcon} strokeWidth={1.75} className="size-6 shrink-0" style={{ color: "var(--logo-tanyecom)" }} />
+            Book table
+            <OpenTag open={statusOf("book")} />
+          </Link>
+        </div>
+      ) : null}
       </div>
 
+      {/* The delivery strip sits between two cards: the orange header above and the page below, both with rounded corners that overlap its ends. */}
+      {mode === "delivery" || mode === "pickup" ? (
+        <div ref={stripRef} className={cn("sticky -mt-6", stuck ? "z-30 [clip-path:inset(0_0_1.5rem_0)]" : "z-0")} style={{ top: docked ? "calc(max(env(safe-area-inset-top), 0.5rem) - 1.5rem)" : "calc(var(--card-h, 0px) - 1.5rem)" }}>
+          <DeliveryStrip origin={origin} solid={stuck} closed={hoursOpen === false ? (opensAt ?? "later") : null} pickup={mode === "pickup"} restaurant={restaurant} directionsUrl={info.directionsUrl} />
+        </div>
+      ) : null}
+
+      <div className="relative z-10 -mt-6 rounded-t-3xl bg-background pt-2">
       <PromoBanners banners={banners} />
 
+      {categories.length > 0 ? (
+        <nav
+          aria-label="Categories"
+          className="mt-4 flex scroll-px-4 [scrollbar-width:none] gap-3 overflow-x-auto px-4 [&::-webkit-scrollbar]:hidden"
+        >
+          {categories.map((c) => {
+            const img = circleImage(c)
+            return (
+              <Link
+                key={c.id}
+                href={`/category/${c.slug}`}
+                className="flex w-16 shrink-0 flex-col items-center gap-1.5"
+              >
+                <span className="relative flex size-16 items-center justify-center overflow-hidden rounded-full bg-muted">
+                  {img ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={img}
+                      alt=""
+                      loading="lazy"
+                      className="absolute inset-0 size-full object-cover"
+                    />
+                  ) : (
+                    <HugeiconsIcon
+                      icon={Restaurant01Icon}
+                      strokeWidth={1.5}
+                      className="size-6 text-muted-foreground"
+                    />
+                  )}
+                </span>
+                <span className="w-full truncate text-center text-xs">
+                  {c.name}
+                </span>
+              </Link>
+            )
+          })}
+        </nav>
+      ) : null}
+
+      {shown.length === 0 ? (
+        <p className="mx-4 mt-8 rounded-2xl border bg-card p-8 text-center text-sm text-muted-foreground">
+          {dishes.length === 0
+            ? "Our menu is coming soon. Please check back shortly."
+            : "No dishes match these filters."}
+          {anyFilter ? (
+            <button
+              type="button"
+              onClick={clear}
+              className="mt-3 block w-full font-medium text-primary"
+            >
+              Clear filters
+            </button>
+          ) : null}
+        </p>
+      ) : (
+        <>
+          <Row
+            title={picks.length ? "Chef's Picks" : "Popular Now"}
+            dishes={gems}
+            canOrder={canOrder}
+          />
+          {onOffer.length > 0 ? (
+            <Row
+              title="Offers for You"
+              subtitle={couponHint ?? "Fresh deals on dishes you will love"}
+              dishes={onOffer}
+              canOrder={canOrder}
+              badge
+            />
+          ) : couponHint ? (
+            <section className="mt-6 px-4">
+              <h2 className="text-lg font-bold tracking-tight">
+                Offers for You
+              </h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {couponHint}
+              </p>
+            </section>
+          ) : null}
+        </>
+      )}
       <div
-        className="mt-3 flex scroll-px-4 [scrollbar-width:none] gap-2 overflow-x-auto px-4 pb-1 [&::-webkit-scrollbar]:hidden"
+        className="sticky top-[var(--head-h,10rem)] z-30 mt-6 flex bg-background scroll-px-4 [scrollbar-width:none] gap-3 h-[3.25rem] shrink-0 items-center overflow-x-auto border-y border-border px-4 [&::-webkit-scrollbar]:hidden"
         aria-label="Filters"
       >
         <DropdownMenu>
@@ -385,87 +538,7 @@ export function StoreAppHome({
         ) : null}
       </div>
 
-      {categories.length > 0 ? (
-        <nav
-          aria-label="Categories"
-          className="mt-5 flex scroll-px-4 [scrollbar-width:none] gap-3 overflow-x-auto px-4 [&::-webkit-scrollbar]:hidden"
-        >
-          {categories.map((c) => {
-            const img = circleImage(c)
-            return (
-              <Link
-                key={c.id}
-                href={`/category/${c.slug}`}
-                className="flex w-16 shrink-0 flex-col items-center gap-1.5"
-              >
-                <span className="relative flex size-16 items-center justify-center overflow-hidden rounded-full bg-muted">
-                  {img ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={img}
-                      alt=""
-                      loading="lazy"
-                      className="absolute inset-0 size-full object-cover"
-                    />
-                  ) : (
-                    <HugeiconsIcon
-                      icon={Restaurant01Icon}
-                      strokeWidth={1.5}
-                      className="size-6 text-muted-foreground"
-                    />
-                  )}
-                </span>
-                <span className="w-full truncate text-center text-xs">
-                  {c.name}
-                </span>
-              </Link>
-            )
-          })}
-        </nav>
-      ) : null}
-
-      {shown.length === 0 ? (
-        <p className="mx-4 mt-8 rounded-2xl border bg-card p-8 text-center text-sm text-muted-foreground">
-          {dishes.length === 0
-            ? "Our menu is coming soon. Please check back shortly."
-            : "No dishes match these filters."}
-          {anyFilter ? (
-            <button
-              type="button"
-              onClick={clear}
-              className="mt-3 block w-full font-medium text-primary"
-            >
-              Clear filters
-            </button>
-          ) : null}
-        </p>
-      ) : (
-        <>
-          <Row
-            title={picks.length ? "Chef's Picks" : "Popular Now"}
-            dishes={gems}
-            canOrder={canOrder}
-          />
-          {onOffer.length > 0 ? (
-            <Row
-              title="Offers for You"
-              subtitle={couponHint ?? "Fresh deals on dishes you will love"}
-              dishes={onOffer}
-              canOrder={canOrder}
-              badge
-            />
-          ) : couponHint ? (
-            <section className="mt-6 px-4">
-              <h2 className="text-lg font-bold tracking-tight">
-                Offers for You
-              </h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                {couponHint}
-              </p>
-            </section>
-          ) : null}
-        </>
-      )}
+      <div ref={sentinelRef} aria-hidden className="h-0" />
       <StoreTabs
         dishes={shown}
         categories={categories}
@@ -474,8 +547,15 @@ export function StoreAppHome({
         reviews={reviews}
         rating={rating}
       />
+      </div>
     </main>
   )
+}
+
+/** "Open" or "Closed" under a top tab. Nothing until the hours are known. */
+function OpenTag({ open }: { open: boolean | null }) {
+  if (open === null) return <span aria-hidden className="h-3" />
+  return <span className={cn("-mt-0.5 text-[10px] leading-3 font-semibold", open ? "text-success" : "text-destructive")}>{open ? "Open" : "Closed"}</span>
 }
 
 // Kitchen time on top of the ride, and how wide the quoted range is. Rough on purpose: shown as a range, never as a promise.
@@ -485,8 +565,21 @@ const RANGE_MIN = 10
 /** "Deliver to <place> | in 15 - 25 minutes": a light band at the foot of the header. The time needs both pins, so it is left out until the guest has set a spot. */
 function DeliveryStrip({
   origin,
+  solid,
+  closed,
+  pickup,
+  restaurant,
+  directionsUrl,
 }: {
   origin: { lat: number; lng: number } | null
+  /** Outside opening hours: when it next opens ("tomorrow 7 am"), shown in place of the time estimate. Null while open. */
+  closed: string | null
+  /** The Pickup tab: where to collect and how soon it is ready, instead of the guest's address and the ride. */
+  pickup: boolean
+  restaurant: string
+  directionsUrl: string | null
+  /** Pinned over the dishes: the gradient is fully filled, with no see-through ends. */
+  solid: boolean
 }) {
   const { location, setOpen } = useGuestLocation()
   const place = location
@@ -499,40 +592,64 @@ function DeliveryStrip({
   const lo =
     origin && point ? etaMinutes(distanceKm(origin, point)) + KITCHEN_MIN : null
   return (
-    <div className="-mx-4 mt-1 -mb-3 flex items-center justify-center gap-3 bg-muted px-4 pt-3.5 pb-1.5 text-sm">
+    <div className={`relative isolate flex items-center justify-center gap-3 overflow-hidden ${solid ? "bg-[linear-gradient(90deg,color-mix(in_oklab,var(--primary)_30%,var(--background)),color-mix(in_oklab,var(--primary)_88%,var(--foreground))_30%,color-mix(in_oklab,var(--primary)_88%,var(--foreground))_70%,color-mix(in_oklab,var(--primary)_30%,var(--background)))]" : "bg-[linear-gradient(90deg,color-mix(in_oklab,var(--primary)_22%,transparent),color-mix(in_oklab,var(--primary)_88%,var(--foreground))_30%,color-mix(in_oklab,var(--primary)_88%,var(--foreground))_70%,color-mix(in_oklab,var(--primary)_22%,transparent))]"} px-4 pt-[calc(1.5rem+0.625rem)] pb-[calc(1.5rem+0.625rem)] text-sm text-primary-foreground shadow-[inset_0_-1px_0_color-mix(in_oklab,var(--background)_55%,transparent)] ${solid ? "" : "backdrop-blur-xl backdrop-saturate-150"} before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:-z-10 before:h-1/2 before:bg-[linear-gradient(to_bottom,color-mix(in_oklab,var(--background)_40%,transparent),transparent)] before:content-['']`}>
+      {pickup ? (
+        <>
+          {directionsUrl ? (
+            <a href={directionsUrl} target="_blank" rel="noreferrer" className="flex min-w-0 items-center gap-1" aria-label={`Directions to ${restaurant}`}>
+              <HugeiconsIcon icon={Store01Icon} strokeWidth={2} className="size-4 shrink-0" />
+              <span className="min-w-0 truncate">
+                <span className="font-medium">{restaurant}</span>
+              </span>
+            </a>
+          ) : (
+            <span className="flex min-w-0 items-center gap-1">
+              <HugeiconsIcon icon={Store01Icon} strokeWidth={2} className="size-4 shrink-0" />
+              <span className="min-w-0 truncate">
+                <span className="font-medium">{restaurant}</span>
+              </span>
+            </span>
+          )}
+          <span aria-hidden className="h-5 w-px shrink-0 bg-primary-foreground/40" />
+          <span className="shrink-0 font-bold">
+            {closed ? `Opens ${closed}` : `ready in ${KITCHEN_MIN} - ${KITCHEN_MIN + RANGE_MIN} min`}
+          </span>
+        </>
+      ) : (
+        <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="min-w-0 truncate text-primary"
+        className="flex min-w-0 items-center gap-1"
         aria-label="Change delivery location"
       >
         <HugeiconsIcon
           icon={Location01Icon}
           strokeWidth={2}
-          className="mr-1 inline size-4 align-text-bottom"
+          className="size-4 shrink-0"
         />
         {place ? (
-          <>
-            <span className="text-muted-foreground">Deliver to </span>
+          <span className="min-w-0 truncate">
+            <span className="opacity-80">Deliver to </span>
             <span className="font-medium">{place}</span>
-          </>
+          </span>
         ) : (
-          <span className="font-medium">Set your delivery location</span>
+          <span className="min-w-0 truncate font-medium">Set your delivery location</span>
         )}
         <HugeiconsIcon
           icon={ArrowDown01Icon}
           strokeWidth={2}
-          className="ml-0.5 inline size-4 align-text-bottom"
+          className="size-4 shrink-0"
         />
       </button>
-      {lo !== null ? (
+      {closed || lo !== null ? (
         <>
-          <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
-          <span className="shrink-0 font-bold">
-            in {lo} - {lo + RANGE_MIN} minutes
-          </span>
+          <span aria-hidden className="h-5 w-px shrink-0 bg-primary-foreground/40" />
+          <span className="shrink-0 font-bold">{closed ? `Opens ${closed}` : `in ${lo} - ${(lo ?? 0) + RANGE_MIN} minutes`}</span>
         </>
       ) : null}
+        </>
+      )}
     </div>
   )
 }

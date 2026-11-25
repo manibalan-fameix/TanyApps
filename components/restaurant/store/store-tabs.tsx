@@ -14,6 +14,8 @@ export type StoreInfo = {
   about: string
   address: string
   hours: string | null
+  /** The raw weekly schedule, for the live Open / Closed labels. */
+  schedule?: import("@/lib/hours").BusinessHours | null
   phone: string | null
   email: string
   deliveryText: string | null
@@ -21,8 +23,8 @@ export type StoreInfo = {
 }
 export type StoreReview = { id: string; name: string; rating: number; comment: string; date: string }
 
-// The underline sits on the divider line (the base style puts it 5px below, which is what looked misaligned).
-const TRIGGER = "h-full flex-none rounded-none px-0 text-base font-semibold after:bg-primary group-data-horizontal/tabs:after:bottom-[-1px] data-active:text-foreground"
+// Pill tabs: the active one is a filled dark pill, the others are light grey pills.
+const TRIGGER = "h-9! flex-none rounded-full border-0 bg-muted! px-4 text-sm font-medium text-muted-foreground after:hidden data-active:bg-foreground! data-active:font-semibold data-active:text-background!"
 
 function Stars({ value }: { value: number }) {
   return (
@@ -80,8 +82,8 @@ export function StoreTabs({ dishes, categories, canOrder, info, reviews, rating 
   }, [active])
 
   return (
-    <Tabs defaultValue="categories" className="mt-6 gap-0">
-      <TabsList variant="line" className="sticky top-[calc(var(--head-h,10rem)-0.5rem)] z-30 h-11! w-full justify-start gap-6 border-b border-border bg-background px-4 pt-2">
+    <Tabs defaultValue="categories" className="gap-0">
+      <TabsList variant="line" className="sticky top-[calc(var(--head-h,10rem)+3.25rem)] z-30 h-[3.25rem]! w-full justify-start gap-2 border-b border-border bg-background px-4 py-2">
         <TabsTrigger value="categories" className={TRIGGER}>Categories</TabsTrigger>
         <TabsTrigger value="about" className={TRIGGER}>About</TabsTrigger>
         <TabsTrigger value="reviews" className={TRIGGER}>Reviews{reviews.length ? ` (${rating?.count ?? reviews.length})` : ""}</TabsTrigger>
@@ -89,7 +91,7 @@ export function StoreTabs({ dishes, categories, canOrder, info, reviews, rating 
 
       <TabsContent value="categories">
         {sections.length > 1 ? (
-          <nav ref={nav} aria-label="Jump to a category" className="sticky top-[calc(var(--head-h,10rem)+2.25rem)] z-20 flex gap-5 overflow-x-auto border-b border-border/60 bg-background px-4 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <nav ref={nav} aria-label="Jump to a category" className="sticky top-[calc(var(--head-h,10rem)+6.5rem)] z-20 flex h-[3.25rem] items-center gap-5 overflow-x-auto border-b border-border bg-background px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {sections.map((s) => (
               <button
                 key={s.c.id}
@@ -104,8 +106,9 @@ export function StoreTabs({ dishes, categories, canOrder, info, reviews, rating 
             ))}
           </nav>
         ) : null}
-        {sections.map((s) => (
-          <div key={s.c.id} id={`${uid}-cat-${s.c.id}`} className="scroll-mt-[calc(var(--head-h,10rem)+5.25rem)]">
+        {sections.map((s, i) => (
+          <div key={s.c.id} id={`${uid}-cat-${s.c.id}`} className="scroll-mt-[calc(var(--head-h,10rem)+9.75rem)]">
+            {i > 0 ? <div aria-hidden className="mt-6 h-2 bg-muted" /> : null}
             <DishListSection title={s.c.name} href={`/category/${s.c.slug}`} total={s.dishes.length} dishes={s.dishes.slice(0, 4)} canOrder={canOrder} />
           </div>
         ))}

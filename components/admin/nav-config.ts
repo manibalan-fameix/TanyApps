@@ -13,6 +13,7 @@ import {
   MapPinpoint01Icon,
   Notification01Icon,
   PercentCircleIcon,
+  RestaurantTableIcon,
   Radio01Icon,
   Restaurant01Icon,
   ShoppingBag01Icon,
@@ -112,6 +113,7 @@ export const navRestaurantGroups: NavGroup[] = [
     items: [
       { title: "Customers", url: "/customers", icon: UserMultiple02Icon },
       { title: "Reviews", url: "/reviews", icon: StarIcon },
+      { title: "Table bookings", url: "/table-bookings", icon: RestaurantTableIcon },
       { title: "Enquiries", url: "/enquiries", icon: Mail01Icon },
     ],
   },

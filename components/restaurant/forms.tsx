@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { toast } from "@/lib/toast"
 
-import { sendEnquiry, submitReview } from "@/app/(tenant)/sites/[dealer]/actions"
+import { requestTableBooking, sendEnquiry, submitReview } from "@/app/(tenant)/sites/[dealer]/actions"
 import { Button } from "@/components/ui/button"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
@@ -94,5 +94,69 @@ export function ReviewForm({ code }: { code: string }) {
         Submit review
       </Button>
     </div>
+  )
+}
+
+/** Ask for a table: who, how many, when. The restaurant calls back to confirm. */
+export function TableBookingForm() {
+  const [pending, start] = useTransition()
+  const [sent, setSent] = useState(false)
+  const [v, setV] = useState({ name: "", phone: "", guests: "2", date: "", time: "", note: "" })
+  const [err, setErr] = useState<{ field?: string; message: string } | null>(null)
+  if (sent) return <p className="rounded-xl border p-6 text-center text-sm">Thank you. We have your request and will call to confirm your table.</p>
+  const bad = (f: string) => (err?.field === f ? err.message : undefined)
+  const set = (k: keyof typeof v) => (e: { target: { value: string } }) => setV({ ...v, [k]: e.target.value })
+  return (
+    <FieldGroup>
+      <Field data-invalid={Boolean(bad("name"))}>
+        <FieldLabel htmlFor="tb-name">Your name</FieldLabel>
+        <Input id="tb-name" value={v.name} onChange={set("name")} />
+        {bad("name") ? <FieldError>{bad("name")}</FieldError> : null}
+      </Field>
+      <Field data-invalid={Boolean(bad("phone"))}>
+        <FieldLabel htmlFor="tb-phone">Mobile number</FieldLabel>
+        <Input id="tb-phone" inputMode="tel" value={v.phone} onChange={set("phone")} />
+        {bad("phone") ? <FieldError>{bad("phone")}</FieldError> : null}
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field data-invalid={Boolean(bad("date"))}>
+          <FieldLabel htmlFor="tb-date">Date</FieldLabel>
+          <Input id="tb-date" type="date" value={v.date} onChange={set("date")} />
+          {bad("date") ? <FieldError>{bad("date")}</FieldError> : null}
+        </Field>
+        <Field data-invalid={Boolean(bad("time"))}>
+          <FieldLabel htmlFor="tb-time">Time</FieldLabel>
+          <Input id="tb-time" type="time" value={v.time} onChange={set("time")} />
+          {bad("time") ? <FieldError>{bad("time")}</FieldError> : null}
+        </Field>
+      </div>
+      <Field data-invalid={Boolean(bad("guests"))}>
+        <FieldLabel htmlFor="tb-guests">Guests</FieldLabel>
+        <Input id="tb-guests" type="number" inputMode="numeric" min={1} max={20} value={v.guests} onChange={set("guests")} />
+        {bad("guests") ? <FieldError>{bad("guests")}</FieldError> : null}
+      </Field>
+      <Field data-invalid={Boolean(bad("note"))}>
+        <FieldLabel htmlFor="tb-note">Anything we should know? (optional)</FieldLabel>
+        <Textarea id="tb-note" rows={3} value={v.note} onChange={set("note")} />
+        {bad("note") ? <FieldError>{bad("note")}</FieldError> : null}
+      </Field>
+      <Button
+        type="button"
+        disabled={pending}
+        onClick={() =>
+          start(async () => {
+            setErr(null)
+            const res = await requestTableBooking({ ...v, guests: Number(v.guests) })
+            if (res.ok) setSent(true)
+            else {
+              setErr({ field: res.field, message: res.error })
+              if (!res.field) toast.error(res.error)
+            }
+          })
+        }
+      >
+        {pending ? "Sending..." : "Request a table"}
+      </Button>
+    </FieldGroup>
   )
 }

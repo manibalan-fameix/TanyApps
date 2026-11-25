@@ -32,6 +32,7 @@ import {
   setBannerActive,
   setCouponActive,
   setEnquiryHandled,
+  setTableBookingStatus,
   setReviewStatus,
 } from "@/lib/restaurant/admin-actions"
 import { setMenuItemAvailable } from "@/app/(admin)/(shell)/menu/actions"
@@ -505,3 +506,59 @@ export function EnquiriesGrid({ rows }: { rows: EnquiryRow[] }) {
   )
 }
 
+
+export type TableBookingRow = { id: string; name: string; phone: string; guests: number; when: string; note: string; status: "new" | "confirmed" | "declined"; createdAt: string }
+
+const BOOKING_LABEL = { new: "New", confirmed: "Confirmed", declined: "Declined" } as const
+
+export function TableBookingsGrid({ rows }: { rows: TableBookingRow[] }) {
+  const ctx = useRunner()
+  const columns = useMemo<ColDef<TableBookingRow>[]>(
+    () => [
+      {
+        field: "name",
+        headerName: "Guest",
+        headerClass: "hdr-icon hdr-guest",
+        width: 220,
+        cellRenderer: ({ data }: CustomCellRendererProps<TableBookingRow>) =>
+          data ? (
+            <div className="flex min-w-0 flex-col leading-tight">
+              <span className="truncate font-medium">{data.name}</span>
+              <a href={`tel:${data.phone}`} className="text-xs text-muted-foreground underline">{data.phone}</a>
+            </div>
+          ) : null,
+      },
+      { field: "when", headerName: "Table for", headerClass: "hdr-icon hdr-placed", width: 190, valueFormatter: (p: ValueFormatterParams) => dateTimeFmt.format(new Date(p.value)) },
+      { field: "guests", headerName: "Guests", headerClass: "hdr-icon hdr-guest", width: 100 },
+      { field: "note", headerName: "Note", headerClass: "hdr-icon hdr-message", minWidth: 200, flex: 1, cellClass: "text-muted-foreground" },
+      {
+        field: "status",
+        headerName: "Status",
+        headerClass: "hdr-icon hdr-status",
+        width: 140,
+        cellRenderer: ({ data }: CustomCellRendererProps<TableBookingRow>) => (data ? <Badge variant={data.status === "new" ? "default" : data.status === "confirmed" ? "secondary" : "outline"}>{BOOKING_LABEL[data.status]}</Badge> : null),
+        ...(optionsFilter({ options: ["new", "confirmed", "declined"], labels: BOOKING_LABEL }) as Partial<ColDef<TableBookingRow>>),
+      },
+      actionsCol<TableBookingRow>(({ data, context }) =>
+        data ? (
+          <Actions>
+            {data.status !== "confirmed" ? <Button variant="outline" size="sm" tabIndex={-1} onClick={() => context.run(() => setTableBookingStatus(data.id, "confirmed"))}>Confirm</Button> : null}
+            {data.status !== "declined" ? <Button variant="outline" size="sm" tabIndex={-1} onClick={() => context.run(() => setTableBookingStatus(data.id, "declined"))}>Decline</Button> : null}
+          </Actions>
+        ) : null, 230),
+    ],
+    [],
+  )
+  return (
+    <DataGrid<TableBookingRow>
+      rows={rows}
+      columns={columns}
+      icons={{ guest: Call02Icon, message: Mail01Icon, status: CheckmarkBadge01Icon, placed: Clock01Icon }}
+      tabs={[{ key: "all", label: "All" }, { key: "new", label: "New" }, { key: "confirmed", label: "Confirmed" }, { key: "declined", label: "Declined" }]}
+      searchPlaceholder="Search bookings…"
+      noMatches="No bookings match your filters."
+      rowHeight={56}
+      context={ctx}
+    />
+  )
+}

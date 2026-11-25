@@ -166,6 +166,26 @@ export const enquiries = pgTable(
   (t) => [index("enquiries_dealer_idx").on(t.dealerId, t.status)],
 )
 
+/** A guest's request for a table. The restaurant confirms or declines it by phone. */
+export const tableBookings = pgTable(
+  "table_bookings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    dealerId: uuid("dealer_id").notNull().references(() => dealers.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    phone: text("phone").notNull(),
+    guests: integer("guests").notNull(),
+    /** The day and time the guest wants, as the restaurant's own clock reads them: YYYY-MM-DD and HH:MM. */
+    bookingDate: text("booking_date").notNull(),
+    bookingTime: text("booking_time").notNull(),
+    note: text("note").notNull().default(""),
+    /** new | confirmed | declined */
+    status: text("status").notNull().default("new"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("table_bookings_dealer_idx").on(t.dealerId, t.status)],
+)
+
 export const banners = pgTable(
   "banners",
   {

@@ -267,6 +267,13 @@
       "when": 1794558059374,
       "tag": "0037_banner_promo_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1794765238416,
+      "tag": "0038_table_bookings",
+      "breakpoints": true
     }
   ]
 }

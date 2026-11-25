@@ -35,7 +35,7 @@ export async function proxy(request: NextRequest) {
       return notFound()
 
     case "marketing":
-      if (["/", "/privacy", "/terms", "/data-deletion"].includes(pathname)) return NextResponse.next()
+      if (["/", "/about", "/pricing", "/contact", "/privacy", "/terms", "/refund-policy", "/delivery-policy", "/data-deletion"].includes(pathname)) return NextResponse.next()
       // Dev only: also serve admin on the bare root (http://localhost:3000/login), because
       // Google OAuth reliably accepts http://localhost redirect URIs but not app.localhost.
       if (process.env.NODE_ENV === "development") return NextResponse.next({ request: { headers } })

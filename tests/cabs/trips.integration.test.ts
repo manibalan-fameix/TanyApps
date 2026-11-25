@@ -337,16 +337,19 @@ describe.skipIf(!url)("bookings (live database)", () => {
       const dayStart = data.istDayStart(now)
       const hoursIntoDay = (now.getTime() - dayStart.getTime()) / 3_600_000
       const later = Math.min(23.5 - hoursIntoDay, 3) // still today if there is room, otherwise skip the "today" assertion
+      // "Starts in 60 minutes" is still today only if that is before the next IST midnight. In the last hour of the IST day it is tomorrow, and the
+      // inbox then correctly files it under "upcoming" too, so every expectation below is computed from where the booking really falls.
+      const reqNowIsTomorrow = now.getTime() + 60 * 60_000 >= dayStart.getTime() + 24 * 3_600_000
       const reqNow = await mk(60, false)
       const confirmedFar = await mk(3 * 24 * 60, true)
       const requestedFar = await mk(2 * 24 * 60, false)
       const inbox = (tab: import("../../lib/cabs/booking-admin-data").InboxTab) => data.loadInbox(scoped.scopedDb(dealer), tab, now)
       expect((await inbox("new")).rows.map((r) => r.id).sort()).toEqual([reqNow.id, requestedFar.id].sort())
       expect((await inbox("pending")).rows.map((r) => r.id)).toEqual([confirmedFar.id])
-      expect((await inbox("upcoming")).rows.map((r) => r.id).sort()).toEqual([confirmedFar.id, requestedFar.id].sort())
+      expect((await inbox("upcoming")).rows.map((r) => r.id).sort()).toEqual([confirmedFar.id, requestedFar.id, ...(reqNowIsTomorrow ? [reqNow.id] : [])].sort())
       expect((await inbox("all")).rows).toHaveLength(3)
       const counts = (await inbox("new")).counts
-      expect(counts).toMatchObject({ new: 2, pending: 1, unpaid: 0, upcoming: 2, all: 3 })
+      expect(counts).toMatchObject({ new: 2, pending: 1, unpaid: 0, upcoming: reqNowIsTomorrow ? 3 : 2, all: 3 })
       // A confirmed booking whose advance is not paid is Unpaid as well as Pending; once paid it leaves Unpaid.
       await scoped.scopedDb(dealer).trips.update({ advanceDuePaise: 5000 }, drizzle.eq(s.trips.id, confirmedFar.id))
       expect((await inbox("unpaid")).rows.map((r) => r.id)).toEqual([confirmedFar.id])

@@ -81,7 +81,7 @@ const RAW_CLIENT_USERS: Record<string, Mode> = {
   "lib/db/client.ts": "infrastructure",
   "lib/db/scoped.ts": "infrastructure",
 }
-const ALLOWED_SCRIPTS = new Set(["scripts/seed-restaurant.ts", "scripts/seed.ts", "scripts/seed-staging.ts", "scripts/test-db.ts", "scripts/import-variants.ts"])
+const ALLOWED_SCRIPTS = new Set(["scripts/seed-restaurant.ts", "scripts/seed.ts", "scripts/seed-staging.ts", "scripts/test-db.ts", "scripts/import-variants.ts", "scripts/pexels-photos.ts"])
 
 describe("raw database client access", () => {
   const importers = (dirs: string[]) =>
@@ -161,7 +161,7 @@ describe("server actions", () => {
     "firebaseAccountExists", "signInWithFirebaseToken", "signInTeammate", "openDevDemo", "signInWithEmailPassword", "signInSuperAdmin", "signInSuperAdminLocal",
     // anonymous storefront actions: the business comes from the host, input is validated, and each is rate limited
     "previewCoupon", "previewDelivery", "placeOrder", "confirmOrderPayment", "getPaymentCheckout", "cancelPendingOrder", "sendEnquiry", "submitReview",
-    "locateGuest", "searchGuestPlaces", "checkPincode", "createBooking", "confirmBooking",
+    "locateGuest", "searchGuestPlaces", "checkPincode", "createBooking", "confirmBooking", "requestTableBooking",
     "searchPlacesPublic", "placeDetailsPublic", "quickPickPublic", "getQuotes", "requestBooking", "cancelMyBooking",
     "updateProfile", "saveAddress", "deleteAddress", "saveContact", "deleteContact",
     // delivery rider sign-in by private PIN/link

@@ -1,0 +1,76 @@
+name: Seed staging
+
+# Manual only. Creates the "Marina Spice Kitchen" (marina-spice) QA restaurant on tanystaging.in by running `pnpm seed:tanyeats`
+# (docs/staging/tanyeats-test-restaurant.md). Safe to repeat. It uses the same "staging" environment secrets as the deploy, and the seed
+# script refuses a production database. The owner email is a run input so it is never committed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      owner_email:
+        description: Google account to make owner of the test restaurant (optional if STAGING_OWNER_EMAIL is in the env file)
+        required: false
+        type: string
+      photos:
+        description: Replace the drawn placeholder pictures with real Pexels photos (needs PEXELS_API_KEY in the env file)
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: staging
+      url: https://marina-spice.tanystaging.in
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - run: npm install -g pnpm@12.4.2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium # the seed renders its placeholder food pictures in a browser
+      - name: Write .env.staging from the environment secret
+        env:
+          STAGING_ENV_FILE: ${{ secrets.STAGING_ENV_FILE }}
+        run: |
+          test -n "$STAGING_ENV_FILE" || { echo "Secret STAGING_ENV_FILE is not set on the 'staging' environment." >&2; exit 1; }
+          umask 077
+          printf '%s\n' "$STAGING_ENV_FILE" > .env.staging
+      - name: Seed Marina Spice Kitchen
+        env:
+          STAGING_OWNER_EMAIL: ${{ inputs.owner_email }}
+          # Staging storage (the non-secret values from the staging block of wrangler.jsonc); the access keys come from the env file.
+          R2_ACCOUNT_ID: 8b98f4164cf5f4c0400f25a3f66b2ede
+          R2_BUCKET: tany-staging
+          R2_PUBLIC_URL: https://cdn.tanystaging.in
+        run: |
+          # an empty input must not shadow a value from the env file
+          [ -n "$STAGING_OWNER_EMAIL" ] || unset STAGING_OWNER_EMAIL
+          pnpm seed:tanyeats
+      - name: Real food photos from Pexels
+        if: ${{ inputs.photos }}
+        env:
+          # Optional separate secret on the "staging" environment; wins over a PEXELS_API_KEY line in the env file.
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          R2_ACCOUNT_ID: 8b98f4164cf5f4c0400f25a3f66b2ede
+          R2_BUCKET: tany-staging
+          R2_PUBLIC_URL: https://cdn.tanystaging.in
+        run: |
+          [ -n "$PEXELS_API_KEY" ] || unset PEXELS_API_KEY
+          pnpm seed:photos:staging
+      - name: Remove the secrets file
+        if: always()
+        run: rm -f .env.staging
