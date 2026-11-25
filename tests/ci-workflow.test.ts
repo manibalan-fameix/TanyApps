@@ -12,7 +12,8 @@ const ci = read("ci.yml")
 describe("every workflow", () => {
   it.each(files)("%s pins each third-party action to a full commit SHA", (f) => {
     const refs = [...read(f).matchAll(/^\s*-?\s*uses:\s*(\S+)/gm)].map((m) => m[1])
-    expect(refs.length).toBeGreaterThan(0)
+    // A workflow made only of "run" steps has nothing to pin. If it does say "uses:", the pattern above must have found it.
+    if (/\buses:/.test(read(f))) expect(refs.length).toBeGreaterThan(0)
     // A reusable workflow from this same repository (./.github/workflows/x.yml) is our own code, not a third party, so it cannot be pinned.
     for (const ref of refs.filter((r) => !/^\.\/\.github\/workflows\/[\w.-]+\.yml$/.test(r))) expect(ref, `${f}: ${ref}`).toMatch(/^[\w.-]+\/[\w./-]+@[0-9a-f]{40}$/)
   })

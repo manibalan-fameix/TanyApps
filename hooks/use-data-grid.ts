@@ -547,6 +547,7 @@ function useDataGrid<TData extends RowData>({
         if (cell) onCellMouseEnter(cell.rowId, cell.columnId);
       },
       onMouseLeave: () => {
+        // eslint-disable-next-line react-hooks/immutability -- plain local hover marker, only changed from mouse events
         hoveredCellKey = null;
       },
       onMouseUp: (event) => {
@@ -1970,6 +1971,7 @@ function useStableProps<TProps extends object>(
     const stableProps = { ...props };
     for (const [key, value] of Object.entries(props)) {
       if (typeof value !== "function") continue;
+      // eslint-disable-next-line react-hooks/refs -- the wrapper reads the ref only when the event fires, not during render
       Reflect.set(stableProps, key, (...args: unknown[]) => {
         const callback: unknown = Reflect.get(propsRef.current, key);
         if (typeof callback === "function") return callback(...args);

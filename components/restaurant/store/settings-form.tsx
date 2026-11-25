@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useSyncExternalStore } from "react"
 import { useTheme } from "next-themes"
 
 import { SignOutButton } from "@/components/restaurant/store/sign-out-button"
@@ -14,8 +14,8 @@ const THEMES = [
 
 export function SettingsForm({ signedIn }: { signedIn: boolean }) {
   const { theme, setTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
+  // False on the server and during hydration, true after: the saved theme is only known in the browser.
+  const mounted = useSyncExternalStore(() => () => {}, () => true, () => false)
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-8">
