@@ -33,6 +33,7 @@ export function recordUsage(unit: UsageUnit, dealerId: string, qty = 1): void {
 /** Every metered feature: which product it belongs to by default, who is paid, and in what unit it is counted. */
 export const FEATURES = {
   llm_chat_request: { product: "motors", provider: "gemini", unit: "request" },
+  invoice_extract_request: { product: "retail", provider: "gemini", unit: "request" },
   llm_video_listing: { product: "motors", provider: "gemini", unit: "request" },
   vision_ocr_request: { product: "motors", provider: "gemini", unit: "request" },
   rc_lookup_request: { product: "motors", provider: "surepass", unit: "request" },

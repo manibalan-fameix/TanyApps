@@ -20,6 +20,8 @@ type Trip = {
   note: string
   items: string
   total: number
+  /** Rupees the guest added for the delivery partner (already part of the total). */
+  tip: number
   /** Cash still to collect from the guest. */
   cash: boolean
   status: string
@@ -109,6 +111,7 @@ export function RiderTrip({
         </div>
         <p className="text-sm text-muted-foreground">{order.items}</p>
         {order.note ? <p className="rounded-md bg-muted p-2 text-sm">Note: {order.note}</p> : null}
+        {order.tip > 0 ? <p className="rounded-md bg-success/10 p-2 text-sm font-medium text-success">Tip for you: {formatRupees(order.tip)}</p> : null}
         <p className="text-sm font-medium">{order.cash ? `Collect ${formatRupees(order.total)} in cash` : "Already paid. Nothing to collect."}</p>
       </section>
 

@@ -13,19 +13,24 @@ export function ActionButton({
   variant = "outline",
   confirm,
   success,
+  size = "sm",
+  className,
 }: {
   action: () => Promise<{ ok: true } | { ok: false; error: string }>
   children: React.ReactNode
   variant?: "default" | "outline" | "ghost" | "destructive"
   confirm?: string
   success?: string
+  size?: "sm" | "lg"
+  className?: string
 }) {
   const router = useRouter()
   const [pending, start] = useTransition()
   return (
     <Button
       type="button"
-      size="sm"
+      size={size}
+      className={className}
       variant={variant}
       disabled={pending}
       onClick={() => {

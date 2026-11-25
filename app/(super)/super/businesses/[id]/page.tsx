@@ -76,6 +76,7 @@ import {
   loadZones,
 } from "@/lib/super/queries"
 import { cn } from "@/lib/utils"
+import { isOrderIndustry } from "@/lib/verticals"
 
 export const metadata = { title: "Business" }
 
@@ -145,7 +146,7 @@ export default async function BusinessPage({
   const b = await loadBusiness(id)
   if (!b) notFound()
   const r = b.row
-  const restaurant = r.industry === "restaurants"
+  const restaurant = isOrderIndustry(r.industry)
   const url = tenantUrl(r.slug)
   const plan = getPlan(r.plan)
 

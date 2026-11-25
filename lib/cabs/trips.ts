@@ -16,7 +16,7 @@ import { type TripStatus, tripGraph } from "./trip-status"
 type Trip = typeof trips.$inferSelect
 export type Actor = { type: "customer" | "operator" | "system"; id: string | null }
 
-export const toPlace = (p: PlaceInput): TripPlace => ({ placeId: p.placeId, addressEnc: encrypt(JSON.stringify({ name: p.name, address: p.address })), lat: p.lat, lng: p.lng, stateCode: p.stateCode })
+export const toPlace = (p: PlaceInput, dealerId: string): TripPlace => ({ placeId: p.placeId, addressEnc: encrypt(JSON.stringify({ name: p.name, address: p.address }), dealerId), lat: p.lat, lng: p.lng, stateCode: p.stateCode })
 
 async function event(db: ScopedDb, tripId: string, e: { type: string; from?: TripStatus | null; to?: TripStatus | null; actor: Actor; data?: Record<string, unknown> }) {
   await db.tripEvents.insert({ tripId, type: e.type, fromStatus: e.from ?? null, toStatus: e.to ?? null, actorType: e.actor.type, actorId: e.actor.id, data: e.data ?? {} })
@@ -83,13 +83,13 @@ export async function createTrip(db: ScopedDb, input: CreateTripInput): Promise<
       source: input.source,
       bookedByType: input.actor.type,
       bookedById: input.actor.id,
-      pickup: toPlace(req.pickup),
-      drop: req.drop ? toPlace(req.drop) : null,
+      pickup: toPlace(req.pickup, db.dealerId),
+      drop: req.drop ? toPlace(req.drop, db.dealerId) : null,
       startAt: req.startAt,
       returnAt: req.returnAt,
       pax: req.pax,
       bags: req.bags,
-      notesEnc: input.notes?.trim() ? encrypt(input.notes.trim().slice(0, 500)) : null,
+      notesEnc: input.notes?.trim() ? encrypt(input.notes.trim().slice(0, 500), db.dealerId) : null,
       vehicleClassId: q.classId,
       packageId: req.packageId ?? null,
       quote: snapshotOf(q, now),
@@ -184,7 +184,7 @@ export async function upsertCustomer(db: ScopedDb, phoneE164: string, opts: { ve
   let row = await find()
   if (!row) {
     try {
-      await db.customers.insert({ phoneEnc: encrypt(phoneE164), phoneHash: hash, name: opts.name?.trim() || null, language: opts.language === "ta" ? "ta" : "en", verifiedAt: opts.verified ? opts.now : null })
+      await db.customers.insert({ phoneEnc: encrypt(phoneE164, db.dealerId), phoneHash: hash, name: opts.name?.trim() || null, language: opts.language === "ta" ? "ta" : "en", verifiedAt: opts.verified ? opts.now : null })
     } catch (e) {
       if (!isUniqueViolation(e)) throw e // two requests created the same customer at once: the other one won, read it
     }
@@ -193,7 +193,7 @@ export async function upsertCustomer(db: ScopedDb, phoneE164: string, opts: { ve
     if (opts.verified) await db.customers.update({ lastLoginAt: opts.now }, eq(customers.id, row.id))
     return { id: row.id, sessionVersion: row.sessionVersion, isNew: true }
   }
-  if (opts.verified) await db.customers.update({ verifiedAt: row.verifiedAt ?? opts.now, lastLoginAt: opts.now }, eq(customers.id, row.id))
+  if (opts.verified) await db.customers.update({ verifiedAt: row.verifiedAt ?? opts.now, lastLoginAt: opts.now, ...(!row.name && opts.name?.trim() ? { name: opts.name.trim() } : {}) }, eq(customers.id, row.id))
   return { id: row.id, sessionVersion: row.sessionVersion, isNew: false }
 }
 
@@ -234,7 +234,7 @@ export async function sweepHolds(db: ScopedDb, now: Date, opts: { operatorPhone:
         event: "trip.expired",
         recipientType: "customer",
         recipientId: c.id,
-        recipient: decrypt(c.phoneEnc),
+        recipient: decrypt(c.phoneEnc, db.dealerId),
         channel: "wa_link",
         template: "trip_expired",
         payload: { tripId: t.id, code: t.code, reason, text: bookingMessage(c.language === "ta" ? "ta" : "en", reason === "no_response" ? "expiredNoResponse" : "expiredUnpaid", { code: t.code, operator: opts.operatorName }) },

@@ -31,3 +31,31 @@ export function unitsByItem(lines: { itemId: string; qty: number }[]): Map<strin
   for (const l of lines) m.set(l.itemId, (m.get(l.itemId) ?? 0) + l.qty)
   return m
 }
+
+export type OrderStockItem = { id: string; stockQuantity: number | null; isAvailable: boolean }
+
+/**
+ * Why an order cannot be confirmed from inventory, in words for staff. An empty list means every line is covered.
+ * Stock is already taken when an order is placed, so a tracked dish is covered by what was set aside for this order
+ * (`reserved`, units per dish), not by what is left: taking the last unit leaves 0 in stock and the dish unavailable.
+ */
+export function orderStockProblems(
+  lines: { itemId: string; name: string; qty: number }[],
+  items: OrderStockItem[],
+  reserved: Map<string, number>,
+): string[] {
+  if (lines.length === 0) return ["This order has no items."]
+  const byId = new Map(items.map((i) => [i.id, i]))
+  const problems: string[] = []
+  for (const [itemId, qty] of unitsByItem(lines)) {
+    const name = lines.find((l) => l.itemId === itemId)!.name
+    const item = byId.get(itemId)
+    if (!item) problems.push(`${name} is no longer on the menu.`)
+    else if (item.stockQuantity === null) {
+      if (!item.isAvailable) problems.push(`${name} is marked sold out.`)
+    } else if ((reserved.get(itemId) ?? 0) < qty) problems.push(`Stock was not set aside for all ${qty} of ${name}.`)
+    else if (item.stockQuantity < 0) problems.push(`${name} is short in stock.`)
+    else if (!item.isAvailable && item.stockQuantity > 0) problems.push(`${name} is marked sold out.`)
+  }
+  return problems
+}

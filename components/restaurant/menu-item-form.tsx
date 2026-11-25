@@ -29,6 +29,8 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { MAX_PORTIONS, type MenuItemDraft } from "@/lib/restaurant/menu"
+import { PopupFooter } from "@/components/restaurant/popup"
+import { storeTerms } from "@/lib/verticals/terms"
 
 const NONE = "none"
 
@@ -39,6 +41,8 @@ export function MenuItemForm({
   itemId,
   initial,
   onDone,
+  industry,
+  businessType,
 }: {
   categories: CategoryOption[]
   /** Set when editing an existing dish. */
@@ -46,7 +50,11 @@ export function MenuItemForm({
   initial?: MenuItemDraft
   /** In the edit panel: called after a save or delete instead of leaving the page. */
   onDone?: () => void
+  /** The business this form belongs to, so the words match (dish or product). Defaults to a restaurant. */
+  industry?: string
+  businessType?: string | null
 }) {
+  const t = storeTerms(industry, businessType)
   const router = useRouter()
   const [pending, start] = useTransition()
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -88,7 +96,7 @@ export function MenuItemForm({
         ? await updateMenuItem(itemId, draft())
         : await createMenuItem(draft())
       if (res.ok) {
-        toast.success(itemId ? "Dish saved." : "Dish added.")
+        toast.success(itemId ? `${t.Item} saved.` : `${t.Item} added.`)
         if (onDone) onDone()
         else router.push("/menu")
         router.refresh()
@@ -100,11 +108,11 @@ export function MenuItemForm({
   }
 
   function remove() {
-    if (!itemId || !window.confirm("Delete this dish? This cannot be undone.")) return
+    if (!itemId || !window.confirm(`Delete this ${t.item}? This cannot be undone.`)) return
     start(async () => {
       const res = await deleteMenuItem(itemId)
       if (res.ok) {
-        toast.success("Dish deleted.")
+        toast.success(`${t.Item} deleted.`)
         if (onDone) onDone()
         else router.push("/menu")
         router.refresh()
@@ -115,11 +123,11 @@ export function MenuItemForm({
   return (
     <FieldGroup className={onDone ? undefined : "max-w-xl"}>
       <Field data-invalid={Boolean(errors.name)}>
-        <FieldLabel htmlFor="dish-name">Dish name</FieldLabel>
+        <FieldLabel htmlFor="dish-name">{t.Item} name</FieldLabel>
         <Input
           id="dish-name"
           value={name}
-          placeholder="Chettinad chicken curry"
+          placeholder={t.itemPlaceholder}
           onChange={(e) => setName(e.target.value)}
         />
         {errors.name ? <FieldError>{errors.name}</FieldError> : null}
@@ -131,7 +139,7 @@ export function MenuItemForm({
           id="dish-description"
           value={description}
           rows={3}
-          placeholder="Slow-cooked with freshly ground spices."
+          placeholder={t.descriptionPlaceholder}
           onChange={(e) => setDescription(e.target.value)}
         />
         {errors.description ? <FieldError>{errors.description}</FieldError> : null}
@@ -151,7 +159,7 @@ export function MenuItemForm({
             ))}
           </SelectContent>
         </Select>
-        <FieldDescription>Create categories under Menu → Categories.</FieldDescription>
+        <FieldDescription>Create categories under Catalog → Categories.</FieldDescription>
       </Field>
 
       <Field data-invalid={Boolean(errors.price)}>
@@ -175,20 +183,23 @@ export function MenuItemForm({
           placeholder="300"
           onChange={(e) => setCompareAt(e.target.value.replace(/\D/g, ""))}
         />
-        <FieldDescription>Higher than the price above? The dish shows as on offer, with the old price crossed out.</FieldDescription>
+        <FieldDescription>Higher than the price above? The {t.item} shows as on offer, with the old price crossed out.</FieldDescription>
       </Field>
 
       <Field data-invalid={Boolean(errors.portions)}>
-        <FieldLabel>Portions (optional)</FieldLabel>
+        <FieldLabel>{t.units.length ? "Sizes and packs (optional)" : "Portions (optional)"}</FieldLabel>
         <FieldDescription>
-          Add sizes like Half and Full. Guests see the lowest price as &quot;from&quot;.
+          {t.units.length
+            ? <>Sell the same {t.item} in different sizes or packs, each with its own price. Customers see the lowest price as &quot;from&quot;.</>
+            : <>Add sizes like Half and Full. Guests see the lowest price as &quot;from&quot;.</>}
         </FieldDescription>
         {portions.map((p, i) => (
           <div key={i} className="flex items-center gap-2">
             <Input
               aria-label={`Portion ${i + 1} name`}
               value={p.label}
-              placeholder="Half"
+              list={t.units.length ? "unit-options" : undefined}
+              placeholder={t.units[0] ?? "Half"}
               onChange={(e) =>
                 setPortions((all) => all.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))
               }
@@ -223,7 +234,7 @@ export function MenuItemForm({
             className="w-fit"
             onClick={() => setPortions((all) => [...all, { label: "", price: "" }])}
           >
-            Add portion
+            {t.units.length ? "Add size or pack" : "Add portion"}
           </Button>
         ) : null}
         {errors.portions ? <FieldError>{errors.portions}</FieldError> : null}
@@ -232,22 +243,22 @@ export function MenuItemForm({
       <Field data-invalid={Boolean(errors.imageUrl)}>
         <FieldLabel>Photo (optional)</FieldLabel>
         <ImageUpload kind="menu" label="photo" value={imageUrl} onChange={setImageUrl} />
-        <FieldDescription>A bright, close-up photo helps guests order. JPG, PNG or a phone photo.</FieldDescription>
+        <FieldDescription>A bright, clear photo helps customers order. JPG, PNG or a phone photo.</FieldDescription>
         {errors.imageUrl ? <FieldError>{errors.imageUrl}</FieldError> : null}
       </Field>
 
       <div className="grid gap-3">
-        <Field orientation="horizontal">
+        {t.diet ? <Field orientation="horizontal">
           <Checkbox checked={isVeg} onCheckedChange={(v) => setIsVeg(Boolean(v))} id="dish-veg" />
           <FieldLabel htmlFor="dish-veg">Vegetarian</FieldLabel>
-        </Field>
+        </Field> : null}
         <Field orientation="horizontal">
           <Checkbox
             checked={isAvailable}
             onCheckedChange={(v) => setIsAvailable(Boolean(v))}
             id="dish-available"
           />
-          <FieldLabel htmlFor="dish-available">Available today</FieldLabel>
+          <FieldLabel htmlFor="dish-available">{t.diet && t.item === "dish" ? "Available today" : "In stock"}</FieldLabel>
         </Field>
         <Field orientation="horizontal">
           <Checkbox
@@ -259,10 +270,11 @@ export function MenuItemForm({
         </Field>
       </div>
 
+      <PopupFooter>
       <div className="flex items-center justify-between gap-2">
         {itemId ? (
           <Button type="button" variant="ghost" disabled={pending} onClick={remove}>
-            Delete dish
+            Delete {t.item}
           </Button>
         ) : (
           <span />
@@ -272,10 +284,18 @@ export function MenuItemForm({
             Cancel
           </Button>
           <Button type="button" disabled={pending} onClick={submit}>
-            {pending ? "Saving..." : itemId ? "Save changes" : "Add dish"}
+            {pending ? "Saving..." : itemId ? "Save changes" : `Add ${t.item}`}
           </Button>
         </div>
       </div>
+      </PopupFooter>
+    {t.units.length ? (
+        <datalist id="unit-options">
+          {t.units.map((u) => (
+            <option key={u} value={u} />
+          ))}
+        </datalist>
+      ) : null}
     </FieldGroup>
   )
 }

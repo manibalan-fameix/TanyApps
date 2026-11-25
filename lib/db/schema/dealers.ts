@@ -12,6 +12,8 @@ export const dealers = pgTable("dealers", {
   displayName: text("display_name").notNull(),
   /** Kind of business (see lib/industries.ts). Every row created before industries existed is a motors dealer. */
   industry: industry("industry").notNull().default("motors"),
+  /** Kind of shop for retail businesses (lib/verticals/retail-types.ts): "grocery", "textile", ... Null for every other industry. */
+  businessType: text("business_type"),
   /** Restaurant ordering rules (see lib/restaurant/settings.ts). Null until the owner changes the defaults. */
   /** Public storefront text: tagline, story, address, email (see lib/restaurant/profile.ts). */
   profile: jsonb("profile").$type<Record<string, unknown>>(),

@@ -55,7 +55,7 @@ export async function loadInbox(db: ScopedDb, tab: InboxTab, now: Date): Promise
   const byId = new Map(people.map((c) => [c.id, c]))
   const rows = list.map((t) => {
     const c = byId.get(t.customerId)
-    return { ...toTripView(t, names.get(t.vehicleClassId) ?? ""), customerName: c?.name ?? "", customerPhone: c ? (tryDecrypt(c.phoneEnc) ?? "") : "" }
+    return { ...toTripView(t, names.get(t.vehicleClassId) ?? "", db.dealerId), customerName: c?.name ?? "", customerPhone: c ? (tryDecrypt(c.phoneEnc, db.dealerId) ?? "") : "" }
   })
   return { rows, counts: Object.fromEntries(counts) as Record<InboxTab, number> }
 }
@@ -77,7 +77,7 @@ export async function loadCustomers(db: ScopedDb, q: string): Promise<CustomerRo
     if (!s.last || t.startAt > s.last) s.last = t.startAt
     stats.set(t.customerId, s)
   }
-  return rows.map((c) => ({ id: c.id, name: c.name ?? "", phone: decrypt(c.phoneEnc), verified: c.verifiedAt !== null, language: c.language, trips: stats.get(c.id)?.n ?? 0, lastTripAt: stats.get(c.id)?.last?.toISOString() ?? null, joinedAt: c.createdAt.toISOString() }))
+  return rows.map((c) => ({ id: c.id, name: c.name ?? "", phone: decrypt(c.phoneEnc, db.dealerId), verified: c.verifiedAt !== null, language: c.language, trips: stats.get(c.id)?.n ?? 0, lastTripAt: stats.get(c.id)?.last?.toISOString() ?? null, joinedAt: c.createdAt.toISOString() }))
 }
 
 export async function loadCustomerDetail(db: ScopedDb, id: string) {
@@ -86,7 +86,7 @@ export async function loadCustomerDetail(db: ScopedDb, id: string) {
   const [list, classes] = await Promise.all([db.trips.select(eq(trips.customerId, id), { orderBy: [desc(trips.createdAt)], limit: 100 }), db.vehicleClasses.select()])
   const names = new Map(classes.map((k) => [k.id, k.name]))
   return {
-    customer: { id: c.id, name: c.name ?? "", phone: decrypt(c.phoneEnc), email: (c.emailEnc && tryDecrypt(c.emailEnc)) || "", verified: c.verifiedAt !== null, language: c.language, joinedAt: c.createdAt.toISOString(), lastLoginAt: c.lastLoginAt?.toISOString() ?? null },
-    trips: list.map((t) => toTripView(t, names.get(t.vehicleClassId) ?? "")),
+    customer: { id: c.id, name: c.name ?? "", phone: decrypt(c.phoneEnc, db.dealerId), email: (c.emailEnc && tryDecrypt(c.emailEnc, db.dealerId)) || "", verified: c.verifiedAt !== null, language: c.language, joinedAt: c.createdAt.toISOString(), lastLoginAt: c.lastLoginAt?.toISOString() ?? null },
+    trips: list.map((t) => toTripView(t, names.get(t.vehicleClassId) ?? "", db.dealerId)),
   }
 }

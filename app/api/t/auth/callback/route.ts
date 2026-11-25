@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { LOGIN_INDUSTRIES } from "@/lib/core/login/host"
 import { tenantFrom } from "@/lib/core/guards"
 import { SESSION_SECONDS, cookieOptions, issueSession, sessionCookieName, stateCookieName } from "@/lib/core/login/customer-session"
 import { checkTicket } from "@/lib/core/login/ticket"
@@ -23,7 +24,7 @@ const readCookie = (req: Request, name: string) =>
 
 /** The ticket arrives here. Four checks, then the session cookie: signature and age, this host, this browser, first use. */
 export async function GET(req: Request) {
-  const ctx = await tenantFrom(req.headers, "cabs")
+  const ctx = await tenantFrom(req.headers, LOGIN_INDUSTRIES)
   if (!ctx) return new NextResponse("Not found", { status: 404 })
   const host = (req.headers.get("host") ?? "").toLowerCase()
 
@@ -34,7 +35,7 @@ export async function GET(req: Request) {
   if (!(await rateLimit(`login-ticket:${ticket.jti}`, 1, 120_000, { failClosed: true }))) return fail(req, "used")
 
   const lang = readCookie(req, "tany_lang")
-  const customer = await upsertCustomer(scopedDb(ctx.dealer.id), ticket.sub, { verified: true, language: isLang(lang) ? lang : "en", now: new Date() })
+  const customer = await upsertCustomer(scopedDb(ctx.dealer.id), ticket.sub, { verified: true, language: isLang(lang) ? lang : "en", name: ticket.nm, now: new Date() })
   const session = await issueSession({ cid: customer.id, did: ctx.dealer.id, v: customer.sessionVersion })
   const res = NextResponse.redirect(new URL(ticket.next, siteOrigin(req)), 303)
   res.cookies.set(sessionCookieName(), session, cookieOptions(SESSION_SECONDS))

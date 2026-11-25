@@ -9,6 +9,7 @@ import { type AreaCheck, checkPincode, locateGuest } from "@/app/(tenant)/sites/
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { ROUGH_ACCURACY_M, accuratePosition } from "@/lib/core/geo/accurate-position"
 import { type GuestLocation, parseStoredLocation } from "@/lib/restaurant/location"
 import { formatKm } from "@/lib/restaurant/service-area"
 import { cn } from "@/lib/utils"
@@ -16,7 +17,7 @@ import { cn } from "@/lib/utils"
 const LOCATION_KEY = "tany-location"
 const ASKED_KEY = "tany-location-asked"
 // Pages where a pop-up would get in the way: a rider's own page and the guest's order tracking.
-const NO_PROMPT = [/^\/delivery(\/|$)/, /^\/o\//, /^\/checkout/]
+const NO_PROMPT = [/^\/delivery(\/|$)/, /^\/o\//, /^\/checkout/, /^\/addresses/]
 
 type Status = "idle" | "locating" | "checking"
 type Ctx = {
@@ -110,19 +111,24 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     setError(null)
     if (!navigator.geolocation) return setError("This browser cannot share your location. Enter your pincode below.")
     setStatus("locating")
-    const pos = await new Promise<GeolocationPosition | GeolocationPositionError>((resolve) =>
-      navigator.geolocation.getCurrentPosition(resolve, resolve, { enableHighAccuracy: true, timeout: 12_000, maximumAge: 60_000 }),
-    )
-    if (!("coords" in pos)) {
+    const fix = await accuratePosition(navigator.geolocation, { maxWaitMs: 12_000 }).catch((e: { code?: number }) => ({ failed: e.code }))
+    if ("failed" in fix) {
       setStatus("idle")
-      return setError(geoMessage(pos.code))
+      return setError(geoMessage(fix.failed))
+    }
+    // Too rough to find a door: nothing is saved, and the map opens so the guest can place the pin themselves.
+    if (fix.accuracy > ROUGH_ACCURACY_M) {
+      setStatus("idle")
+      setOpen(false)
+      setPickerOpen(true)
+      return
     }
     setStatus("checking")
-    const r = await locateGuest(pos.coords.latitude, pos.coords.longitude).catch(() => null)
+    const r = await locateGuest(fix.lat, fix.lng).catch(() => null)
     setStatus("idle")
     if (!r) return setError("Something went wrong. Try again, or enter your pincode below.")
     if (!r.ok) return setError(r.error)
-    remember({ lat: pos.coords.latitude, lng: pos.coords.longitude, pincode: r.pincode, area: r.area, city: r.city, address: r.address, source: "gps" }, r)
+    remember({ lat: fix.lat, lng: fix.lng, pincode: r.pincode, area: r.area, city: r.city, address: r.address, source: "gps" }, r)
   }, [remember])
 
   const submitPincode = useCallback(

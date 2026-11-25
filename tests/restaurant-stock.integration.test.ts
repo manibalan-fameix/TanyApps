@@ -34,12 +34,8 @@ describe.skipIf(!url)("TanyEats stock and orders (live database)", () => {
     dealerId = d.id
   })
   afterAll(async () => {
-    try {
-      // Only what this run created. Deleting the dealer cascades to its dishes, orders and stock log.
-      await unscopedDb.delete(s.dealers).where(eq(s.dealers.id, dealerId))
-    } finally {
-      await pool.end()
-    }
+    // The shop is left behind: the stock bot writes to audit_log, which is append-only, so its dealer cannot be deleted.
+    await pool.end()
   })
 
   async function dish(name: string, qty: number | null) {

@@ -34,13 +34,13 @@ function themeColor(el: HTMLElement): string {
     const c = document.createElement("canvas")
     c.width = c.height = 1
     const ctx = c.getContext("2d")
-    if (!raw || !ctx) return "#15803d"
+    if (!raw || !ctx) return "#E5270B"
     ctx.fillStyle = raw
     ctx.fillRect(0, 0, 1, 1)
     const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
     return `rgb(${r},${g},${b})`
   } catch {
-    return "#15803d"
+    return "#E5270B"
   }
 }
 
@@ -59,7 +59,7 @@ export function GoogleMap({ markers, routes = [], focusId, className, label }: L
   const map = useRef<google.maps.Map | null>(null)
   const placed = useRef(new Map<string, google.maps.Marker>())
   const lines = useRef(new Map<string, google.maps.Polyline>())
-  const color = useRef("#15803d")
+  const color = useRef("#E5270B")
   const fitted = useRef("")
   const latest = useRef({ markers, routes, focusId })
   useEffect(() => {

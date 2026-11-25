@@ -1,0 +1,1 @@
+ALTER TABLE "menu_items" ADD COLUMN "details" jsonb DEFAULT '{}'::jsonb NOT NULL;

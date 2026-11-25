@@ -1,6 +1,7 @@
 import { and, asc, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm"
 
 import { audit } from "../core/audit"
+import { customerPaymentsEnabled } from "../core/payments/customer-payments"
 import { countMetric } from "../core/metrics"
 import { clearException, recordException } from "../core/payment-exceptions"
 import { safeErrorMessage } from "../core/safe-error"
@@ -9,6 +10,7 @@ import { auditLog, orders } from "../db/schema"
 import { scopedDb } from "../db/scoped"
 import { razorpayCredentials } from "../billing/razorpay"
 import { getCapturedPaymentId, getRefundStatus, isFinalRefundFailure, refundPayment } from "../route/razorpay"
+import { runStockBot } from "./auto-confirm"
 import { PAYMENT_WINDOW_MINUTES } from "./orders"
 import { cancelAndRestock } from "./stock-server"
 
@@ -24,7 +26,7 @@ export function usingTestKeys(): boolean {
  * linked account to receive the money. Test keys may skip the linked account only when RAZORPAY_ALLOW_DIRECT=1.
  */
 export function onlinePaymentsAvailable(dealer: PayoutAccount): boolean {
-  if (!razorpayCredentials()) return false
+  if (!customerPaymentsEnabled() || !razorpayCredentials()) return false
   if (dealer.razorpayAccountId && dealer.razorpayAccountStatus === "activated") return true
   return process.env.RAZORPAY_ALLOW_DIRECT === "1" && usingTestKeys()
 }
@@ -60,7 +62,10 @@ export async function applyOrderPayment(razorpayOrderId: string, paymentId: stri
     const rows = await db.orders
       .update({ status: "new", paymentStatus: "paid", paidAt: now, createdAt: now, updatedAt: now, razorpayPaymentId: paymentId }, and(eq(orders.id, order.id), eq(orders.status, "pending_payment"))!)
       .returning({ id: orders.id })
-    if (rows.length === 1) return { found: true, applied: true, code: order.code }
+    if (rows.length === 1) {
+      await runStockBot(order.dealerId, order.code)
+      return { found: true, applied: true, code: order.code }
+    }
   }
   // Cancelled or expired first: give the money back, once. Two events can arrive for the same payment (order.paid and
   // payment.captured), even at the same instant, so the refund is claimed with a conditional update: only the caller that

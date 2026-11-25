@@ -30,7 +30,7 @@ export function LeafletMap({ markers, routes = [], focusId, className, label }: 
       className: "",
       iconSize: [38, 38],
       iconAnchor: [19, 19],
-      html: `<div style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9999px;font-size:20px;line-height:1;box-shadow:0 2px 8px rgba(0,0,0,.35);border:2px solid #fff;background:${m.kind === "rider" ? "var(--primary,#15803d)" : "#fff"};opacity:${m.stale ? 0.45 : 1}">${GLYPH[m.kind]}</div>`,
+      html: `<div style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9999px;font-size:20px;line-height:1;box-shadow:0 2px 8px rgba(0,0,0,.35);border:2px solid #fff;background:${m.kind === "rider" ? "var(--primary,#E5270B)" : "#fff"};opacity:${m.stale ? 0.45 : 1}">${GLYPH[m.kind]}</div>`,
     })
 
   const sync = () => {
@@ -48,7 +48,7 @@ export function LeafletMap({ markers, routes = [], focusId, className, label }: 
         const created = L.polyline(r.points, { weight: 5, opacity: 0.85, lineCap: "round", lineJoin: "round" }).addTo(mp)
         // Theme colour: Leaflet writes colours as attributes, which cannot hold a CSS variable, so set it as a style.
         const path = created.getElement() as SVGElement | undefined
-        if (path) path.style.stroke = "var(--primary, #15803d)"
+        if (path) path.style.stroke = "var(--primary, #E5270B)"
         lines.current.set(r.id, created)
       }
       const el2 = lines.current.get(r.id)?.getElement() as SVGElement | undefined

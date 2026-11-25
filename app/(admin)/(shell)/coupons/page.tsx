@@ -1,6 +1,5 @@
 import { desc } from "drizzle-orm"
 
-import { OffersTabs } from "@/components/restaurant/offers-tabs"
 import { NewSheet } from "@/components/restaurant/new-sheet"
 import { EmptyState, PageHeader } from "@/components/restaurant/page-header"
 import { type CouponRow, CouponsGrid } from "@/components/restaurant/restaurant-grids"
@@ -26,7 +25,6 @@ export default async function CouponsPage() {
   }))
   return (
     <div className="flex w-full flex-col gap-4">
-      <OffersTabs active="coupons" />
       <PageHeader title="Coupons" description="Guests enter a code at checkout. The discount is checked again when they place the order.">
         {owner ? <NewSheet kind="coupon" /> : null}
       </PageHeader>

@@ -48,7 +48,7 @@ export async function enqueue(db: ScopedDb, input: EnqueueInput): Promise<string
       event: input.event,
       recipientType: input.recipientType,
       recipientId: input.recipientId,
-      recipientEnc: encrypt(recipient),
+      recipientEnc: encrypt(recipient, db.dealerId),
       recipientHash: hash,
       channel: input.channel,
       template: input.template,
@@ -63,5 +63,5 @@ export async function enqueue(db: ScopedDb, input: EnqueueInput): Promise<string
 export async function waLinkFor(db: ScopedDb, notificationId: string): Promise<string | null> {
   const [n] = await db.notifications.select(eq(notifications.id, notificationId), { limit: 1 })
   if (!n || n.channel !== "wa_link") return null
-  return buildWaLink(decrypt(n.recipientEnc), n as Notification)
+  return buildWaLink(decrypt(n.recipientEnc, db.dealerId), n as Notification)
 }

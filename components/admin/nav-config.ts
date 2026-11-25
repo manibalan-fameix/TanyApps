@@ -1,11 +1,13 @@
 import type { IconSvgElement } from "@hugeicons/react"
 import {
+  Calendar03Icon,
   Car01Icon,
   ChartLineData01Icon,
   Home01Icon,
   HelpCircleIcon,
   LinkSquare02Icon,
   DashboardSquare01Icon,
+  DeliveryReturn01Icon,
   DeliveryTruck01Icon,
   Folder01Icon,
   Location01Icon,
@@ -13,13 +15,14 @@ import {
   MapPinpoint01Icon,
   Notification01Icon,
   PercentCircleIcon,
+  Image01Icon,
   RestaurantTableIcon,
+  Store01Icon,
   Radio01Icon,
   Restaurant01Icon,
   ShoppingBag01Icon,
   StarIcon,
   Wallet01Icon,
-  WarehouseIcon,
   RouteIcon,
   Settings02Icon,
   UserMultiple02Icon,
@@ -34,6 +37,8 @@ export type NavMainItem = {
   title: string
   url: string
   icon: IconSvgElement
+  /** Shows how many return conversations are waiting for the shop. */
+  badge?: "returns"
   /** With `items`, the entry is a dropdown only: `url` marks its section but is not a page. */
   items?: { title: string; url: string }[]
 }
@@ -66,6 +71,7 @@ export const navMain: NavMainItem[] = [
     url: "/settings",
     icon: Settings02Icon,
     items: [
+      { title: "Business details", url: "/settings/business" },
       { title: n.hours, url: "/settings/hours" },
       { title: n.theme, url: "/settings/theme" },
       { title: n.team, url: "/settings/team" },
@@ -89,6 +95,8 @@ export const navRestaurantGroups: NavGroup[] = [
     items: [
       { title: n.dashboard, url: "/dashboard", icon: DashboardSquare01Icon },
       { title: "Orders", url: "/orders", icon: ShoppingBag01Icon },
+      { title: "Returns", url: "/returns", icon: DeliveryReturn01Icon, badge: "returns" },
+      { title: "Home page", url: "/homepage", icon: Home01Icon },
     ],
   },
   {
@@ -96,8 +104,8 @@ export const navRestaurantGroups: NavGroup[] = [
     items: [
       { title: "Dishes", url: "/menu", icon: Restaurant01Icon },
       { title: "Categories", url: "/categories", icon: Folder01Icon },
-      { title: "Inventory", url: "/inventory", icon: WarehouseIcon },
-      { title: "Offers & Coupons", url: "/coupons", icon: PercentCircleIcon },
+      { title: "Coupons", url: "/coupons", icon: PercentCircleIcon },
+      { title: "Banners", url: "/banners", icon: Image01Icon },
     ],
   },
   {
@@ -112,6 +120,7 @@ export const navRestaurantGroups: NavGroup[] = [
     label: "Customers",
     items: [
       { title: "Customers", url: "/customers", icon: UserMultiple02Icon },
+      { title: "Monthly groceries", url: "/monthly", icon: Calendar03Icon },
       { title: "Reviews", url: "/reviews", icon: StarIcon },
       { title: "Table bookings", url: "/table-bookings", icon: RestaurantTableIcon },
       { title: "Enquiries", url: "/enquiries", icon: Mail01Icon },
@@ -134,6 +143,7 @@ export const navRestaurantGroups: NavGroup[] = [
         items: [
           { title: "Storefront", url: "/settings/storefront" },
           { title: "Ordering", url: "/settings/ordering" },
+          { title: "Returns", url: "/settings/returns" },
           { title: "Location & range", url: "/settings/location" },
           ...settingsItem.items!,
         ],
@@ -144,6 +154,18 @@ export const navRestaurantGroups: NavGroup[] = [
 
 /** Every restaurant page, flat. Used for page titles and the phone "More" sheet. */
 export const navRestaurant: NavMainItem[] = navRestaurantGroups.flatMap((g) => g.items)
+
+/**
+ * Sidebar for retail shops: the restaurant sections with shop wording, and no table bookings. Derived, so a page added to the
+ * ordering admin shows up for both products.
+ */
+export const navRetailGroups: NavGroup[] = navRestaurantGroups.map((g) => ({
+  ...g,
+  items: g.items
+    .filter((i) => i.url !== "/table-bookings")
+    .map((i) => (i.url === "/menu" ? { ...i, title: "Products", icon: Store01Icon } : i)),
+}))
+export const navRetail: NavMainItem[] = navRetailGroups.flatMap((g) => g.items)
 
 export const navCabsGroups: NavGroup[] = [
   { label: "Main", items: [{ title: n.dashboard, url: "/dashboard", icon: DashboardSquare01Icon }] },
@@ -220,6 +242,15 @@ export const ADMIN_NAV: Record<IndustryKey, AdminNavSpec> = {
     inboxTab: { href: "/orders", icon: ShoppingBag01Icon, label: "Orders", isActive: (p) => under(p, "/orders") },
     tabUrls: ["/dashboard", "/menu", "/orders"],
   },
+  retail: {
+    groups: navRetailGroups,
+    items: navRetail,
+    showRecentCars: false,
+    addItem: { href: "/menu/new", label: "Add product" },
+    catalogueTab: { href: "/menu", icon: Store01Icon, label: "Products", isActive: (p) => under(p, "/menu") && p !== "/menu/new" },
+    inboxTab: { href: "/orders", icon: ShoppingBag01Icon, label: "Orders", isActive: (p) => under(p, "/orders") },
+    tabUrls: ["/dashboard", "/menu", "/orders"],
+  },
   // Not selectable yet (Vertical.adminReady is false). Phase 1 replaces this with the real cab navigation.
   cabs: {
     groups: navCabsGroups,
@@ -246,7 +277,7 @@ export const userMenuPages = [
 ]
 
 const allPages: { title: string; url: string }[] = [
-  ...[...navMain, ...navRestaurant, ...navCabs].flatMap((i) => [
+  ...[...navMain, ...navRestaurant, ...navRetail, ...navCabs].flatMap((i) => [
     { title: i.title, url: i.url },
     ...(i.items ?? []),
   ]),

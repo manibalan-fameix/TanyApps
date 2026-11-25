@@ -74,6 +74,58 @@ export async function sendDaily(token, channel, digestText, items, now = new Dat
   return report
 }
 
+/** One person's end-of-day message: what they closed today and what is still open. Null when there is nothing to say. */
+export function closeNudge(items, person, now = new Date()) {
+  const n = person.toLowerCase()
+  const istStart = new Date(Math.floor((now.getTime() + 19_800_000) / 86_400_000) * 86_400_000 - 19_800_000)
+  const done = items.filter((i) => i.closedAt && i.closedAt >= istStart && i.team.some((t) => t.toLowerCase() === n))
+  const mine = byPerson(items, person, now)
+  if (!done.length && !mine.length) return null
+  const t = today(now)
+  const line = (i) => `• <${i.url}|#${i.number}> ${i.title}${i.due ? ` (due ${fmtDate(i.due)})` : ""}`
+  const od = mine.filter((i) => i.due && i.due < t), blocked = mine.filter((i) => i.blocked)
+  const parts = [`Good evening ${person}! It is 7:00 PM, time to wrap up. ${done.length ? `You closed ${done.length} task${done.length === 1 ? "" : "s"} today.` : "No task was closed today."}`]
+  if (done.length) parts.push(`*Done today*\n${done.map(line).join("\n")}`)
+  if (od.length) parts.push(`*Overdue*\n${od.map(line).join("\n")}`)
+  if (blocked.length) parts.push(`*Blocked*\n${blocked.map(line).join("\n")}`)
+  const rest = mine.filter((i) => !od.includes(i) && !blocked.includes(i)).slice(0, 3)
+  if (rest.length) parts.push(`*Carrying over to tomorrow*\n${rest.map(line).join("\n")}`)
+  parts.push("Please update your tasks before you sign off.")
+  return parts.join("\n\n")
+}
+
+/** The end-of-day post for the channel. */
+export function closeDigest(items, now = new Date()) {
+  const istStart = new Date(Math.floor((now.getTime() + 19_800_000) / 86_400_000) * 86_400_000 - 19_800_000)
+  const s = currentSprint(now)
+  const done = items.filter((i) => i.closedAt && i.closedAt >= istStart)
+  const open = items.filter((i) => i.open && i.sprint === s.name)
+  const od = overdue(items, now)
+  const line = (i) => `• <${i.url}|#${i.number}> ${i.title}${i.team.length ? ` (${i.team.join(", ")})` : ""}`
+  return [
+    `*Tany day close, ${fmtDate(today(now))}* · ${s.name}, ${s.daysLeft} day${s.daysLeft === 1 ? "" : "s"} left`,
+    `*Closed today (${done.length})*\n${done.length ? done.map(line).join("\n") : "• none"}`,
+    `*Still open this sprint:* ${open.length}${od.length ? ` · *Overdue:* ${od.length}` : ""}`,
+    od.length ? od.slice(0, 8).map(line).join("\n") : "",
+  ].filter(Boolean).join("\n\n")
+}
+
+/** Sends the day-close channel post and a DM to everyone with something done or open. Returns a short report. */
+export async function sendClose(token, channel, items, now = new Date(), { dms = true } = {}) {
+  const report = []
+  await call(token, "chat.postMessage", { channel, text: closeDigest(items, now), unfurl_links: false })
+  report.push(`channel ${channel}`)
+  if (!dms) return report
+  const ids = await memberIds(token)
+  for (const p of cfg.team) {
+    const text = closeNudge(items, p, now)
+    if (!text) continue
+    if (!ids[p]) { report.push(`${p}: no Slack account found`); continue }
+    try { await call(token, "chat.postMessage", { channel: ids[p], text, unfurl_links: false }); report.push(`${p}: sent`) } catch (e) { report.push(`${p}: ${e.message}`) }
+  }
+  return report
+}
+
 export { overdue, dueSoon }
 
 /** A message Jarvis drafted: who it goes to and plain text. Mentions that would ping everyone are refused. */

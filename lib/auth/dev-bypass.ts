@@ -18,6 +18,7 @@ export const DEV_DEALER: typeof dealers.$inferSelect = {
   slug: "sri-murugan",
   displayName: "Sri Murugan Motors",
   industry: "motors",
+  businessType: null,
   orderSettings: null,
   profile: null,
   serviceArea: null,

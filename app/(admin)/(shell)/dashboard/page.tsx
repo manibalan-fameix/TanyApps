@@ -29,6 +29,7 @@ import { loadDashboardStats } from "@/lib/dashboard/stats"
 import { getDealerContext } from "@/lib/auth/context"
 import { tenantUrl } from "@/lib/env"
 import { cn } from "@/lib/utils"
+import { isOrderIndustry } from "@/lib/verticals"
 
 const isRecent = (created: Date) => Date.now() - created.getTime() < 7 * 86_400_000
 
@@ -49,7 +50,7 @@ export default async function DashboardPage() {
   }
 
   const { dealer, plan } = ctx
-  if (dealer.industry === "restaurants") {
+  if (isOrderIndustry(dealer.industry)) {
     return <RestaurantDashboard dealer={dealer} role={ctx.role} />
   }
   if (dealer.industry === "cabs") return <CabsDashboard dealer={dealer} />

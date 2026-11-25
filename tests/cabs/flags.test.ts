@@ -30,7 +30,7 @@ describe("live cabs availability", () => {
   })
 
   it("offers each person the industries they may create", () => {
-    expect(industriesFor("stranger@example.com", INDUSTRY_KEYS, env)).toEqual(["motors", "restaurants", "cabs"])
-    expect(industriesFor(null, INDUSTRY_KEYS, env)).toEqual(["motors", "restaurants", "cabs"])
+    expect(industriesFor("stranger@example.com", INDUSTRY_KEYS, env)).toEqual(["motors", "restaurants", "cabs", "retail"])
+    expect(industriesFor(null, INDUSTRY_KEYS, env)).toEqual(["motors", "restaurants", "cabs", "retail"])
   })
 })

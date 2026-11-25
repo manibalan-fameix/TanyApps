@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { desc, eq } from "drizzle-orm"
+import { desc, eq, or } from "drizzle-orm"
 import { notFound } from "next/navigation"
 
 import { Badge } from "@/components/ui/badge"
@@ -9,6 +9,7 @@ import { scopedDb } from "@/lib/db/scoped"
 import { summariseCustomers } from "@/lib/restaurant/customers"
 import { requireRestaurant } from "@/lib/restaurant/guard"
 import { STATUS_LABEL, type OrderStatus } from "@/lib/restaurant/orders"
+import { orderPhoneHash } from "@/lib/restaurant/order-phone"
 
 export const metadata = { title: "Customer" }
 export const dynamic = "force-dynamic"
@@ -17,7 +18,8 @@ export default async function CustomerPage({ params }: { params: Promise<{ phone
   const { dealer } = await requireRestaurant()
   const phone = decodeURIComponent((await params).phone)
   if (!/^\+91[6-9]\d{9}$/.test(phone)) notFound()
-  const rows = await scopedDb(dealer.id).orders.select(eq(orders.customerPhone, phone), { orderBy: [desc(orders.createdAt)], limit: 100 })
+  // Sealed rows are found by the keyed hash; rows not re-keyed yet still hold the plain number.
+  const rows = await scopedDb(dealer.id).orders.select(or(eq(orders.customerPhoneHash, orderPhoneHash(phone)), eq(orders.customerPhone, phone)), { orderBy: [desc(orders.createdAt)], limit: 100 })
   const [c] = summariseCustomers(rows)
   if (!c) notFound()
   return (

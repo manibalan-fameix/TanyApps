@@ -76,17 +76,17 @@ const CHANNELS: { source: Source; icon: typeof Chat01Icon; tone: string }[] = [
   {
     source: "whatsapp",
     icon: Chat01Icon,
-    tone: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+    tone: "bg-primary/10 text-primary",
   },
   {
     source: "instagram",
     icon: InstagramIcon,
-    tone: "bg-pink-500/15 text-pink-600 dark:text-pink-400",
+    tone: "bg-primary/10 text-primary",
   },
   {
     source: "facebook",
     icon: Facebook01Icon,
-    tone: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+    tone: "bg-primary/10 text-primary",
   },
 ]
 

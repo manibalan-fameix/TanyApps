@@ -42,6 +42,7 @@ export default async function TripPage({ params }: { params: Promise<{ dealer: s
           note: order.note,
           items: order.lines.map((l) => `${l.qty}× ${l.name}${l.portion ? ` (${l.portion})` : ""}`).join(", "),
           total: order.total,
+          tip: order.tip,
           cash: order.paymentMethod === "cod" && order.paymentStatus !== "paid",
           status: order.status,
           lat: order.latitude,

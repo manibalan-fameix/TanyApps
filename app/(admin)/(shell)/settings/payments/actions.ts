@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { getDealerContext } from "@/lib/auth/context"
+import { customerPaymentsEnabled } from "@/lib/core/payments/customer-payments"
 import { rateLimit } from "@/lib/core/rate-limit"
 import { createLinkedAccount, getAccountStatus, requestRouteProduct } from "@/lib/route/razorpay"
 import { getDealerRouteAccount, updateDealerRouteAccount } from "@/lib/tenant/route"
@@ -36,6 +37,7 @@ const connectSchema = z.object({
  * KYC email/dashboard flow after this, not by us.
  */
 export async function connectRazorpayAccount(input: unknown): Promise<Result> {
+  if (!customerPaymentsEnabled()) return { ok: false, error: "Online payments from your customers are not available right now." }
   const who = await owner()
   if (!who.ctx) return { ok: false, error: who.error }
   const { ctx } = who

@@ -1,5 +1,8 @@
 import { z } from "zod"
 
+/** The most banners a business can have, hidden ones included. The home page shows no more than this. */
+export const MAX_BANNERS = 5
+
 /** Background looks an owner can pick. Each uses the restaurant's own theme colours, so any brand colour stays readable. */
 export const BANNER_TONES = ["soft", "bold", "dark"] as const
 export type BannerTone = (typeof BANNER_TONES)[number]
@@ -66,6 +69,12 @@ export const bannerSchema = z.object({
     .trim()
     .max(20, "Keep the button text under 20 characters.")
     .default(""),
+  /** The big offer text in the dark panel on the right, e.g. "FLAT 20% OFF*". */
+  promoText: z
+    .string()
+    .trim()
+    .max(40, "Keep the offer text under 40 characters.")
+    .default(""),
   linkUrl: z.string().trim().max(500).default(""),
   tone: z.enum(BANNER_TONES).default("soft"),
   imageUrl: z.string().trim().max(500).default(""),
@@ -80,4 +89,5 @@ export type StoreBanner = {
   linkUrl: string
   tone: BannerTone
   imageUrl: string | null
+  promoText: string
 }

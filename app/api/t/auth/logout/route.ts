@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm"
 import { NextResponse } from "next/server"
 
+import { LOGIN_INDUSTRIES } from "@/lib/core/login/host"
 import { tenantFrom } from "@/lib/core/guards"
 import { cookieOptions, sessionCookieName } from "@/lib/core/login/customer-session"
 import { customerFromToken } from "@/lib/core/login/customer"
@@ -13,7 +14,7 @@ import { scopedDb } from "@/lib/db/scoped"
  * (each one is checked against the version on use).
  */
 export async function POST(req: Request) {
-  const ctx = await tenantFrom(req.headers, "cabs")
+  const ctx = await tenantFrom(req.headers, LOGIN_INDUSTRIES)
   if (!ctx) return new NextResponse("Not found", { status: 404 })
   if (!sameOrigin(req)) return NextResponse.json({ ok: false }, { status: 403 })
   const body = (await req.json().catch(() => null)) as { everywhere?: boolean } | null

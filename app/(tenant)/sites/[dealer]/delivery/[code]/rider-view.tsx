@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
-export type RiderOrder = { id: string; code: string; customerName: string; phone: string; address: string; pincode: string; lat: number | null; lng: number | null; note: string; total: number; paid: boolean; status: string; items: string }
+export type RiderOrder = { id: string; code: string; customerName: string; phone: string; address: string; pincode: string; lat: number | null; lng: number | null; note: string; total: number; tip: number; paid: boolean; status: string; items: string }
 
 export function RiderSignIn({ code, restaurant }: { code: string; restaurant: string }) {
   const router = useRouter()
@@ -82,6 +82,7 @@ export function RiderOrders({ name, orders }: { name: string; orders: RiderOrder
             )}
             <p className="text-sm text-muted-foreground">{o.items}</p>
             {o.note ? <p className="rounded-md bg-muted p-2 text-sm">Note: {o.note}</p> : null}
+            {o.tip > 0 ? <p className="rounded-md bg-success/10 p-2 text-sm font-medium text-success">Tip for you: ₹{o.tip.toLocaleString("en-IN")}</p> : null}
             <p className="text-sm font-medium">{o.paid ? "Already paid" : `Collect ₹${o.total.toLocaleString("en-IN")} in cash`}</p>
             {o.status === "out_for_delivery" ? (
               <div className="grid gap-2 sm:grid-cols-2">

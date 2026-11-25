@@ -31,6 +31,13 @@ export async function PUT(request: Request, { params }: { params: Promise<{ key:
   const rejection = checkPhotoBytes(body, contentType)
   if (rejection) return new NextResponse(null, { status: 415, headers: { "x-reject-reason": rejection } })
 
+  // Return-chat photos are a record of what was said: only the shop's own folder takes uploads here, and nothing is replaced.
+  const returnsFolder = `dealers/${ctx.dealer.id}/returns/`
+  if (key.startsWith(returnsFolder)) {
+    if (!key.startsWith(`${returnsFolder}shop/`)) return new NextResponse(null, { status: 403 })
+    if (await getStorage().head(key)) return new NextResponse(null, { status: 409 })
+  }
+
   try {
     await getStorage().put(key, Buffer.from(body.buffer, body.byteOffset, body.byteLength), contentType)
   } catch (error) {

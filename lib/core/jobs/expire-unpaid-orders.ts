@@ -1,5 +1,6 @@
 import { listDealerIdsByIndustry } from "../../tenant/lists"
 import { expireUnpaidOrders } from "../../restaurant/payments"
+import { ORDER_INDUSTRIES } from "../../verticals"
 import type { Job } from "../scheduler"
 
 /**
@@ -11,8 +12,8 @@ export const expireUnpaidOrdersJob: Job = {
   name: "expire-unpaid-orders",
   async run() {
     let released = 0
-    const dealerIds = await listDealerIdsByIndustry("restaurants")
+    const dealerIds = await listDealerIdsByIndustry(ORDER_INDUSTRIES)
     for (const id of dealerIds) released += await expireUnpaidOrders(id, new Date(), { verifyWithProvider: true })
-    return `${released} order(s) released across ${dealerIds.length} restaurant(s)`
+    return `${released} order(s) released across ${dealerIds.length} business(es)`
   },
 }

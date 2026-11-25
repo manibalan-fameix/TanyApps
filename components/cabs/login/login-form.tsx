@@ -35,7 +35,7 @@ const REDIRECT_KEY = "tany:cab-login-redirect"
  * So Google, Facebook and email sign in first, and a first-time sign-in then adds and verifies a phone, once, at this business.
  * What Firebase proves here never leaves this page except as a one-minute ticket for this one business.
  */
-export function CustomerLoginForm({ config, emulator, appCheckSiteKey, host, state, next, lang, operator }: { config: FirebaseWebConfig | null; emulator: string | null; appCheckSiteKey: string | null; host: string; state: string; next: string; lang: Lang; operator: string }) {
+export function CustomerLoginForm({ config, emulator, appCheckSiteKey, host, state, next, lang, operator, phoneOnly }: { config: FirebaseWebConfig | null; emulator: string | null; appCheckSiteKey: string | null; host: string; state: string; next: string; lang: Lang; operator: string; phoneOnly?: boolean }) {
   const t = bookingText(lang)
   const [method, setMethod] = useState<"phone" | "email">("phone")
   const [mode, setMode] = useState<"signin" | "signup">("signin")
@@ -151,6 +151,9 @@ export function CustomerLoginForm({ config, emulator, appCheckSiteKey, host, sta
   }
 
   if (!config) return <p className="text-center text-sm text-muted-foreground">{t.loginOff}</p>
+
+  // Shops: one step. Name and mobile number up front, then the code. No Google, Facebook or email, so no second phone prompt.
+  if (phoneOnly) return <OtpLogin config={config} emulator={emulator} appCheckSiteKey={appCheckSiteKey} host={host} state={state} next={next} lang={lang} askName />
 
   // The sign-in is proved but new at this business: only a verified phone is missing.
   if (link) {

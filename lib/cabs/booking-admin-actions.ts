@@ -58,7 +58,7 @@ async function tellCustomer(db: ScopedDb, trip: { id: string; code: string; cust
     event: `trip.${key}`,
     recipientType: "customer",
     recipientId: c.id,
-    recipient: decrypt(c.phoneEnc),
+    recipient: decrypt(c.phoneEnc, db.dealerId),
     channel: "wa_link",
     template: `trip_${key}`,
     payload: { tripId: trip.id, code: trip.code, text: bookingMessage(isLang(c.language) ? c.language : "en", key, { code: trip.code, operator }) },
@@ -236,5 +236,5 @@ export async function bookingCustomerPhone(id: string): Promise<string> {
   const trip = await loadTrip(db, id)
   if (!trip) return ""
   const [cust] = await db.customers.select(eq(customers.id, trip.customerId), { limit: 1 })
-  return cust ? (tryDecrypt(cust.phoneEnc) ?? "") : ""
+  return cust ? (tryDecrypt(cust.phoneEnc, db.dealerId) ?? "") : ""
 }

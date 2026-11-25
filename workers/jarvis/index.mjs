@@ -3,8 +3,8 @@
 import { createTask, createdToday } from "./github.mjs"
 import { validateDraft, doneLine } from "../../scripts/jarvis/tasks.mjs"
 import { listReplies, markSeen, rememberSent, takeEvent, verifySlack } from "./replies.mjs"
-import { post as slackPost, sendMessage, validateMessage } from "../../scripts/jarvis/slack.mjs"
-import { PERSONAS, cleanCallMe, recoverDraft, writeDetails, withoutActions, cardFromBody, askGemini, cfg, currentSprint, loadBoard, overdue, speakable, sprintReport, streamGemini, streamHear, hearEvents, showEvents, pingGemini, briefingFacts } from "../../scripts/jarvis/lib.mjs"
+import { post as slackPost, sendMessage, validateMessage, sendDaily, sendClose } from "../../scripts/jarvis/slack.mjs"
+import { PERSONAS, cleanCallMe, recoverDraft, writeDetails, withoutActions, cardFromBody, askGemini, cfg, currentSprint, loadBoard, overdue, speakable, sprintReport, digest, streamGemini, streamHear, hearEvents, showEvents, pingGemini, briefingFacts } from "../../scripts/jarvis/lib.mjs"
 import cards from "../../scripts/jarvis/task-cards.json" with { type: "json" }
 import { speakStream } from "./tts.mjs"
 import { accessState, overSharedLimit, verifyAccess } from "./access.mjs"
@@ -205,7 +205,26 @@ async function createRoute(body, env, ctx) {
   }
 }
 
+/**
+ * Scheduled Slack messages. Cloudflare fires these on the minute (GitHub's cron can run an hour late), in UTC:
+ *   04:00 UTC = 09:30 IST  start-of-day message      13:30 UTC = 19:00 IST  close-of-day message
+ * A KV key per slot stops a repeated trigger from sending twice.
+ */
+async function runScheduled(event, env) {
+  const now = new Date(event.scheduledTime ?? Date.now())
+  const hhmm = `${now.getUTCHours()}:${now.getUTCMinutes()}`
+  const kind = hhmm === "4:0" ? "start" : hhmm === "13:30" ? "close" : null // one trigger every 30 minutes (the free plan allows 5 crons per account)
+  if (!kind || !env.SLACK_BOT_TOKEN || !env.SLACK_CHANNEL) return
+  const slot = `sched:${kind}:${now.toISOString().slice(0, 10)}`
+  if (env.REPLIES && (await env.REPLIES.get(slot))) return
+  const items = await loadBoard(env.JARVIS_TOKEN)
+  const report = kind === "start" ? await sendDaily(env.SLACK_BOT_TOKEN, env.SLACK_CHANNEL, digest(items, now), items, now) : await sendClose(env.SLACK_BOT_TOKEN, env.SLACK_CHANNEL, items, now)
+  if (env.REPLIES) await env.REPLIES.put(slot, "1", { expirationTtl: 172_800 })
+  console.log(`${kind}:`, report.join("; "))
+}
+
 export default {
+  async scheduled(event, env, ctx) { ctx.waitUntil(runScheduled(event, env)) },
   async fetch(request, env, ctx) {
     const url = new URL(request.url)
     // The page itself (built from workers/jarvis/ui) is served from the assets binding; only /api/* reaches this code.

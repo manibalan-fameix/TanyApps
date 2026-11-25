@@ -1,6 +1,6 @@
 "use server"
 
-import { asc, eq, inArray } from "drizzle-orm"
+import { and, asc, eq, inArray, isNull } from "drizzle-orm"
 import { z } from "zod"
 
 import { razorpayCredentials } from "@/lib/billing/razorpay"
@@ -9,20 +9,27 @@ import { coupons, deliveryZones, menuItems, orders, reviews } from "@/lib/db/sch
 import { scopedDb } from "@/lib/db/scoped"
 import { rateLimit } from "@/lib/core/rate-limit"
 import { createFoodOrder, verifyBookingPaymentSignature } from "@/lib/route/razorpay"
+import { runStockBot } from "@/lib/restaurant/auto-confirm"
 import { applyOrderPayment, expireUnpaidOrders, onlinePaymentsAvailable, payoutAccountFor } from "@/lib/restaurant/payments"
 import { checkoutSchema, coordsToStore, couponDiscount, priceOrder } from "@/lib/restaurant/orders"
 import { paymentOptions, readOrderSettings } from "@/lib/restaurant/settings"
 import { findZone } from "@/lib/restaurant/delivery"
+import { pinAgreement } from "@/lib/core/geo/pin-check"
 import { type Place, pincodeCentre, reverseGeocode, searchPlaces } from "@/lib/restaurant/geocode"
 import { validCoords } from "@/lib/restaurant/location"
 import { checkRadius, formatKm, readServiceArea } from "@/lib/restaurant/service-area"
 import { cancelAndRestock, placeOrderAtomically } from "@/lib/restaurant/stock-server"
+import { MAX_REVIEW_VIDEO_BYTES, REVIEW_VIDEO_TYPES, checkReviewMedia, reviewMediaKey, reviewVideoExt } from "@/lib/restaurant/review-media"
+import { getStorage } from "@/lib/storage"
 import { tenantContext } from "@/lib/core/guards"
+import { currentCustomer } from "@/lib/core/login/customer"
+import { isUniqueViolation } from "@/lib/cabs/pg"
 import type { DealerProfile } from "@/lib/tenant/dealer"
+import { ORDER_INDUSTRIES } from "@/lib/verticals"
 
 type Fail = { ok: false; error: string; field?: string }
 
-const context = () => tenantContext("restaurants")
+const context = () => tenantContext(ORDER_INDUSTRIES)
 
 const unavailable: Fail = { ok: false, error: "This restaurant is not taking requests right now." }
 
@@ -124,6 +131,8 @@ export async function placeOrder(input: unknown): Promise<{ ok: true; code: stri
         subtotal: priced.subtotal,
         discount: priced.discount,
         deliveryFee: priced.deliveryFee,
+        gst: priced.gst,
+        tip: priced.tip,
         total: priced.total,
         couponCode: priced.discount > 0 ? data.couponCode : null,
         pincode: priced.pincode,
@@ -140,7 +149,10 @@ export async function placeOrder(input: unknown): Promise<{ ok: true; code: stri
   }
   if (!placed.ok) return { ok: false, error: placed.error }
   const code = placed.code
-  if (!online) return { ok: true, code, checkout: null }
+  if (!online) {
+    await runStockBot(dealer.id, code)
+    return { ok: true, code, checkout: null }
+  }
 
   try {
     const rz = await createFoodOrder({ amount: priced.total, receipt: code, linkedAccountId: payoutAccountFor(dealer), notes: { dealer_id: dealer.id, order_code: code } })
@@ -250,6 +262,7 @@ const reviewSchema = z.object({
   code: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{6}$/),
   rating: z.number().int().min(1).max(5),
   comment: z.string().trim().max(500).default(""),
+  media: z.unknown().optional(),
 })
 
 /** Only the holder of a completed order's code can review, once per order. Reviews wait for the owner's approval. */
@@ -264,12 +277,76 @@ export async function submitReview(input: unknown): Promise<{ ok: true } | Fail>
   if (!order || order.status !== "completed") return { ok: false, error: "You can review once your order is completed." }
   const existing = await db.reviews.count(eq(reviews.orderId, order.id))
   if (existing > 0) return { ok: false, error: "You have already reviewed this order." }
+  // Photos and a video need a signed-in customer (their files live in their own folder); a guest with only the order code cannot attach any.
+  let media: Awaited<ReturnType<typeof checkReviewMedia>> = { ok: true, media: [] }
+  if (Array.isArray(parsed.data.media) && parsed.data.media.length > 0) {
+    const customer = await currentCustomer(ctx.dealer.id)
+    if (!customer) return { ok: false, error: "Please sign in to add photos or a video." }
+    media = await checkReviewMedia(parsed.data.media, { storage: getStorage(), dealerId: ctx.dealer.id, customerId: customer.id })
+  }
+  if (!media.ok) return { ok: false, error: media.error }
   await db.reviews.insert({
     orderId: order.id,
     name: order.customerName.split(" ")[0],
     rating: parsed.data.rating,
     comment: parsed.data.comment,
+    media: media.media,
   })
+  return { ok: true }
+}
+
+const shopReviewSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().trim().max(500).default(""),
+  media: z.unknown().optional(),
+})
+
+/** Where the browser PUTs a review video (up to the size limit). Only a signed-in customer, only a video type, under their own folder. */
+export async function requestReviewVideoUpload(input: { contentType: string; size: number }): Promise<{ ok: true; url: string; method: string; headers: Record<string, string>; publicUrl: string } | Fail> {
+  const ctx = await context()
+  if (!ctx) return unavailable
+  const customer = await currentCustomer(ctx.dealer.id)
+  if (!customer) return { ok: false, error: "Please sign in to add a video." }
+  const ext = (REVIEW_VIDEO_TYPES as readonly string[]).includes(input?.contentType) ? reviewVideoExt(input.contentType) : undefined
+  if (!ext) return { ok: false, error: "Add an MP4, MOV or WebM video." }
+  if (!Number.isFinite(input.size) || input.size <= 0 || input.size > MAX_REVIEW_VIDEO_BYTES) return { ok: false, error: `The video must be under ${Math.round(MAX_REVIEW_VIDEO_BYTES / 1024 / 1024)} MB.` }
+  if (!(await rateLimit(`review-video:${ctx.dealer.id}:${customer.id}`, 6, 60 * 60_000))) return { ok: false, error: "Too many uploads. Try again later." }
+  const storage = getStorage()
+  const key = reviewMediaKey(ctx.dealer.id, customer.id, crypto.randomUUID(), ext)
+  const target = await storage.presignPut(key, input.contentType)
+  return { ok: true, url: target.url, method: target.method, headers: target.headers, publicUrl: storage.publicUrl(key) }
+}
+
+/**
+ * A signed-in customer's review of the shop itself, from the Reviews tab. One per customer (a second try is refused), and like
+ * every review it waits for the owner's approval before it shows. Signing in proves a real phone number, which is what keeps
+ * this from being a free-for-all.
+ */
+export async function submitShopReview(input: unknown): Promise<{ ok: true } | Fail> {
+  const ctx = await context()
+  if (!ctx) return unavailable
+  const customer = await currentCustomer(ctx.dealer.id)
+  if (!customer) return { ok: false, error: "Please sign in to write a review." }
+  if (!(await rateLimit(`shop-review:${ctx.dealer.id}:${customer.id}`, 5, 60 * 60_000))) return { ok: false, error: "Too many tries. Please try again later." }
+  const parsed = shopReviewSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "Choose a rating from 1 to 5." }
+  const db = scopedDb(ctx.dealer.id)
+  if ((await db.reviews.count(and(eq(reviews.customerId, customer.id), isNull(reviews.orderId)))) > 0) return { ok: false, error: "You have already reviewed this shop." }
+  const media = await checkReviewMedia(parsed.data.media, { storage: getStorage(), dealerId: ctx.dealer.id, customerId: customer.id })
+  if (!media.ok) return { ok: false, error: media.error }
+  try {
+    await db.reviews.insert({
+      customerId: customer.id,
+      name: customer.name?.trim().split(/\s+/)[0] || "Customer",
+      rating: parsed.data.rating,
+      comment: parsed.data.comment,
+      media: media.media,
+    })
+  } catch (e) {
+    // Two taps at once: the database's one-per-customer rule caught the second.
+    if (isUniqueViolation(e)) return { ok: false, error: "You have already reviewed this shop." }
+    throw e
+  }
   return { ok: true }
 }
 
@@ -324,15 +401,16 @@ async function areaCheck(dealer: DealerProfile, pincode: string, point: Point | 
 }
 
 /**
- * The guest's live point, but only when it agrees with the pincode they typed (or they typed none). If the pincode
- * cannot be confirmed against the point, the point is ignored and the pincode alone decides.
+ * The guest's map point (live location or a pin), but only when it agrees with the pincode they typed (or they typed
+ * none). If it cannot be confirmed against the pincode, the point is ignored and the pincode alone decides.
  */
 async function trustedPoint(data: { latitude: number | null; longitude: number | null; pincode: string; fulfilment: string }): Promise<Point | null> {
   if (data.fulfilment !== "delivery" || data.latitude === null || data.longitude === null || !validCoords(data.latitude, data.longitude)) return null
   const point = { lat: data.latitude, lng: data.longitude }
   if (!data.pincode) return point
   const found = await reverseGeocode(point.lat, point.lng)
-  return found && found.pincode === data.pincode ? point : null
+  const centre = found?.pincode === data.pincode ? null : await pincodeCentre(data.pincode)
+  return pinAgreement(found?.pincode || null, centre, point, data.pincode) === "match" ? point : null
 }
 
 /** The sentence a guest reads when delivery is not possible. */

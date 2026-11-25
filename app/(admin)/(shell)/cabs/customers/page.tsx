@@ -2,7 +2,7 @@ import Link from "next/link"
 
 import { PageHeader, EmptyState } from "@/components/restaurant/page-header"
 import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { SimpleTable } from "@/components/data-table/simple-table"
 import { loadCustomers } from "@/lib/cabs/booking-admin-data"
 import { requireIndustry } from "@/lib/core/guards"
 import { scopedDb } from "@/lib/db/scoped"
@@ -26,32 +26,23 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
       {rows.length === 0 ? (
         <EmptyState title={q ? "No match" : "No customers yet"} body={q ? "Try the full 10-digit mobile number, or part of the name." : "Customers appear here after their first booking."} />
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Mobile</TableHead>
-                <TableHead>Bookings</TableHead>
-                <TableHead>Last pickup</TableHead>
-                <TableHead>Joined</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell>
-                    <Link href={`/cabs/customers/${c.id}`} className="font-medium underline-offset-4 hover:underline">{c.name || "—"}</Link>
-                    {c.verified ? null : <Badge variant="outline" className="ml-2">Not verified</Badge>}
-                  </TableCell>
-                  <TableCell>{c.phone}</TableCell>
-                  <TableCell className="tabular-nums">{c.trips}</TableCell>
-                  <TableCell>{day(c.lastTripAt)}</TableCell>
-                  <TableCell>{day(c.joinedAt)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div>
+          <SimpleTable
+          columns={[{ title: "Name" }, { title: "Mobile" }, { title: "Bookings" }, { title: "Last pickup" }, { title: "Joined" }]}
+          rows={rows.map((c) => ({
+            id: c.id,
+            cells: [
+              <span key="name">
+                <Link href={`/cabs/customers/${c.id}`} className="font-medium underline-offset-4 hover:underline">{c.name || "—"}</Link>
+                {c.verified ? null : <Badge variant="outline" className="ml-2">Not verified</Badge>}
+              </span>,
+              c.phone,
+              <span key="trips" className="tabular-nums">{c.trips}</span>,
+              day(c.lastTripAt),
+              day(c.joinedAt),
+            ],
+          }))}
+        />
         </div>
       )}
     </div>

@@ -33,6 +33,7 @@ import { scopedDb } from "@/lib/db/scoped"
 import { getStorage } from "@/lib/storage"
 import { getDealerBySlug } from "@/lib/tenant/dealer"
 import { getAllVariants } from "@/lib/variants/repo"
+import { isOrderIndustry } from "@/lib/verticals"
 
 const t = copy.tenant
 
@@ -45,7 +46,7 @@ export default async function DealerHome({
 }) {
   const dealer = await getDealerBySlug((await params).dealer)
   if (!dealer) notFound()
-  if (dealer.industry === "restaurants") return <StoreHome dealer={dealer} store={await loadStorefront(dealer)} />
+  if (isOrderIndustry(dealer.industry)) return <StoreHome dealer={dealer} store={await loadStorefront(dealer)} />
   if (dealer.industry === "cabs") return <CabsHome dealer={dealer} search={await searchParams} />
   const rawSearchParams = await searchParams
   const db = scopedDb(dealer.id)

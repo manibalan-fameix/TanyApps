@@ -22,13 +22,13 @@ export async function orderByRiderToken(dealerId: string, token: string): Promis
 export async function issueRiderToken(dealerId: string, order: Pick<Order, "id" | "riderTokenEnc">): Promise<string> {
   if (order.riderTokenEnc) {
     try {
-      return decrypt(order.riderTokenEnc)
+      return decrypt(order.riderTokenEnc, dealerId)
     } catch {
       // Unreadable (a rotated key): fall through and make a new one.
     }
   }
   const token = newRiderToken()
-  await scopedDb(dealerId).orders.update({ riderTokenHash: await hashRiderToken(token), riderTokenEnc: encrypt(token), riderAssignedAt: new Date() }, eq(orders.id, order.id))
+  await scopedDb(dealerId).orders.update({ riderTokenHash: await hashRiderToken(token), riderTokenEnc: encrypt(token, dealerId), riderAssignedAt: new Date() }, eq(orders.id, order.id))
   return token
 }
 

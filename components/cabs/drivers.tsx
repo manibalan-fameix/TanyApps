@@ -3,20 +3,17 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMemo, useState } from "react"
-import type { ColDef } from "ag-grid-community"
-import type { CustomCellRendererProps } from "ag-grid-react"
-import { CheckmarkBadge01Icon, File02Icon, User02Icon } from "@hugeicons/core-free-icons"
 
-import { optionsFilter } from "@/components/cars/cars-grid"
 import { DocumentUpload, ExpiryBadge, ExpirySummary, FileLink, SelectField, TextField, istDateTime, useAction } from "@/components/cabs/kit"
 import type { DocRow, DriverRow, DutyRow } from "@/components/cabs/types"
-import { DataGrid } from "@/components/restaurant/data-grid"
+import { type ColDef, type CustomCellRendererProps, DataGrid, optionsFilter } from "@/components/data-table/data-grid"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { FieldGroup } from "@/components/ui/field"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { DataTableRowActions, rowActionsColumn } from "@/components/data-table/data-table-row-actions"
+import { SimpleTable } from "@/components/data-table/simple-table"
 import { addDriverDocument, deleteDriver, deleteDriverDocument, saveDriver, setDriverStatus } from "@/lib/cabs/admin-actions"
 import { DRIVER_DOC_LABEL, DRIVER_DOC_TYPES } from "@/lib/cabs/schemas"
 
@@ -75,7 +72,6 @@ export function DriversGrid({ rows, usage }: { rows: DriverRow[]; usage: { used:
       {
         field: "name",
         headerName: "Driver",
-        headerClass: "hdr-icon hdr-user",
         minWidth: 190,
         flex: 1,
         cellRenderer: ({ data }: CustomCellRendererProps<DriverRow>) =>
@@ -86,17 +82,17 @@ export function DriversGrid({ rows, usage }: { rows: DriverRow[]; usage: { used:
             </div>
           ) : null,
       },
-      { field: "employment", headerName: "Employment", headerClass: "hdr-icon hdr-user", width: 130, cellClass: "capitalize" },
-      { field: "licenceStatus", headerName: "Licence", headerClass: "hdr-icon hdr-doc", width: 150, cellRenderer: ({ data }: CustomCellRendererProps<DriverRow>) => (data ? <ExpiryBadge status={data.licenceStatus} /> : null) },
-      { field: "docs", headerName: "Documents", headerClass: "hdr-icon hdr-doc", width: 200, sortable: false, cellRenderer: ({ data }: CustomCellRendererProps<DriverRow>) => (data ? <ExpirySummary {...data.docs} /> : null) },
+      { field: "employment", headerName: "Employment", width: 130, cellClass: "capitalize" },
+      { field: "licenceStatus", headerName: "Licence", width: 150, cellRenderer: ({ data }: CustomCellRendererProps<DriverRow>) => (data ? <ExpiryBadge status={data.licenceStatus} /> : null) },
+      { field: "docs", headerName: "Documents", width: 200, sortable: false, cellRenderer: ({ data }: CustomCellRendererProps<DriverRow>) => (data ? <ExpirySummary {...data.docs} /> : null) },
       {
         field: "status",
         headerName: "Status",
-        headerClass: "hdr-icon hdr-status",
         width: 140,
         cellRenderer: ({ data }: CustomCellRendererProps<DriverRow>) => (data ? <Badge variant={data.status === "available" ? "default" : "secondary"}>{STATUS_LABEL[data.status]}</Badge> : null),
         ...(optionsFilter({ options: ["available", "on_trip", "off", "inactive"] }) as Partial<ColDef<DriverRow>>),
       },
+      rowActionsColumn<DriverRow>((r) => ({ label: `Actions for ${r.name}`, actions: [{ label: "View", href: `/cabs/drivers/${r.id}` }] })),
     ],
     [],
   )
@@ -113,12 +109,9 @@ export function DriversGrid({ rows, usage }: { rows: DriverRow[]; usage: { used:
       <DataGrid<DriverRow>
         rows={rows}
         columns={columns}
-        icons={{ user: User02Icon, doc: File02Icon, status: CheckmarkBadge01Icon }}
         tabs={[{ key: "all", label: "All" }, { key: "available", label: "Available" }, { key: "on_trip", label: "On a trip" }, { key: "off", label: "Off duty" }]}
         searchPlaceholder="Search drivers…"
         noMatches="No drivers match your filters."
-        rowHeight={60}
-        onRowClick={(r) => router.push(`/cabs/drivers/${r.id}`)}
         toolbar={<Button disabled={full} onClick={() => setAdding(true)}>Add driver</Button>}
       />
       <Sheet open={adding} onOpenChange={setAdding}>
@@ -171,28 +164,22 @@ export function DriverDocuments({ driverId, docs, storageReady }: { driverId: st
           </FieldGroup>
         </div>
       ) : null}
-      <div className="rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow><TableHead>Document</TableHead><TableHead>Number</TableHead><TableHead>Valid till</TableHead><TableHead>Status</TableHead><TableHead>File</TableHead><TableHead className="text-right" /></TableRow>
-          </TableHeader>
-          <TableBody>
-            {docs.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-muted-foreground">No documents yet.</TableCell></TableRow>
-            ) : (
-              docs.map((d) => (
-                <TableRow key={d.id}>
-                  <TableCell className="font-medium">{d.typeLabel}</TableCell>
-                  <TableCell>{d.number || "—"}</TableCell>
-                  <TableCell>{d.validTill ?? "—"}</TableCell>
-                  <TableCell><ExpiryBadge status={d.status} /></TableCell>
-                  <TableCell><FileLink fileKey={d.fileKey} /></TableCell>
-                  <TableCell className="text-right"><Button size="sm" variant="ghost" onClick={() => run(() => deleteDriverDocument(d.id), { success: "Document deleted.", confirm: `Delete the ${d.typeLabel}?` })}>Delete</Button></TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+      <div>
+        <SimpleTable
+          empty="No documents yet."
+          columns={[{ title: "Document" }, { title: "Number" }, { title: "Valid till" }, { title: "Status" }, { title: "File" }, { title: "" }]}
+          rows={docs.map((d) => ({
+            id: d.id,
+            cells: [
+              <span key="type" className="font-medium">{d.typeLabel}</span>,
+              d.number || "—",
+              d.validTill ?? "—",
+              <ExpiryBadge key="status" status={d.status} />,
+              <FileLink key="file" fileKey={d.fileKey} />,
+              <DataTableRowActions key="actions" label={`Actions for the ${d.typeLabel}`} actions={[{ label: "Delete", destructive: true, confirm: { title: `Delete the ${d.typeLabel}?` }, onClick: () => run(() => deleteDriverDocument(d.id), { success: "Document deleted." }) }]} />,
+            ],
+          }))}
+        />
       </div>
     </div>
   )
@@ -203,21 +190,15 @@ export function DutyLog({ rows }: { rows: DutyRow[] }) {
   return (
     <div className="flex flex-col gap-3">
       <h2 className="text-base font-semibold">Duty log</h2>
-      <div className="rounded-lg border">
-        <Table>
-          <TableBody>
-            {rows.length === 0 ? (
-              <TableRow><TableCell className="text-muted-foreground">No duty recorded yet. It fills in when the driver app starts and ends duty.</TableCell></TableRow>
-            ) : (
-              rows.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell>{istDateTime(r.startedAt)}</TableCell>
-                  <TableCell>{r.endedAt ? istDateTime(r.endedAt) : <Badge>On duty now</Badge>}</TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+      <div>
+        <SimpleTable
+          empty="No duty recorded yet. It fills in when the driver app starts and ends duty."
+          columns={[{ title: "Started" }, { title: "Ended" }]}
+          rows={rows.map((r) => ({
+            id: r.id,
+            cells: [istDateTime(r.startedAt), r.endedAt ? istDateTime(r.endedAt) : <Badge key="on">On duty now</Badge>],
+          }))}
+        />
       </div>
     </div>
   )

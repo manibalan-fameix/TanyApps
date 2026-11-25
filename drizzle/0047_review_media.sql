@@ -1,0 +1,1 @@
+ALTER TABLE "reviews" ADD COLUMN "media" jsonb DEFAULT '[]'::jsonb NOT NULL;

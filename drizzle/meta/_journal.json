@@ -274,6 +274,76 @@
       "when": 1794765238416,
       "tag": "0038_table_bookings",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1795262664469,
+      "tag": "0039_retail_vertical",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1795292732992,
+      "tag": "0040_banner_promo_text",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1795370201375,
+      "tag": "0041_product_details",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1795511793851,
+      "tag": "0042_monthly_groceries",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1795538496629,
+      "tag": "0043_order_tip",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1795539213467,
+      "tag": "0044_order_gst",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1795547497781,
+      "tag": "0045_order_phone_hash",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1795554097259,
+      "tag": "0046_shop_reviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1795554426112,
+      "tag": "0047_review_media",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1795636078502,
+      "tag": "0048_order_returns",
+      "breakpoints": true
     }
   ]
 }

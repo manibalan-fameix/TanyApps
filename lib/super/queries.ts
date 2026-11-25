@@ -35,6 +35,8 @@ import {
 } from "../db/schema"
 import { REAL_ORDER, loadBusinesses, maskPhone, type BusinessRow } from "./data"
 import { requireSuperAdmin } from "./guard"
+import { normalizePhone } from "../crypto/blind-index"
+import { orderPhoneHash, orderPhoneKey } from "../restaurant/order-phone"
 
 const DAY = 86_400_000
 const LIMIT = 2000
@@ -417,7 +419,8 @@ export async function loadBusinessInsights(
     db
       .select({
         lines: orders.lines,
-        phone: orders.customerPhone,
+        // The hash (or, on a row not re-keyed yet, the plain number): enough to count distinct guests. Never decrypted here.
+        phone: sql<string>`coalesce(${orders.customerPhoneHash}, ${orders.customerPhone})`,
         status: orders.status,
         createdAt: orders.createdAt,
       })
@@ -611,13 +614,13 @@ export async function loadCustomers(dealerId?: string): Promise<CustomerRow[]> {
     .limit(10_000)
   const map = new Map<string, CustomerRow>()
   for (const { o, dealer } of rows) {
-    const k = `${o.dealerId}:${createHash("sha256").update(o.customerPhone).digest("hex").slice(0, 12)}`
+    const k = `${o.dealerId}:${createHash("sha256").update(orderPhoneKey(o)).digest("hex").slice(0, 12)}`
     const c = map.get(k)
     if (!c) {
       map.set(k, {
         id: k,
-        name: o.customerName,
-        phone: maskPhone(o.customerPhone),
+        name: "Guest",
+        phone: "", // guests' numbers belong to the restaurant; the platform does not read them
         business: dealer,
         businessId: o.dealerId,
         orders: 1,
@@ -705,9 +708,10 @@ export async function loadEnquiries(dealerId?: string): Promise<EnquiryRow[]> {
     .limit(LIMIT)
   return rows.map(({ e, dealer }) => ({
     id: e.id,
-    name: e.name,
-    phone: maskPhone(e.phone),
-    message: e.message,
+    // Who wrote in, and what they said, belongs to the business they wrote to: stored sealed, never read here.
+    name: "",
+    phone: "",
+    message: "",
     business: dealer,
     businessId: e.dealerId,
     status: e.status,
@@ -949,7 +953,7 @@ export async function loadActivity(limit = 25): Promise<ActivityItem[]> {
       at: x.createdAt.toISOString(),
       kind: "order" as const,
       title: `Order ${x.code} · ₹${x.total.toLocaleString("en-IN")}`,
-      detail: `${x.customerName} · ${x.fulfilment.replace("_", " ")}`,
+      detail: x.fulfilment.replace("_", " "),
       business: dealer,
       businessId: x.dealerId,
     })),
@@ -994,6 +998,7 @@ export async function searchPlatform(q: string): Promise<SearchResults> {
   if (term.length < 2)
     return { businesses: [], users: [], orders: [], cars: [] }
   const like = `%${term.replace(/[%_]/g, "")}%`
+  const phoneMatch = normalizePhone(term) ? eq(orders.customerPhoneHash, orderPhoneHash(term)) : undefined
   const [b, u, o, c] = await Promise.all([
     db
       .select()
@@ -1027,8 +1032,8 @@ export async function searchPlatform(q: string): Promise<SearchResults> {
       .where(
         or(
           ilike(orders.code, like),
-          ilike(orders.customerName, like),
-          ilike(orders.customerPhone, like)
+          // A guest's number is found by its keyed hash, so only a full number matches.
+          phoneMatch
         )
       )
       .limit(10),
@@ -1067,7 +1072,7 @@ export async function searchPlatform(q: string): Promise<SearchResults> {
     orders: o.map(({ o: x, dealer }) => ({
       id: x.id,
       name: `${x.code} · ₹${x.total.toLocaleString("en-IN")}`,
-      sub: `${x.customerName} · ${dealer}`,
+      sub: dealer,
       businessId: x.dealerId,
     })),
     cars: c.map(({ car, make, model, dealer }) => ({

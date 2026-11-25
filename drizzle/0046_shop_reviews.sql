@@ -1,0 +1,3 @@
+ALTER TABLE "reviews" ADD COLUMN "customer_id" uuid;--> statement-breakpoint
+ALTER TABLE "reviews" ADD CONSTRAINT "reviews_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "reviews_one_shop_review_per_customer_uq" ON "reviews" USING btree ("dealer_id","customer_id") WHERE "reviews"."order_id" is null and "reviews"."customer_id" is not null;

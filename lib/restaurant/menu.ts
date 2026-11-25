@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-import { RESTAURANT_MENU_LIMITS, type PlanKey } from "../plans"
+import { catalogueLimit, type PlanKey } from "../plans"
 
 export const MAX_PORTIONS = 6
 
@@ -28,12 +28,12 @@ export type MenuItemDraft = z.input<typeof menuItemSchema>
 export const categoryNameSchema = z.string().trim().min(2, "Enter a category name.").max(40)
 
 /** Menu items a restaurant on this plan may have. Null means unlimited. */
-export function menuItemLimit(plan: PlanKey): number | null {
-  return RESTAURANT_MENU_LIMITS[plan]
+export function menuItemLimit(plan: PlanKey, industry = "restaurants"): number | null {
+  return catalogueLimit(industry, plan)
 }
 
-export function menuLimitReached(count: number, plan: PlanKey): boolean {
-  const max = menuItemLimit(plan)
+export function menuLimitReached(count: number, plan: PlanKey, industry = "restaurants"): boolean {
+  const max = menuItemLimit(plan, industry)
   return max !== null && count >= max
 }
 

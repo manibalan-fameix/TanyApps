@@ -15,14 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { SimpleTable } from "@/components/data-table/simple-table"
 import {
   ChartLineData01Icon,
   Invoice01Icon,
@@ -214,28 +207,10 @@ export default async function AnalyticsPage({
             <CardTitle className="text-base">Top cities</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>City</TableHead>
-                  <TableHead className="text-right">Businesses</TableHead>
-                  <TableHead className="text-right">Leads</TableHead>
-                  <TableHead className="text-right">Sales</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {a.cities.map((c) => (
-                  <TableRow key={c.city}>
-                    <TableCell className="font-medium">{c.city}</TableCell>
-                    <TableCell className="text-right">
-                      {num(c.businesses)}
-                    </TableCell>
-                    <TableCell className="text-right">{num(c.leads)}</TableCell>
-                    <TableCell className="text-right">{money(c.gmv)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <SimpleTable
+              columns={[{ title: "City" }, { title: "Businesses", align: "right" }, { title: "Leads", align: "right" }, { title: "Sales", align: "right" }]}
+              rows={a.cities.map((c) => ({ id: c.city, cells: [<span key="n" className="font-medium">{c.city}</span>, num(c.businesses), num(c.leads), money(c.gmv)] }))}
+            />
           </CardContent>
         </Card>
         <Card>
@@ -246,36 +221,10 @@ export default async function AnalyticsPage({
             <CardTitle className="text-base">By industry</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Industry</TableHead>
-                  <TableHead className="text-right">Businesses</TableHead>
-                  <TableHead className="text-right">Paying</TableHead>
-                  <TableHead className="text-right">MRR</TableHead>
-                  <TableHead className="text-right">Sales</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {a.industries.map((i) => (
-                  <TableRow key={i.industry}>
-                    <TableCell className="font-medium">
-                      {label(i.industry)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {num(i.businesses)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {num(i.paying)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {i.mrr ? rupees(i.mrr) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">{money(i.gmv)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <SimpleTable
+              columns={[{ title: "Industry" }, { title: "Businesses", align: "right" }, { title: "Paying", align: "right" }, { title: "MRR", align: "right" }, { title: "Sales", align: "right" }]}
+              rows={a.industries.map((i) => ({ id: i.industry, cells: [<span key="n" className="font-medium">{label(i.industry)}</span>, num(i.businesses), num(i.paying), i.mrr ? rupees(i.mrr) : "—", money(i.gmv)] }))}
+            />
           </CardContent>
         </Card>
         <Card className="lg:col-span-2">
@@ -286,30 +235,10 @@ export default async function AnalyticsPage({
             <CardTitle className="text-base">Sign-up cohorts</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Month</TableHead>
-                  <TableHead className="text-right">Signed up</TableHead>
-                  <TableHead className="text-right">Still active</TableHead>
-                  <TableHead className="text-right">Paying</TableHead>
-                  <TableHead className="text-right">Paying share</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {a.cohorts.map((c) => (
-                  <TableRow key={c.month}>
-                    <TableCell className="font-medium">{c.month}</TableCell>
-                    <TableCell className="text-right">{c.signed}</TableCell>
-                    <TableCell className="text-right">{c.active}</TableCell>
-                    <TableCell className="text-right">{c.paying}</TableCell>
-                    <TableCell className="text-right">
-                      {c.signed ? Math.round((c.paying / c.signed) * 100) : 0}%
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <SimpleTable
+              columns={[{ title: "Month" }, { title: "Signed up", align: "right" }, { title: "Still active", align: "right" }, { title: "Paying", align: "right" }, { title: "Paying share", align: "right" }]}
+              rows={a.cohorts.map((c) => ({ id: c.month, cells: [<span key="n" className="font-medium">{c.month}</span>, c.signed, c.active, c.paying, `${c.signed ? Math.round((c.paying / c.signed) * 100) : 0}%`] }))}
+            />
           </CardContent>
         </Card>
         <ListCard

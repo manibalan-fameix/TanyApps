@@ -4,11 +4,13 @@ import { DishCard } from "@/components/restaurant/store/dish-card"
 import { SectionTitle, StoreEmpty, StorePage, DISH_GRID } from "@/components/restaurant/store/ui"
 import { restaurantPage } from "@/lib/restaurant/page-data"
 import { isOnOffer } from "@/lib/restaurant/storefront"
+import { storeTerms } from "@/lib/verticals/terms"
 
 export const metadata = { title: "Offers" }
 
 export default async function OffersPage({ params }: { params: Promise<{ dealer: string }> }) {
-  const { store } = await restaurantPage(params)
+  const { dealer, store } = await restaurantPage(params)
+  const t = storeTerms(dealer.industry, dealer.businessType)
   const dishes = store.dishes.filter(isOnOffer)
   const none = dishes.length === 0 && store.coupons.length === 0 && store.banners.length === 0
   return (
@@ -17,7 +19,7 @@ export default async function OffersPage({ params }: { params: Promise<{ dealer:
         <h1 className="text-3xl font-semibold tracking-tight">Offers</h1>
         <p className="mt-2 text-sm text-muted-foreground">Current deals and coupon codes.</p>
       </div>
-      {none ? <StoreEmpty title="No offers right now" body="Check back soon, or browse the full menu." action={{ href: "/menu", label: "Browse the menu" }} /> : null}
+      {none ? <StoreEmpty title="No offers right now" body={`Check back soon, or browse the full ${t.catalogue.toLowerCase()}.`} action={{ href: "/menu", label: `Browse the ${t.catalogue.toLowerCase()}` }} /> : null}
       {store.banners.length > 0 ? (
         <ul className="grid gap-4 md:grid-cols-2">
           {store.banners.map((b) => (
@@ -44,7 +46,7 @@ export default async function OffersPage({ params }: { params: Promise<{ dealer:
       ) : null}
       {dishes.length > 0 ? (
         <section>
-          <SectionTitle title="Dishes on offer" />
+          <SectionTitle title={`${t.Items} on offer`} />
           <div className={cn("mt-6", DISH_GRID)}>
             {dishes.map((d) => <DishCard key={d.id} dish={d} canOrder={store.canOrder} />)}
           </div>

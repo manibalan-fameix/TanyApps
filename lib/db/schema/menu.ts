@@ -15,6 +15,9 @@ export const menuCategories = pgTable(
   (t) => [unique("menu_categories_dealer_name_unique").on(t.dealerId, t.name), index("menu_categories_dealer_idx").on(t.dealerId)],
 )
 
+/** Extra product facts (retail): brand, barcode, HSN, GST %, pack size, shelf life, origin, unit. Shown on the product page. */
+export type MenuItemDetails = { brand?: string; barcode?: string; hsn?: string; gst?: number; packSize?: string; shelfLife?: string; origin?: string; unit?: string }
+
 export type MenuPortion = { label: string; price: number }
 
 export const menuItems = pgTable(
@@ -31,6 +34,7 @@ export const menuItems = pgTable(
     compareAtPrice: integer("compare_at_price"),
     portions: jsonb("portions").$type<MenuPortion[]>().notNull().default([]),
     imageUrl: text("image_url"),
+    details: jsonb("details").$type<MenuItemDetails>().notNull().default({}),
     /** Units left. Null means stock is not tracked and the dish is only ever Available or Sold out. */
     stockQuantity: integer("stock_quantity"),
     isVeg: boolean("is_veg").notNull().default(true),

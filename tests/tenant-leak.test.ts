@@ -6,6 +6,10 @@ import { TenantViolationError, scopedDb } from "../lib/db/scoped"
 import { CHILD_TENANT_TABLES, DIRECT_TENANT_TABLES, GLOBAL_TABLES } from "../lib/db/tenant-tables"
 import * as schema from "../lib/db/schema"
 import type { Db } from "../lib/db/client"
+// Updating a sealed column (a guest's name or phone) encrypts it, which needs a key. A throwaway one, for this test only.
+process.env.ENCRYPTION_KEY ??= Buffer.alloc(32, 5).toString("base64")
+process.env.BLIND_INDEX_KEY ??= Buffer.alloc(32, 6).toString("base64")
+
 
 const A = "11111111-1111-4111-8111-111111111111"
 const B = "22222222-2222-4222-8222-222222222222"
@@ -53,6 +57,12 @@ const UPDATE_PAYLOAD: Record<string, object> = {
   deliveryZones: { name: "x" },
   stockAdjustments: { reason: "x" },
   orderLocations: { lat: 1 },
+  orderReturns: { needsHelp: true },
+  orderReturnLines: { qty: 1 },
+  returnMessages: { body: "x" },
+  returnMedia: { storageKey: "k" },
+  monthlyPlans: { note: "x" },
+  monthlyPlanItems: { qty: 1 },
   dealerDomains: { hostname: "x.example" },
   carMedia: { r2Key: "k" },
   rcLookups: { provider: "p" },

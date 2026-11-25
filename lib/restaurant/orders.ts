@@ -76,6 +76,12 @@ const phone = z
   .pipe(z.string().regex(/^(\+91|91|0)?[6-9][0-9]{9}$/, "Enter a valid 10-digit mobile number."))
   .transform((v) => `+91${v.slice(-10)}`)
 
+/** GST on a taxable amount, rounded to whole rupees. The checkout screen uses the same function so it never disagrees with the server. */
+export const gstOn = (taxable: number, percent: number): number => Math.max(0, Math.round((taxable * percent) / 100))
+
+/** The most a guest can tip on one order, in whole rupees. */
+export const MAX_TIP = 500
+
 export const checkoutSchema = z.object({
   name: z.string().trim().min(2, "Enter your name.").max(60),
   phone,
@@ -88,6 +94,8 @@ export const checkoutSchema = z.object({
   longitude: z.number().nullable().default(null),
   note: z.string().trim().max(300).default(""),
   couponCode: z.string().trim().toUpperCase().max(30).default(""),
+  /** Whole rupees for the delivery partner. Only counted on delivery orders. */
+  tip: z.number().int().min(0).max(MAX_TIP).default(0),
   lines: z
     .array(
       z.object({
@@ -124,7 +132,7 @@ export type CouponRow = {
 }
 
 export type PriceResult =
-  | { ok: true; lines: OrderLine[]; subtotal: number; discount: number; deliveryFee: number; total: number; pincode: string | null; zoneName: string | null; etaMinutes: number | null }
+  | { ok: true; lines: OrderLine[]; subtotal: number; discount: number; deliveryFee: number; gst: number; tip: number; total: number; pincode: string | null; zoneName: string | null; etaMinutes: number | null }
   | { ok: false; error: string; field?: string }
 
 /** Discount a coupon gives on a subtotal, or an error for the guest. */
@@ -138,7 +146,7 @@ export function couponDiscount(coupon: CouponRow | null, subtotal: number, now =
 }
 
 export function priceOrder(
-  input: Pick<CheckoutInput, "lines" | "fulfilment" | "address"> & { pincode?: string },
+  input: Pick<CheckoutInput, "lines" | "fulfilment" | "address"> & { pincode?: string; tip?: number },
   items: PricedItem[],
   settings: OrderSettings,
   coupon: CouponRow | null,
@@ -199,13 +207,19 @@ export function priceOrder(
   }
   const free = settings.freeDeliveryAbove !== null && subtotal - discount >= settings.freeDeliveryAbove
   const deliveryFee = input.fulfilment === "delivery" && !free ? (zone ? zone.fee : settings.deliveryFee) : 0
+  // GST is charged on the items after the coupon, in whole rupees. Delivery and the tip carry none.
+  const gst = gstOn(subtotal - discount, settings.gstPercent)
+  // A tip is for the delivery partner, so it only exists on delivery orders.
+  const tip = input.fulfilment === "delivery" ? Math.max(0, Math.min(MAX_TIP, Math.floor(input.tip ?? 0))) : 0
   return {
     ok: true,
     lines,
     subtotal,
     discount,
     deliveryFee,
-    total: subtotal - discount + deliveryFee,
+    gst,
+    tip,
+    total: subtotal - discount + deliveryFee + gst + tip,
     pincode: input.fulfilment === "delivery" && pincode ? pincode : null,
     zoneName: zone?.name ?? null,
     etaMinutes: zone?.etaMinutes ?? null,

@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ADD COLUMN "tip" integer DEFAULT 0 NOT NULL;

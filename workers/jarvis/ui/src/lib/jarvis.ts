@@ -476,7 +476,7 @@ export interface CardItem {
 }
 
 export interface BriefTask { n: number; title: string; due: string | null; daysToDue: number | null; priority: string; blocked: boolean; owners: string[] }
-export interface PersonFacts { name: string; openInSprint: number; doneInSprint: number; pointsOpen: number; overdue: number; blocked: number; laterOpen: number; next: BriefTask[]; wins: BriefTask[] }
+export interface PersonFacts { name: string; openInSprint: number; inProgress: number; toDo: number; doneInSprint: number; pointsOpen: number; overdue: number; blocked: number; laterOpen: number; next: BriefTask[]; wins: BriefTask[] }
 
 /** The numbers behind a project briefing, worked out on the server so the screen and the spoken status always agree. */
 export interface Facts {

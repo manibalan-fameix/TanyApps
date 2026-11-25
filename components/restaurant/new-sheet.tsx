@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { type CSSProperties, useState } from "react"
 
 import { type BannerDestination, BannerForm, CouponForm } from "@/components/restaurant/simple-forms"
 import { Button } from "@/components/ui/button"
@@ -12,18 +12,18 @@ const COPY = {
 }
 
 /** The "add" action for small lists: opens a side panel, like the edit panel on the cars list. */
-export function NewSheet({ kind, destinations = [] }: { kind: keyof typeof COPY; destinations?: BannerDestination[] }) {
+export function NewSheet({ kind, destinations = [], storeTheme = {}, look = 0, disabled = false }: { kind: keyof typeof COPY; destinations?: BannerDestination[]; storeTheme?: CSSProperties; look?: number; disabled?: boolean }) {
   const [open, setOpen] = useState(false)
   const c = COPY[kind]
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger render={<Button />}>{c.button}</SheetTrigger>
+      <SheetTrigger disabled={disabled} render={<Button />}>{c.button}</SheetTrigger>
       <SheetContent className="overflow-y-auto">
         <SheetHeader>
           <SheetTitle>{c.title}</SheetTitle>
           <SheetDescription>{c.body}</SheetDescription>
         </SheetHeader>
-        <div className="px-4 pb-4">{kind === "coupon" ? <CouponForm onDone={() => setOpen(false)} /> : <BannerForm destinations={destinations} onDone={() => setOpen(false)} />}</div>
+        <div className="px-4 pb-4">{kind === "coupon" ? <CouponForm onDone={() => setOpen(false)} /> : <BannerForm destinations={destinations} storeTheme={storeTheme} look={look} onDone={() => setOpen(false)} />}</div>
       </SheetContent>
     </Sheet>
   )

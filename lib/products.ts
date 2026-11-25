@@ -11,7 +11,7 @@ export const PRODUCTS = [
   { key: "tanygarage", name: "TanyGarage", blurb: "Garages and service centres. Book services and track repairs." },
   { key: "tanymeat", name: "TanyMeat", blurb: "Meat and fish shops. Share your daily stock and take orders." },
   { key: "tanymeds", name: "TanyMeds", blurb: "Pharmacies and medical stores. Take prescriptions and orders." },
-  { key: "tanyretail", name: "TanyRetail", blurb: "Local shops and supermarkets. Showcase your range and take orders." },
+  { key: "tanyretail", name: "TanyRetail", blurb: "Shops, supermarkets, textile and hardware stores. Share your range and take orders.", industry: "retail" },
   { key: "tanysalon", name: "TanySalon", blurb: "Salons and spas. Share services and take appointments." },
   { key: "tanysport", name: "TanySport", blurb: "Turfs, courts and sports clubs. Manage slot bookings and memberships." },
 ] as const satisfies readonly {

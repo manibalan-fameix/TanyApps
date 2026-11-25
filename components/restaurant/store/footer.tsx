@@ -9,9 +9,11 @@ import { PoweredBy } from "@/components/tenant/powered-by"
 import type { DealerProfile } from "@/lib/tenant/dealer"
 import type { Storefront } from "@/lib/restaurant/storefront-data"
 import { cn } from "@/lib/utils"
+import { storeTerms } from "@/lib/verticals/terms"
 
-export function StoreFooter({ dealer, store }: { dealer: DealerProfile; store: Storefront }) {
+export function StoreFooter({ dealer, store, hidePoweredBy }: { dealer: DealerProfile; store: Storefront; hidePoweredBy?: boolean }) {
   const { profile, categories } = store
+  const terms = storeTerms(dealer.industry, dealer.businessType)
   return (
     <footer className="mt-12 border-t border-border bg-card pb-16 md:pb-0">
       <div className={cn(STORE_CONTENT, "grid gap-8 py-8 md:grid-cols-[1.3fr_1fr_1fr]")}>
@@ -23,9 +25,9 @@ export function StoreFooter({ dealer, store }: { dealer: DealerProfile; store: S
           </p>
         </div>
         <div>
-          <h3 className="text-sm font-medium">Menu</h3>
+          <h3 className="text-sm font-medium">{terms.catalogue}</h3>
           <ul className="mt-3 grid gap-2 text-sm text-muted-foreground">
-            <li><Link href="/menu" className="hover:text-foreground">Full menu</Link></li>
+            <li><Link href="/menu" className="hover:text-foreground">Full {terms.catalogue.toLowerCase()}</Link></li>
             {categories.map((c) => (
               <li key={c.id}><Link href={`/category/${c.slug}`} className="hover:text-foreground">{c.name}</Link></li>
             ))}
@@ -49,7 +51,7 @@ export function StoreFooter({ dealer, store }: { dealer: DealerProfile; store: S
           </ul>
         </div>
       </div>
-      {dealer.whiteLabel ? null : <PoweredBy product="restaurants" />}
+      {dealer.whiteLabel || hidePoweredBy ? null : <PoweredBy product={dealer.industry} />}
     </footer>
   )
 }

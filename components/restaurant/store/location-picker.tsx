@@ -10,6 +10,7 @@ import { useGuestLocation } from "@/components/restaurant/store/location"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { ROUGH_ACCURACY_M, accuratePosition } from "@/lib/core/geo/accurate-position"
 import type { Place } from "@/lib/restaurant/geocode"
 import { formatKm } from "@/lib/restaurant/service-area"
 import { cn } from "@/lib/utils"
@@ -33,6 +34,9 @@ export function LocationPicker({ restaurant, themeVars, centre }: { restaurant: 
   const [places, setPlaces] = useState<Place[]>([])
   const [searching, setSearching] = useState(false)
   const latestPick = useRef(0)
+  /** Set while the pin is from a phone reading too rough to find a door, in metres. Cleared once the guest moves it. */
+  const [roughM, setRoughM] = useState<number | null>(null)
+  const latestFix = useRef(0)
 
   /** Works out the address and delivery answer for a spot. Only the newest request is used, so a quick second drag wins. */
   const resolve = useCallback(async (p: Point) => {
@@ -52,6 +56,8 @@ export function LocationPicker({ restaurant, themeVars, centre }: { restaurant: 
 
   const pick = useCallback(
     (p: Point) => {
+      latestFix.current++
+      setRoughM(null)
       setPoint(p)
       void resolve(p)
     },
@@ -60,15 +66,21 @@ export function LocationPicker({ restaurant, themeVars, centre }: { restaurant: 
 
   const fromPhone = useCallback(() => {
     if (!navigator.geolocation) return setMessage("This browser cannot share your location. Search for your place instead.")
+    const id = ++latestFix.current
     setBusy(true)
     setMessage(null)
-    navigator.geolocation.getCurrentPosition(
-      (pos) => pick({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      (err) => {
+    accuratePosition(navigator.geolocation, { maxWaitMs: 12_000 }).then(
+      (fix) => {
+        // The guest moved the pin or searched while the phone was still looking: their choice stands.
+        if (id !== latestFix.current) return
+        pick({ lat: fix.lat, lng: fix.lng })
+        setRoughM(fix.accuracy > ROUGH_ACCURACY_M ? Math.round(fix.accuracy) : null)
+      },
+      (err: { code?: number }) => {
+        if (id !== latestFix.current) return
         setBusy(false)
         setMessage(err.code === 1 ? "Location is blocked for this site. Allow it in your browser's address bar, or search for your place." : "We could not get your location. Search for your place or drag the pin.")
       },
-      { enableHighAccuracy: true, timeout: 12_000, maximumAge: 30_000 },
     )
   }, [pick])
 
@@ -80,6 +92,7 @@ export function LocationPicker({ restaurant, themeVars, centre }: { restaurant: 
     setQuery("")
     setPlaces([])
     setMessage(null)
+    setRoughM(null)
     if (location && location.lat !== null && location.lng !== null) {
       setPoint({ lat: location.lat, lng: location.lng })
       setResult(check ? { ok: true, pincode: location.pincode, area: location.area, city: location.city, address: location.address, ...check } : null)
@@ -166,6 +179,8 @@ export function LocationPicker({ restaurant, themeVars, centre }: { restaurant: 
             {busy ? <span className="text-sm text-muted-foreground" role="status">Checking this spot…</span> : null}
           </div>
 
+          {roughM !== null && !busy ? <p role="alert" className="text-sm text-destructive">Your location is only accurate to about {roughM} m. Drag the pin, or tap the map, on your door.</p> : null}
+
           {message ? <p role="alert" className="text-sm text-destructive">{message}</p> : null}
 
           {ok && !busy ? (
@@ -185,7 +200,7 @@ export function LocationPicker({ restaurant, themeVars, centre }: { restaurant: 
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setPickerOpen(false)}>Cancel</Button>
-          <Button disabled={!ok || busy} onClick={confirm}>{deliverable || !ok ? "Confirm this location" : "Use this spot anyway"}</Button>
+          <Button disabled={!ok || busy || roughM !== null} onClick={confirm}>{deliverable || !ok ? "Confirm this location" : "Use this spot anyway"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

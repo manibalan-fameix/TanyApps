@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm"
 import { unscopedDb } from "../db/client"
 import { safeErrorMessage } from "./safe-error"
 import { cronRuns } from "../db/schema"
+import { createMonthlyOrdersJob } from "./jobs/create-monthly-orders"
 import { expireTripHoldsJob } from "./jobs/expire-trip-holds"
 import { expireUnpaidOrdersJob } from "./jobs/expire-unpaid-orders"
 import { retryBookingRefundsJob } from "./jobs/retry-booking-refunds"
@@ -28,6 +29,7 @@ export const JOBS: Record<string, Job> = Object.fromEntries(
     retryBookingRefundsJob,
     retryOrderRefundsJob,
     reconcileSubscriptionsJob,
+    createMonthlyOrdersJob,
     // Placeholders for the daily (08:00 IST) and monthly (06:00 IST, 1st) triggers, so the whole path is proven end to end.
     // Document-expiry digests, corporate invoices and the like replace these in the phases that build them.
     noop("daily"),

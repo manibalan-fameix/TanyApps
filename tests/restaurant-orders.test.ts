@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import { checkoutSchema, couponDiscount, newOrderCode, nextStatuses, priceOrder, timelineFor } from "../lib/restaurant/orders"
 import { readOrderSettings } from "../lib/restaurant/settings"
 
-const settings = readOrderSettings({ deliveryFee: 40, freeDeliveryAbove: 500, minOrder: 100, dineIn: true })
+const settings = readOrderSettings({ gstPercent: 0, deliveryFee: 40, freeDeliveryAbove: 500, minOrder: 100, dineIn: true })
 const A = "11111111-1111-4111-8111-111111111111"
 const B = "22222222-2222-4222-8222-222222222222"
 const items = [
@@ -12,6 +12,22 @@ const items = [
 ]
 const coupon = { code: "SAVE10", kind: "percent", value: 10, minOrder: 200, maxDiscount: 50, isActive: true, expiresAt: null }
 const base = { fulfilment: "delivery" as const, address: "12 Main Road, Chennai" }
+
+describe("GST", () => {
+  const gstSettings = readOrderSettings({ gstPercent: 5, deliveryFee: 40, minOrder: 0 })
+  it("is charged on the items after the coupon, not on delivery or tip, and added to the total", () => {
+    const r = priceOrder({ ...base, tip: 20, lines: [{ itemId: B, portion: null, qty: 10 }] }, items, gstSettings, null, false)
+    if (!r.ok) throw new Error(r.error)
+    expect(r.gst).toBe(10) // 5% of 200
+    expect(r.total).toBe(200 + 10 + 40 + 20)
+  })
+  it("defaults to 5% and can be set to 0", () => {
+    expect(readOrderSettings({}).gstPercent).toBe(5)
+    const r = priceOrder({ ...base, lines: [{ itemId: B, portion: null, qty: 10 }] }, items, readOrderSettings({ gstPercent: 0, deliveryFee: 40 }), null, false)
+    if (!r.ok) throw new Error(r.error)
+    expect(r.gst).toBe(0)
+  })
+})
 
 describe("restaurant order pricing", () => {
   it("prices from stored menu prices, never from the client", () => {
@@ -156,7 +172,7 @@ describe("restaurant images", () => {
 import { DISH_FILTERS, categorySlugs, filterDishes, offerPercent, type StoreDish } from "../lib/restaurant/storefront"
 import { readProfile } from "../lib/restaurant/profile"
 
-const dish = (o: Partial<StoreDish>): StoreDish => ({ id: "x", name: "Dish", description: "", price: 100, compareAt: null, portions: [], imageUrl: null, isVeg: true, isAvailable: true, isFeatured: false, categoryId: null, categoryName: "", ...o })
+const dish = (o: Partial<StoreDish>): StoreDish => ({ id: "x", name: "Dish", description: "", price: 100, compareAt: null, portions: [], imageUrl: null, isVeg: true, isAvailable: true, isFeatured: false, categoryId: null, categoryName: "", details: {}, ...o })
 
 describe("storefront helpers", () => {
   it("computes offer percentages only for real discounts", () => {

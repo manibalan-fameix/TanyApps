@@ -86,7 +86,21 @@ export async function loadBoard(token) {
     }
     after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null
   } while (after)
-  return items
+  return carryOver(items)
+}
+
+/**
+ * Work that is not finished does not vanish when a sprint ends: an open task still tagged with a sprint that is over, or one
+ * somebody is already working on (In Progress or QA) whatever its tag, counts in the current sprint. The tag on the board is kept as `plannedSprint`.
+ */
+export function carryOver(items, now = new Date()) {
+  const cur = currentSprint(now), t = today(now)
+  const over = (name) => cfg.sprints[name] && new Date(`${cfg.sprints[name].end}T00:00:00Z`) < t
+  return items.map((i) => {
+    if (!i.open || i.sprint === cur.name) return i
+    const active = /^(in progress|qa)$/i.test(i.status)
+    return over(i.sprint) || active ? { ...i, plannedSprint: i.sprint, sprint: cur.name, carried: true } : i
+  })
 }
 
 /** Today's date in the team's time zone as a UTC-midnight Date, so it compares with `due`. */
@@ -277,7 +291,8 @@ export function briefingFacts(items, now = new Date(), team = cfg.team) {
   const gap = expected - actual
   const health = overdue.length >= 3 || gap > 0.35 ? "off_track" : overdue.length || blocked.length || gap > 0.15 ? "at_risk" : "on_track"
   const brief = (i) => ({ n: i.number, title: i.short || i.title, due: iso(i.due), daysToDue: i.due ? daysBetween(t, i.due) : null, priority: i.priority, blocked: i.blocked, owners: i.team })
-  const rank = (i) => [i.due && i.due < t ? 0 : i.blocked ? 1 : 2, PRI[i.priority] ?? 4, i.due ? i.due.getTime() : 9e15, i.number]
+  const working = (i) => /^(in progress|qa)$/i.test(i.status ?? "")
+  const rank = (i) => [i.due && i.due < t ? 0 : i.blocked ? 1 : working(i) ? 2 : 3, PRI[i.priority] ?? 4, i.due ? i.due.getTime() : 9e15, i.number]
   const byRank = (a, b) => { const x = rank(a), y = rank(b); for (let k = 0; k < x.length; k++) if (x[k] !== y[k]) return x[k] - y[k]; return 0 }
   const people = team.map((name) => {
     const mine = items.filter((i) => i.team.includes(name))
@@ -286,6 +301,8 @@ export function briefingFacts(items, now = new Date(), team = cfg.team) {
     return {
       name,
       openInSprint: open.length,
+      inProgress: open.filter(working).length,
+      toDo: open.filter((i) => !working(i)).length,
       doneInSprint: sprint.filter((i) => !i.open).length,
       pointsOpen: pts(open),
       overdue: open.filter((i) => i.due && i.due < t).length,
@@ -350,7 +367,7 @@ function slackRules(pending, draftTask) {
   ].join(" ")
 }
 
-const BRIEFING_RULES = `PROJECT BRIEFING. Whenever the user says good morning, good afternoon or good evening (with or without a question), asks how the project, the sprint or the team is going, or asks for a status update, give this full briefing, using only BRIEFING FACTS, in this order: 1) answer their greeting, then state the weekday and the date ("Today is Thursday 15 October") and "day X of Y" of the sprint. If the request says the greeting has already been spoken, do not greet again: begin with the weekday and date; 2) the verdict in plain words (health: on_track, at_risk or off_track) with one reason; 3) the numbers: tasks and points done against the total, how that compares with the calendar (expectedPct against actualPct), and the counts of overdue, blocked and urgent tasks; 4) what needs the user's attention: each overdue or blocked task with its owner, and unassigned tasks; 5) the team, in the order given: for every person one or two sentences: how many tasks they have open in this sprint, their two most important next tasks, each as the task number followed by what it is in a few words (from its title) and its due date, how many more there are, any overdue or blocked work, and any recent win. If someone has nothing open, say so; 6) wins from the last three days; 7) what falls due in the next few days; 8) one recommendation beginning "Might I suggest" and an offer to go into any teammate in detail. For this briefing you may use up to 14 sentences; keep each short. Use the view {"view":"briefing"}.`
+const BRIEFING_RULES = `PROJECT BRIEFING. Whenever the user says good morning, good afternoon or good evening (with or without a question), asks how the project, the sprint or the team is going, or asks for a status update, give this full briefing, using only BRIEFING FACTS, in this order: 1) answer their greeting, then state the weekday and the date ("Today is Thursday 15 October") and "day X of Y" of the sprint. If the request says the greeting has already been spoken, do not greet again: begin with the weekday and date; 2) the verdict in plain words (health: on_track, at_risk or off_track) with one reason; 3) the numbers: tasks and points done against the total, how that compares with the calendar (expectedPct against actualPct), and the counts of overdue, blocked and urgent tasks; 4) what needs the user's attention: each overdue or blocked task with its owner, and unassigned tasks; 5) the team, in the order given: for every person one or two sentences: how many tasks they have open in this sprint split into inProgress (being worked on, including QA) and toDo (not started), for example \"one in progress and four still to do\" (never call all of them just open), their two most important next tasks, each as the task number followed by what it is in a few words (from its title) and its due date, how many more there are, any overdue or blocked work, and any recent win. If someone has nothing open, say so; 6) wins from the last three days; 7) what falls due in the next few days; 8) one recommendation beginning "Might I suggest" and an offer to go into any teammate in detail. For this briefing you may use up to 14 sentences; keep each short. Use the view {"view":"briefing"}.`
 
 /** What the screen can show next to a spoken answer. The model ends its answer with one @@SHOW line (see showEvents). */
 const SHOW_RULES = `After the spoken answer, add one final line that starts with @@SHOW followed by a JSON object telling the screen what to display, and never read it aloud. Choices: {"view":"focus","ids":[14,21]} for the specific tasks you talk about (at most 6, in the order you mention them); {"view":"person","person":"Gokul"} for one teammate's open tasks; {"view":"sprint"} for a sprint overview by person; {"view":"briefing"} for a full project status briefing; {"view":"attention"} for overdue, blocked and at-risk tasks; {"view":"none"} for greetings, or when no task is relevant. Examples: "What is Gokul working on?" or "show me Pavi's tasks" must use the person view; "how is the sprint going?" the sprint view; "what is overdue or blocked?" the attention view; "explain task 14" a focus view with that task. When asked to explain a task, use its "about" and "steps" and you may use up to 5 short sentences.`

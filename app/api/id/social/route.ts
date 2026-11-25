@@ -4,7 +4,7 @@ import { z } from "zod"
 import { verifyFirebaseIdToken } from "@/lib/auth/firebase"
 import { isSocialProvider, issueLink, phoneForIdentity } from "@/lib/cabs/identity"
 import { clientIp } from "@/lib/core/guards"
-import { resolveLoginHost } from "@/lib/core/login/host"
+import { LOGIN_INDUSTRIES, resolveLoginHost } from "@/lib/core/login/host"
 import { sameOrigin } from "@/lib/core/login/origin"
 import { issueTicket, safeNext } from "@/lib/core/login/ticket"
 import { rateLimit } from "@/lib/core/rate-limit"
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   const parsed = body.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return json({ ok: false, error: "bad_request" }, 400)
 
-  const target = await resolveLoginHost(parsed.data.host, "cabs")
+  const target = await resolveLoginHost(parsed.data.host, LOGIN_INDUSTRIES)
   if (!target) return json({ ok: false, error: "unknown_site" }, 404)
   const who = await verifyFirebaseIdToken(parsed.data.idToken)
   // An email sign-in only counts once the address is confirmed; Google and Facebook vouch for themselves.

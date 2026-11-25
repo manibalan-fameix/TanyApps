@@ -28,7 +28,7 @@ describe("vertical registry", () => {
   })
 
   it("accepts every built vertical in the onboarding schema, and cabs only on a plan it offers", () => {
-    expect(LIVE_INDUSTRY_KEYS).toEqual(["motors", "restaurants", "cabs"])
+    expect(LIVE_INDUSTRY_KEYS).toEqual(["motors", "restaurants", "cabs", "retail"])
     const base = { displayName: "Anna Travels", slug: "anna", city: "Chennai", phone: "9999999999", hours: { mon: { open: "09:00", close: "18:00" } }, primary: "#1d4ed8", accent: "#f59e0b", radius: "md", billingCycle: "monthly" }
     expect(onboardSchema.safeParse({ ...base, plan: "free", industry: "motors" }).success).toBe(true)
     expect(onboardSchema.safeParse({ ...base, plan: "starter", industry: "cabs" }).success).toBe(true)

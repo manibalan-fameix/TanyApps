@@ -33,7 +33,7 @@ export function FareBreakdown({ result, className, lang = "en" }: { result: Quot
         <p key={n} className="px-1 text-xs text-muted-foreground" data-testid={`notice-${n}`}>{text.notices[n]}</p>
       ))}
       {result.warnings.map((w) => (
-        <p key={w} className="rounded-md bg-amber-500/10 px-3 py-2 text-amber-800 dark:text-amber-200">{w}</p>
+        <p key={w} className="rounded-md bg-primary/10 px-3 py-2 text-foreground">{w}</p>
       ))}
     </div>
   )

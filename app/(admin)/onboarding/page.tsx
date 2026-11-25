@@ -49,7 +49,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
         firebaseConfig={getFirebaseWebConfig()}
         testPhones={testPhones}
         initialIndustry={initialIndustry}
-        phoneNotice={productNotice ? `This number is already associated with ${productNotice}. You can continue setting up your Tany${initialIndustry === "cabs" ? "Cabs" : initialIndustry === "motors" ? "Motos" : "Eats"} account.` : undefined}
+        phoneNotice={productNotice ? `This number is already associated with ${productNotice}. You can continue setting up your Tany${initialIndustry === "cabs" ? "Cabs" : initialIndustry === "motors" ? "Motos" : initialIndustry === "retail" ? "Retail" : "Eats"} account.` : undefined}
       />
       </EnabledIndustriesProvider>
     </main>

@@ -1,11 +1,27 @@
 import { z } from "zod"
 
+/** The shop's offer to monthly-grocery subscribers, applied to every monthly order when it is created. */
+export const monthlyOfferSchema = z.object({
+  /** Off by default: a shop opts in, and only then does the store show the Monthly page. */
+  enabled: z.boolean().default(false),
+  /** Percent taken off the monthly bill. */
+  percentOff: z.number().int().min(0).max(50).default(5),
+  /** Cap on the discount per order, in whole rupees. Null means no cap. */
+  maxDiscount: z.number().int().min(1).max(100_000).nullable().default(null),
+  /** Delivery is free on monthly orders. */
+  freeDelivery: z.boolean().default(true),
+})
+export type MonthlyOffer = z.infer<typeof monthlyOfferSchema>
+
 export const orderSettingsSchema = z.object({
+  monthly: monthlyOfferSchema.default(() => monthlyOfferSchema.parse({})),
   acceptingOrders: z.boolean().default(true),
   delivery: z.boolean().default(true),
   pickup: z.boolean().default(true),
   dineIn: z.boolean().default(false),
   /** Whole rupees. */
+  /** GST added on top of the items (after any coupon), as a percent. Shown as its own line on every bill. */
+  gstPercent: z.number().min(0).max(28).default(5),
   deliveryFee: z.number().int().min(0).max(5000).default(0),
   freeDeliveryAbove: z.number().int().min(0).max(1_000_000).nullable().default(null),
   minOrder: z.number().int().min(0).max(1_000_000).default(0),

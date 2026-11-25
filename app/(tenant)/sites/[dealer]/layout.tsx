@@ -12,6 +12,7 @@ import { currentCustomer } from "@/lib/core/login/customer"
 import { getVertical } from "@/lib/verticals"
 import { getDealerBySlug } from "@/lib/tenant/dealer"
 import { themeToCssVars } from "@/lib/theme/tokens"
+import { isOrderIndustry } from "@/lib/verticals"
 
 export async function generateMetadata({
   params,
@@ -26,7 +27,10 @@ export async function generateMetadata({
           template: `%s | ${dealer.displayName}`,
         },
         // A cab operator's customers can keep the site on their phone; the app-wide manifest is for the dashboard.
-        ...(dealer.industry === "cabs" || dealer.industry === "restaurants" ? { manifest: "/pwa-manifest" } : {}),
+        // The home-screen icon is the business's own logo, not the Tany one (iPhones read the apple-touch-icon link, not the manifest).
+        ...(dealer.industry === "cabs" || isOrderIndustry(dealer.industry)
+          ? { manifest: "/pwa-manifest", icons: { icon: "/pwa-icon?size=192&v=2", apple: [{ url: "/pwa-icon?size=180&v=2", sizes: "180x180", type: "image/png" }] } }
+          : {}),
       }
     : {}
 }
@@ -34,7 +38,7 @@ export async function generateMetadata({
 // A restaurant's brand-coloured header runs up to the screen edge, so the browser's own bar (status bar / address bar) takes the same colour.
 export async function generateViewport({ params }: { params: Promise<{ dealer: string }> }): Promise<Viewport> {
   const dealer = await getDealerBySlug((await params).dealer)
-  return dealer?.industry === "restaurants" && dealer.theme.primary ? { themeColor: dealer.theme.primary } : {}
+  return dealer && isOrderIndustry(dealer.industry) && dealer.theme.primary ? { themeColor: dealer.theme.primary } : {}
 }
 
 // Buyer surface: server-rendered, tokens only. The dealer's theme is injected as CSS custom
@@ -67,7 +71,7 @@ export default async function TenantLayout({
       className="flex min-h-svh flex-col bg-background text-foreground"
     >
       <div className="flex-1">
-        {vertical.key === "restaurants" ? (
+        {isOrderIndustry(vertical.key) ? (
           <StoreShell dealer={dealer}>{children}</StoreShell>
         ) : vertical.key === "cabs" ? (
           <CabsShell dealer={dealer} lang={await currentLang()} signedIn={Boolean(await currentCustomer(dealer.id))}>{children}</CabsShell>

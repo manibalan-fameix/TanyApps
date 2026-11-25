@@ -6,8 +6,8 @@ export const copy = {
   brand: {
     name: "TanyApps",
     tagline: "Your showroom. One smart link.",
-    // Shown on the public privacy policy and terms pages. Replace with a support mailbox on your domain.
-    contactEmail: "manibalan.fameix@gmail.com",
+    // Public support address: website footer, contact and policy pages, and plan enquiry links.
+    contactEmail: "manibalan.raja@fameix.in",
   },
   marketing: {
     heading: "Sell used cars from one link",

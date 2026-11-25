@@ -1,13 +1,16 @@
 "use client"
 
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 import { Notification01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "@/lib/toast"
 
+import { NewOrdersPopup } from "@/components/restaurant/new-orders-popup"
 import { type OrderAlert, fetchOrderAlerts } from "@/lib/restaurant/admin-actions"
+import { fetchReturnAlerts } from "@/lib/returns/admin-actions"
+import type { ReturnAlert } from "@/lib/returns/shop"
 
 const POLL_MS = 20_000
 const MUTE_KEY = "tany-alerts-muted"
@@ -22,6 +25,10 @@ type Alerts = {
   soundOn: boolean
   enableSound: () => void
   connected: boolean
+  /** Return conversations waiting for the shop. */
+  returnsWaiting: number
+  /** Checks again at once, after the shop has acted on a return. */
+  returnsChanged: () => void
 }
 const Ctx = createContext<Alerts | null>(null)
 
@@ -29,6 +36,17 @@ export function useOrderAlerts(): Alerts {
   const c = useContext(Ctx)
   if (!c) throw new Error("useOrderAlerts must be used inside OrderAlertsProvider")
   return c
+}
+
+/** The count beside "Returns" in the menu. Nothing shows outside the ordering products, or when nothing waits. */
+export function ReturnsWaitingBadge() {
+  const waiting = useContext(Ctx)?.returnsWaiting ?? 0
+  if (!waiting) return null
+  return (
+    <span aria-label={`${waiting} waiting`} className="ml-auto flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] leading-5 font-semibold text-primary-foreground group-data-[collapsible=icon]:hidden">
+      {waiting > 99 ? "99+" : waiting}
+    </span>
+  )
 }
 
 /** A short two-note chime. Browsers only allow sound after the person has tapped something, hence enableSound(). */
@@ -48,11 +66,15 @@ function chime(ctx: AudioContext) {
 }
 
 /**
- * Watches for new orders from any admin page: a toast, a chime, and an unread count on the bell. The list lives in
+ * Watches for new orders from any admin page: a pop-up stacking them, a chime, and an unread count on the bell. The list lives in
  * this browser session only. It is a live alert, not an archive. The Orders page has the full history.
  */
 export function OrderAlertsProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()
+  const pathname = usePathname()
+  /** New orders nobody has opened or dismissed yet, newest first. */
+  const [waiting, setWaiting] = useState<OrderAlert[]>([])
+  const primed = useRef(false)
   const [recent, setRecent] = useState<OrderAlert[]>([])
   const [unseen, setUnseen] = useState(0)
   const [muted, setMuted] = useState(false)
@@ -61,6 +83,30 @@ export function OrderAlertsProvider({ children }: { children: React.ReactNode })
   const audio = useRef<AudioContext | null>(null)
   const cursor = useRef<string | null>(null)
   const mutedRef = useRef(false)
+  /** Return conversations with something new, one entry each. */
+  const [waitingReturns, setWaitingReturns] = useState<ReturnAlert[]>([])
+  const [returnsWaiting, setReturnsWaiting] = useState(0)
+  const returnCursor = useRef<string | null>(null)
+  const returnsPrimed = useRef(false)
+
+  const pollReturns = useCallback(async () => {
+    if (document.visibilityState !== "visible") return
+    try {
+      const res = await fetchReturnAlerts(returnCursor.current)
+      if (!res.ok) return
+      setReturnsWaiting(res.waiting)
+      const first = !returnsPrimed.current
+      returnsPrimed.current = true
+      if (res.alerts.length === 0) return
+      returnCursor.current = res.alerts[0].at
+      if (first) return
+      setWaitingReturns((list) => [...res.alerts, ...list.filter((x) => !res.alerts.some((a) => a.id === x.id))])
+      setUnseen((n) => n + res.alerts.length)
+      if (!mutedRef.current && audio.current) chime(audio.current)
+    } catch {
+      // The order poll reports a lost connection; this one just tries again.
+    }
+  }, [])
 
   useEffect(() => {
     try {
@@ -79,30 +125,36 @@ export function OrderAlertsProvider({ children }: { children: React.ReactNode })
       const res = await fetchOrderAlerts(cursor.current)
       if (!res.ok) return setConnected(false)
       setConnected(true)
-      if (res.alerts.length === 0) return
       // The first read only sets where "new" starts; older orders are not announced.
-      const first = cursor.current === null
+      const first = !primed.current
+      primed.current = true
+      if (res.alerts.length === 0) return
       cursor.current = res.alerts[0].createdAt
       if (first) return
-      const fresh = [...res.alerts].reverse()
-      setRecent((r) => [...res.alerts, ...r].slice(0, MAX))
-      setUnseen((n) => n + fresh.length)
-      for (const a of fresh) toast.info(`New order ${a.code} · ₹${a.total.toLocaleString("en-IN")}`, { description: `${a.customerName} · ${a.itemCount} ${a.itemCount === 1 ? "item" : "items"}`, action: { label: "Open", onClick: () => router.push(`/orders/${a.id}`) } })
+      // A slow read can overlap the next one, so an order already stacked is not added twice.
+      const add = (list: OrderAlert[]) => [...res.alerts.filter((a) => !list.some((x) => x.id === a.id)), ...list]
+      setWaiting(add)
+      setRecent((r) => add(r).slice(0, MAX))
+      setUnseen((n) => n + res.alerts.length)
       if (!mutedRef.current && audio.current) chime(audio.current)
     } catch {
       setConnected(false)
     }
-  }, [router])
+  }, [])
 
   useEffect(() => {
     // The first read only sets where "new" starts. It runs from a timer so it is not a synchronous state update in the effect.
-    const first = setTimeout(() => void poll(), 0)
-    const t = setInterval(() => void poll(), POLL_MS)
+    const check = () => {
+      void poll()
+      void pollReturns()
+    }
+    const first = setTimeout(check, 0)
+    const t = setInterval(check, POLL_MS)
     return () => {
       clearTimeout(first)
       clearInterval(t)
     }
-  }, [poll])
+  }, [poll, pollReturns])
 
   const value = useMemo<Alerts>(
     () => ({
@@ -132,10 +184,35 @@ export function OrderAlertsProvider({ children }: { children: React.ReactNode })
         }
       },
       connected,
+      returnsWaiting,
+      returnsChanged: () => void pollReturns(),
     }),
-    [recent, unseen, muted, soundOn, connected],
+    [recent, unseen, muted, soundOn, connected, returnsWaiting, pollReturns],
   )
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
+  // While one order is on screen the stack steps aside, and returns with the rest when it is closed.
+  const viewingOrder = /^\/orders\/[^/]+$/.test(pathname)
+  return (
+    <Ctx.Provider value={value}>
+      {children}
+      <NewOrdersPopup
+        orders={viewingOrder ? [] : waiting}
+        // In the inbox the list itself shows what is new.
+        returns={viewingOrder || pathname === "/returns" ? [] : waitingReturns}
+        onOpenReturn={(id) => {
+          setWaitingReturns((list) => list.filter((r) => r.id !== id))
+          router.push(`/returns?id=${id}`)
+        }}
+        onOpen={(id) => {
+          setWaiting((w) => w.filter((o) => o.id !== id))
+          router.push(`/orders/${id}`, { scroll: false })
+        }}
+        onDismissAll={() => {
+          setWaiting([])
+          setWaitingReturns([])
+        }}
+      />
+    </Ctx.Provider>
+  )
 }
 
 /** Bell with the unread count, shown in the admin header. */

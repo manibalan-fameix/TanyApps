@@ -13,8 +13,8 @@ import type { PlaceInput } from "./trip-quote"
 type Trip = typeof trips.$inferSelect
 
 /** A stored place as text: the name and address were encrypted together. */
-export function placeText(p: TripPlace | null | undefined): { name: string; address: string } {
-  const raw = p ? tryDecrypt(p.addressEnc) : null
+export function placeText(p: TripPlace | null | undefined, dealerId: string): { name: string; address: string } {
+  const raw = p ? tryDecrypt(p.addressEnc, dealerId) : null
   if (!raw) return { name: "", address: "" }
   try {
     const j = JSON.parse(raw) as { name?: string; address?: string }
@@ -51,7 +51,7 @@ export type TripView = {
   customerId: string
 }
 
-export function toTripView(t: Trip, className: string): TripView {
+export function toTripView(t: Trip, className: string, dealerId: string): TripView {
   return {
     id: t.id,
     pickupAt: t.pickup.lat !== null && t.pickup.lng !== null ? { lat: t.pickup.lat, lng: t.pickup.lng } : null,
@@ -61,8 +61,8 @@ export function toTripView(t: Trip, className: string): TripView {
     source: t.source,
     startAt: t.startAt.toISOString(),
     returnAt: t.returnAt?.toISOString() ?? null,
-    pickup: placeText(t.pickup).name,
-    drop: placeText(t.drop).name,
+    pickup: placeText(t.pickup, dealerId).name,
+    drop: placeText(t.drop, dealerId).name,
     pax: t.pax,
     bags: t.bags,
     className,
@@ -71,7 +71,7 @@ export function toTripView(t: Trip, className: string): TripView {
     adjustmentReason: t.adjustmentReason,
     advanceDuePaise: t.advanceDuePaise,
     holdExpiresAt: t.holdExpiresAt?.toISOString() ?? null,
-    notes: (t.notesEnc && tryDecrypt(t.notesEnc)) || "",
+    notes: (t.notesEnc && tryDecrypt(t.notesEnc, dealerId)) || "",
     rejectReason: t.rejectReason,
     cancelledReason: t.cancelledReason,
     createdAt: t.createdAt.toISOString(),
@@ -83,7 +83,7 @@ const classNames = async (db: ScopedDb) => new Map((await db.vehicleClasses.sele
 
 export async function loadCustomerTrips(db: ScopedDb, customerId: string): Promise<TripView[]> {
   const [rows, names] = await Promise.all([db.trips.select(eq(trips.customerId, customerId), { orderBy: [desc(trips.createdAt)], limit: 100 }), classNames(db)])
-  return rows.map((t) => toTripView(t, names.get(t.vehicleClassId) ?? ""))
+  return rows.map((t) => toTripView(t, names.get(t.vehicleClassId) ?? "", db.dealerId))
 }
 
 export type TimelineEvent = { id: string; type: string; at: string; actorType: string; data: Record<string, unknown> }
@@ -95,7 +95,7 @@ export async function loadTripDetail(db: ScopedDb, id: string, customerId?: stri
   if (!row) return null
   const [events, names] = await Promise.all([db.tripEvents.select(eq(tripEvents.tripId, id), { orderBy: [asc(tripEvents.at)] }), classNames(db)])
   return {
-    trip: toTripView(row, names.get(row.vehicleClassId) ?? ""),
+    trip: toTripView(row, names.get(row.vehicleClassId) ?? "", db.dealerId),
     events: events.map((e) => ({ id: e.id, type: e.type, at: e.at.toISOString(), actorType: e.actorType, data: e.data })),
     // The lines exactly as quoted. The stored quote never changes, so this is what the customer agreed to.
     fare: { lines: ((row.quote.result as { lines?: FareLine[] }).lines ?? []), notices: ((row.quote.result as { notices?: string[] }).notices ?? []) },
@@ -130,7 +130,7 @@ export async function repeatDraft(db: ScopedDb, tripId: string, customerId: stri
   if (!t) return null
   const seal = async (p: TripPlace | null) => {
     if (!p) return null
-    const { name, address } = placeText(p)
+    const { name, address } = placeText(p, db.dealerId)
     const input: PlaceInput = { placeId: p.placeId, name, address, lat: p.lat, lng: p.lng, stateCode: p.stateCode }
     return { token: await sealPlace(input), name }
   }
@@ -141,6 +141,6 @@ export async function repeatDraft(db: ScopedDb, tripId: string, customerId: stri
 
 export async function customerPhone(db: ScopedDb, customerId: string): Promise<string> {
   const [c] = await db.customers.select(eq(customers.id, customerId), { limit: 1 })
-  return c ? decrypt(c.phoneEnc) : ""
+  return c ? decrypt(c.phoneEnc, db.dealerId) : ""
 }
 

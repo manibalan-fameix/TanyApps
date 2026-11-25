@@ -57,6 +57,7 @@ export function PhoneVerify({
   error,
   industry,
   notice,
+  verify,
 }: {
   config: FirebaseWebConfig | null
   testPhones: string[]
@@ -68,6 +69,8 @@ export function PhoneVerify({
   error?: string
   industry: IndustryKey
   notice?: string
+  /** Checks the proof on the server. Defaults to onboarding's; Settings passes its own, for a business that already exists. */
+  verify?: (idToken: string) => Promise<{ ok: true; phone: string; notice?: string } | { ok: false; error: string }>
 }) {
   const [editing, setEditing] = useState(false)
   const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(
@@ -141,7 +144,8 @@ export function PhoneVerify({
     run(async () => {
       if (!confirmation || !config || value.length !== 6) return
       const user = (await confirmation.confirm(value)).user
-      const res = await verifyDealerPhone(await user.getIdToken(), industry)
+      const idToken = await user.getIdToken()
+      const res = await (verify ? verify(idToken) : verifyDealerPhone(idToken, industry))
       // This Firebase session only existed to prove the number; the app session is separate.
       await signOut(getFirebaseAuth(config))
       if (!res.ok) {

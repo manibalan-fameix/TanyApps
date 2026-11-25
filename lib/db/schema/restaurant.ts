@@ -1,7 +1,12 @@
-import { boolean, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core"
+import { sql } from "drizzle-orm"
+import { boolean, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core"
 
+import { customers } from "./cabs.ts"
 import { dealers } from "./dealers.ts"
 import { menuItems } from "./menu.ts"
+
+/** A photo or video a customer attached to a review. The url is a file in the shop's own storage (lib/restaurant/review-media.ts). */
+export type ReviewMediaItem = { type: "image" | "video"; url: string }
 
 export type OrderLine = { itemId: string; name: string; portion: string | null; price: number; qty: number }
 
@@ -55,6 +60,48 @@ export const stockAdjustments = pgTable(
   (t) => [index("stock_adjustments_dealer_idx").on(t.dealerId, t.createdAt)],
 )
 
+/**
+ * A customer's monthly grocery list: the items they chose, delivered on the same day every month. One per customer per business.
+ * The shop's subscriber offer is applied to each month's order when it is created. Pay on delivery, so nothing is charged here.
+ */
+export const monthlyPlans = pgTable(
+  "monthly_plans",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    dealerId: uuid("dealer_id").notNull().references(() => dealers.id, { onDelete: "cascade" }),
+    customerId: uuid("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }),
+    /** Who receives the delivery. The customer's phone itself stays on the customer row, encrypted. */
+    name: text("name").notNull(),
+    /** Day of the month, 1 to 28 so every month has it. */
+    deliveryDay: integer("delivery_day").notNull(),
+    address: text("address").notNull(),
+    pincode: text("pincode").notNull().default(""),
+    note: text("note").notNull().default(""),
+    /** active | paused | cancelled */
+    status: text("status").notNull().default("active"),
+    /** The month (YYYY-MM, India time) whose order has already been created. Never the same month twice. */
+    lastCycle: text("last_cycle"),
+    /** Why the last attempt to create an order failed (an item sold out, say). Cleared on success. */
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique("monthly_plans_dealer_customer_unique").on(t.dealerId, t.customerId), index("monthly_plans_dealer_status_idx").on(t.dealerId, t.status)],
+)
+
+export const monthlyPlanItems = pgTable(
+  "monthly_plan_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    dealerId: uuid("dealer_id").notNull().references(() => dealers.id, { onDelete: "cascade" }),
+    planId: uuid("plan_id").notNull().references(() => monthlyPlans.id, { onDelete: "cascade" }),
+    itemId: uuid("item_id").notNull().references(() => menuItems.id, { onDelete: "cascade" }),
+    portion: text("portion"),
+    qty: integer("qty").notNull(),
+  },
+  (t) => [index("monthly_plan_items_plan_idx").on(t.planId)],
+)
+
 /** A guest order. Lines are a snapshot, so later menu edits never rewrite history. Amounts are whole rupees. */
 export const orders = pgTable(
   "orders",
@@ -64,7 +111,10 @@ export const orders = pgTable(
     /** Short, unguessable code the guest uses to follow the order. */
     code: text("code").notNull().unique(),
     customerName: text("customer_name").notNull(),
+    /** The guest's number, encrypted under this restaurant's own key (lib/restaurant/order-phone.ts). Rows written before that may still hold the plain number until the re-key script runs. */
     customerPhone: text("customer_phone").notNull(),
+    /** Keyed hash of the number, to find a guest's orders without decrypting everything. Null on rows written before it existed. */
+    customerPhoneHash: text("customer_phone_hash"),
     /** delivery | pickup | dine_in */
     fulfilment: text("fulfilment").notNull(),
     address: text("address"),
@@ -73,6 +123,10 @@ export const orders = pgTable(
     subtotal: integer("subtotal").notNull(),
     discount: integer("discount").notNull().default(0),
     deliveryFee: integer("delivery_fee").notNull().default(0),
+    /** GST charged on the items, in whole rupees. Part of `total`. */
+    gst: integer("gst").notNull().default(0),
+    /** Whole rupees the guest added for the delivery partner. Part of `total`; zero for pickup and dine-in. */
+    tip: integer("tip").notNull().default(0),
     total: integer("total").notNull(),
     couponCode: text("coupon_code"),
     /** Delivery address pincode and the zone it matched, kept so reports survive later zone edits. */
@@ -107,12 +161,15 @@ export const orders = pgTable(
     refundAttempts: integer("refund_attempts").notNull().default(0),
     /** Set once a cancelled order has put its stock back, so it never happens twice. */
     stockReleased: boolean("stock_released").notNull().default(false),
+    /** Set when a monthly plan created this order, with the month it is for. The pair is unique, so a month is never ordered twice. */
+    monthlyPlanId: uuid("monthly_plan_id").references(() => monthlyPlans.id, { onDelete: "set null" }),
+    monthlyCycle: text("monthly_cycle"),
     /** new | confirmed | preparing | ready | out_for_delivery | completed | cancelled */
     status: text("status").notNull().default("new"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("orders_dealer_created_idx").on(t.dealerId, t.createdAt), index("orders_dealer_phone_idx").on(t.dealerId, t.customerPhone)],
+  (t) => [index("orders_dealer_created_idx").on(t.dealerId, t.createdAt), index("orders_dealer_phone_idx").on(t.dealerId, t.customerPhone), index("orders_dealer_phone_hash_idx").on(t.dealerId, t.customerPhoneHash), unique("orders_monthly_cycle_unique").on(t.monthlyPlanId, t.monthlyCycle)],
 )
 
 export const coupons = pgTable(
@@ -141,14 +198,18 @@ export const reviews = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     dealerId: uuid("dealer_id").notNull().references(() => dealers.id, { onDelete: "cascade" }),
     orderId: uuid("order_id").references(() => orders.id, { onDelete: "set null" }),
+    /** Set on a review of the shop itself (not of one order): the signed-in customer who wrote it, one per customer. */
+    customerId: uuid("customer_id").references(() => customers.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     rating: integer("rating").notNull(),
     comment: text("comment").notNull().default(""),
+    /** Up to 5 photos and 1 video the customer attached. Shown with the review once the owner approves it. */
+    media: jsonb("media").$type<ReviewMediaItem[]>().notNull().default([]),
     /** pending | approved | hidden */
     status: text("status").notNull().default("pending"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("reviews_dealer_idx").on(t.dealerId, t.status)],
+  (t) => [index("reviews_dealer_idx").on(t.dealerId, t.status), uniqueIndex("reviews_one_shop_review_per_customer_uq").on(t.dealerId, t.customerId).where(sql`${t.orderId} is null and ${t.customerId} is not null`)],
 )
 
 export const enquiries = pgTable(
@@ -200,6 +261,8 @@ export const banners = pgTable(
     /** Background look, one of lib/restaurant/banners.ts BANNER_TONES. */
     tone: text("tone").notNull().default("soft"),
     imageUrl: text("image_url"),
+    /** The big offer text in the dark panel on the right of the banner ("FLAT 20% OFF*"). Empty means the picture, if any, fills that side. */
+    promoText: text("promo_text").notNull().default(""),
     isActive: boolean("is_active").notNull().default(true),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

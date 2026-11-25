@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { LOGIN_INDUSTRIES } from "@/lib/core/login/host"
 import { tenantFrom } from "@/lib/core/guards"
 import { SESSION_SECONDS, cookieOptions, issueSession, needsRenewal, readSession, sessionCookieName } from "@/lib/core/login/customer-session"
 import { customerFromToken } from "@/lib/core/login/customer"
@@ -13,10 +14,10 @@ const tokenOf = (req: Request) => {
 
 /** Is this browser signed in to this business? */
 export async function GET(req: Request) {
-  const ctx = await tenantFrom(req.headers, "cabs")
+  const ctx = await tenantFrom(req.headers, LOGIN_INDUSTRIES)
   if (!ctx) return new NextResponse("Not found", { status: 404 })
   const c = await customerFromToken(ctx.dealer.id, tokenOf(req))
-  return NextResponse.json(c ? { signedIn: true, customerId: c.id } : { signedIn: false }, { headers })
+  return NextResponse.json(c ? { signedIn: true, customerId: c.id, name: c.name ?? null } : { signedIn: false }, { headers })
 }
 
 /**
@@ -24,7 +25,7 @@ export async function GET(req: Request) {
  * day, because a newer session is not yet a day old. A revoked or expired session is not renewed.
  */
 export async function POST(req: Request) {
-  const ctx = await tenantFrom(req.headers, "cabs")
+  const ctx = await tenantFrom(req.headers, LOGIN_INDUSTRIES)
   if (!ctx) return new NextResponse("Not found", { status: 404 })
   if (!sameOrigin(req)) return NextResponse.json({ ok: false }, { status: 403, headers })
   const token = tokenOf(req)
