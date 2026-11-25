@@ -19,6 +19,7 @@ describe.skipIf(!url)("order stock bot (live database)", () => {
   beforeAll(async () => {
     process.env.DATABASE_URL = url
     process.env.ENCRYPTION_KEY = randomBytes(32).toString("base64")
+    process.env.BLIND_INDEX_KEY = randomBytes(32).toString("base64")
     stock = await import("../lib/restaurant/stock-server")
     bot = await import("../lib/restaurant/auto-confirm")
     ;({ unscopedDb, pool } = await import("../lib/db/client"))

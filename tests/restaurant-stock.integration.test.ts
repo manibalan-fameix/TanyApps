@@ -25,6 +25,7 @@ describe.skipIf(!url)("TanyEats stock and orders (live database)", () => {
   beforeAll(async () => {
     process.env.DATABASE_URL = url
     process.env.ENCRYPTION_KEY = randomBytes(32).toString("base64")
+    process.env.BLIND_INDEX_KEY = randomBytes(32).toString("base64")
     stock = await import("../lib/restaurant/stock-server")
     pay = await import("../lib/restaurant/payments")
     ;({ unscopedDb, pool } = await import("../lib/db/client"))
@@ -49,7 +50,8 @@ describe.skipIf(!url)("TanyEats stock and orders (live database)", () => {
   const qty = async (id: string) => (await unscopedDb.select().from(s.menuItems).where(eq(s.menuItems.id, id)))[0].stockQuantity
   const orderRow = async (c: string) => (await unscopedDb.select().from(s.orders).where(eq(s.orders.code, c)))[0]
   const log = async (ids: string[]) => unscopedDb.select().from(s.stockAdjustments).where(inArray(s.stockAdjustments.itemId, ids))
-  const ordersFor = async (name: string) => (await unscopedDb.select().from(s.orders).where(eq(s.orders.customerName, name))).length
+  // Customer details are stored encrypted, so a probe order is marked on a column that is stored as written.
+  const ordersFor = async (marker: string) => (await unscopedDb.select().from(s.orders).where(eq(s.orders.couponCode, marker))).length
 
   /** The stock log explains the stock: what is left equals what there was plus every recorded change, and is never negative. */
   async function expectConsistent(items: { id: string; start: number | null }[]) {
@@ -122,8 +124,8 @@ describe.skipIf(!url)("TanyEats stock and orders (live database)", () => {
   it("crash before the order row is written: the stock taken for it is not lost", async () => {
     const d = await dish("Curry", 10)
     const guest = `ProbeGuest${tag}${++n}`
-    await withFault("orders", "insert", `new.customer_name = '${guest}'`, async () => {
-      await expect(place([{ itemId: d.id, qty: 4 }], { customerName: guest })).rejects.toThrow()
+    await withFault("orders", "insert", `new.coupon_code = '${guest}'`, async () => {
+      await expect(place([{ itemId: d.id, qty: 4 }], { couponCode: guest })).rejects.toThrow("orders")
     })
     expect(await qty(d.id)).toBe(10)
     expect(await ordersFor(guest)).toBe(0)
@@ -166,8 +168,8 @@ describe.skipIf(!url)("TanyEats stock and orders (live database)", () => {
     await expect(place([{ itemId: d.id, qty: 1 }], {}, () => taken)).rejects.toThrow(/free order code/)
     expect(await qty(d.id)).toBe(9)
     const guest = `ProbeGuest${tag}${++n}`
-    await withFault("orders", "insert", `new.customer_name = '${guest}'`, async () => {
-      await expect(place([{ itemId: d.id, qty: 1 }], { customerName: guest })).rejects.toThrow() // not swallowed, not retried as a collision
+    await withFault("orders", "insert", `new.coupon_code = '${guest}'`, async () => {
+      await expect(place([{ itemId: d.id, qty: 1 }], { couponCode: guest })).rejects.toThrow("orders") // not swallowed, not retried as a collision
     })
     expect(await qty(d.id)).toBe(9)
   })

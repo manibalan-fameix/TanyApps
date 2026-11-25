@@ -23,6 +23,7 @@ describe.skipIf(!url)("monthly groceries job (live database)", () => {
   beforeAll(async () => {
     process.env.DATABASE_URL = url
     process.env.ENCRYPTION_KEY = randomBytes(32).toString("base64")
+    process.env.BLIND_INDEX_KEY = randomBytes(32).toString("base64")
     vi.spyOn(console, "error").mockImplementation(() => {})
     ;({ createMonthlyOrders: run } = await import("../lib/restaurant/monthly-orders"))
     ;({ unscopedDb, pool } = await import("../lib/db/client"))
@@ -52,8 +53,13 @@ describe.skipIf(!url)("monthly groceries job (live database)", () => {
     const r = await run(ist(2026, 11, 10))
     expect(r.created).toBe(1)
     const [o] = await mine()
-    expect(o).toMatchObject({ subtotal: 1000, discount: 100, deliveryFee: 0, total: 900, paymentMethod: "cod", status: "preparing", monthlyPlanId: planId, monthlyCycle: "2026-11", customerName: "Asha" })
-    expect(o.note).toContain("Monthly groceries")
+    expect(o).toMatchObject({ subtotal: 1000, discount: 100, deliveryFee: 0, total: 900, paymentMethod: "cod", status: "preparing", monthlyPlanId: planId, monthlyCycle: "2026-11" })
+    // Stored encrypted; only a read scoped to this business opens it.
+    expect(o.customerName).toMatch(/^v2:/)
+    const { scopedDb } = await import("../lib/db/scoped")
+    const [opened] = await scopedDb(dealerId).orders.select(eq(s.orders.id, o.id))
+    expect(opened.customerName).toBe("Asha")
+    expect(opened.note).toContain("Monthly groceries")
   })
 
   it("gives the order the pin of the saved address the plan uses, and none for a typed address", async () => {

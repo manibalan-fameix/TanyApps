@@ -80,7 +80,7 @@ describe.skipIf(!url)("cron lock (live database)", () => {
     const realSlot = slot(50 + Math.floor(Math.random() * 9))
     const outcome = await scheduler.runJob("expire-unpaid-orders", realSlot)
     expect(outcome.ran && outcome.ok).toBe(true)
-    expect(outcome.ran && outcome.result).toMatch(/order\(s\) released across \d+ restaurant\(s\)/)
+    expect(outcome.ran && outcome.result).toMatch(/order\(s\) released across \d+ business\(es\)/)
     await unscopedDb.delete(cronRuns).where(and(eq(cronRuns.job, "expire-unpaid-orders"), eq(cronRuns.slot, realSlot)))
   })
 
