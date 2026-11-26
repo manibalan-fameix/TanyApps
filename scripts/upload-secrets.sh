@@ -45,4 +45,62 @@ if os.environ["TARGET"] == "staging":
         prod = {}
         for line in open(".env.local"):
             m = re.match(r"^([A-Z0-9_]+)=(.*)$", line.rstrip("\n"))
-            if m.  
+            if m:
+                prod[m[1]] = m[2].strip().strip('"').strip("'")
+        if prod.get("DATABASE_URL") and urlparse(prod["DATABASE_URL"]).path == urlparse(env["DATABASE_URL"]).path and urlparse(prod["DATABASE_URL"]).hostname == host:
+            sys.exit("DATABASE_URL in .env.staging is the same database as .env.local (production). Use a separate Neon branch.")
+        for k in ("AUTH_SECRET", "ENCRYPTION_KEY", "BLIND_INDEX_KEY"):
+            if env.get(k) and env.get(k) == prod.get(k):
+                sys.exit(f"{k} in .env.staging is the same as production's. Generate a new one for staging.")
+    except FileNotFoundError:
+        pass
+if env.get("RAZORPAY_KEY_ID", "").startswith("rzp_test_"):
+    print("note: RAZORPAY_KEY_ID is a TEST key (rzp_test_). Fine for staging, not for taking real money.", file=sys.stderr)
+PY
+
+python3 - <<'PY' | pnpm exec wrangler secret bulk "${WR_ENV[@]+"${WR_ENV[@]}"}"
+import json, os, re, sys
+keys = ["DATABASE_URL", "AUTH_SECRET", "ENCRYPTION_KEY", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY",
+        "RC_API_KEY", "VISION_API_KEY", "TRACKER_SECRET", "CRON_SECRET", "BLIND_INDEX_KEY",
+        "GOOGLE_MAPS_SERVER_KEY", "GOOGLE_ROUTES_TOLLS", "GOOGLE_ROUTE_CACHE_DAYS", "CABS_ALLOWED_EMAILS", "SUPER_ADMIN_EMAILS", "SUPER_ADMIN_UIDS", "R2_PRIVATE_BUCKET", "PILOT_DEALERS", "PHONE_OTP_PROVIDER", "FIREBASE_APPCHECK_SITE_KEY",
+        "RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "RAZORPAY_WEBHOOK_SECRET",
+        "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_ANALYTICS_TOKEN"]
+env = {}
+for line in open(os.environ["ENV_FILE"]):
+    m = re.match(r"^([A-Z0-9_]+)=(.*)$", line.rstrip("\n"))
+    if m:
+        env[m[1]] = m[2].strip().strip('"').strip("'")
+if os.environ["TARGET"] == "staging":
+    # Vars in production (wrangler.jsonc); on staging they come from .env.staging so nothing of production's is hard-coded there.
+    keys += ["CLOUDFLARE_ZONE_ID", "FIREBASE_API_KEY", "FIREBASE_AUTH_DOMAIN", "FIREBASE_PROJECT_ID", "FIREBASE_APP_ID"]
+out = {k: env[k] for k in keys if env.get(k)}
+print("app: uploading:", sorted(out), file=sys.stderr)
+print("app: skipped (empty):", [k for k in keys if not env.get(k)], file=sys.stderr)
+print(json.dumps(out))
+PY
+
+# The tracker verifies rider tickets with the very same TRACKER_SECRET.
+python3 - <<'PY' | pnpm exec wrangler secret bulk -c workers/tracker/wrangler.jsonc "${WR_ENV[@]+"${WR_ENV[@]}"}"
+import json, os, re, sys
+env = {}
+for line in open(os.environ["ENV_FILE"]):
+    m = re.match(r"^([A-Z0-9_]+)=(.*)$", line.rstrip("\n"))
+    if m:
+        env[m[1]] = m[2].strip().strip('"').strip("'")
+out = {k: env[k] for k in ["TRACKER_SECRET"] if env.get(k)}
+print("tracker: uploading:", sorted(out), file=sys.stderr)
+print(json.dumps(out))
+PY
+
+# The cron worker sends the very same CRON_SECRET to the app's internal cron route.
+python3 - <<'PY' | pnpm exec wrangler secret bulk -c workers/cron/wrangler.jsonc "${WR_ENV[@]+"${WR_ENV[@]}"}"
+import json, os, re, sys
+env = {}
+for line in open(os.environ["ENV_FILE"]):
+    m = re.match(r"^([A-Z0-9_]+)=(.*)$", line.rstrip("\n"))
+    if m:
+        env[m[1]] = m[2].strip().strip('"').strip("'")
+out = {k: env[k] for k in ["CRON_SECRET"] if env.get(k)}
+print("cron: uploading:", sorted(out), file=sys.stderr)
+print(json.dumps(out))
+PY
