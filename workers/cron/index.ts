@@ -13,7 +13,7 @@ export const SCHEDULE: Record<string, string[]> = {
   // Every minute: cab booking holds (an operator's answer window can be as short as 10 minutes, so five-minute steps are too coarse).
   // Safe because the lock keeps one run per (job, minute) and the job only touches rows past their deadline.
   "* * * * *": ["expire-trip-holds"],
-  "*/5 * * * *": ["expire-unpaid-orders", "retry-booking-refunds", "retry-order-refunds"],
+  "*/5 * * * *": ["expire-unpaid-orders", "retry-booking-refunds", "retry-order-refunds", "check-custom-domains"],
   // 08:00 IST every day (02:30 UTC).
   "30 2 * * *": ["daily", "reconcile-subscriptions", "create-monthly-orders"],
   // 06:00 IST on the 1st of the month (00:30 UTC).

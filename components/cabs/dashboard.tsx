@@ -10,7 +10,7 @@ import { cabLimitsFor } from "@/lib/cabs/limits"
 import { PageHeader } from "@/components/restaurant/page-header"
 import { scopedDb } from "@/lib/db/scoped"
 import type { dealers } from "@/lib/db/schema"
-import { tenantUrl } from "@/lib/env"
+import { siteUrl } from "@/lib/tenant/domains"
 
 type Dealer = typeof dealers.$inferSelect
 
@@ -42,7 +42,7 @@ export async function CabsDashboard({ dealer }: { dealer: Dealer }) {
 
   return (
     <div className="flex w-full flex-col gap-6">
-      <PageHeader title={dealer.displayName} description={`Your booking page: ${tenantUrl(dealer.slug)}`} />
+      <PageHeader title={dealer.displayName} description={`Your booking page: ${await siteUrl(dealer.slug)}`} />
 
       {docs.expired > 0 || docs.soon > 0 ? (
         <Alert variant={docs.expired > 0 ? "destructive" : "default"}>

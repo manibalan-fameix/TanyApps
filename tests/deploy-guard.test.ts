@@ -55,6 +55,15 @@ describe("the repository's own configuration is consistent, per environment", ()
     badDomain.app.env!.staging.vars!.ROOT_DOMAIN = "tany.in"
     expect(blocks("staging", goodStaging(), badDomain).join(" ")).toContain("ROOT_DOMAIN in wrangler.jsonc")
   })
+  it("judges a catch-all route by its zone: staging may hold it only on the staging zone", () => {
+    for (const [zone, allowed] of [["tanystaging.in", true], ["tany.in", false], [undefined, false]] as const) {
+      const changed = structuredClone(configs)
+      changed.app.env!.staging.routes = [{ pattern: "*/*", zone_name: zone } as never]
+      const blocked = checkTarget("staging", goodStaging(), changed).some((f) => f.level === "block" && f.message.includes('route "*/*'))
+      expect(blocked, String(zone)).toBe(!allowed)
+    }
+  })
+
   it("catches a production configuration that would touch staging", () => {
     const bad = structuredClone(configs)
     bad.tracker.routes = [{ pattern: "track.tanystaging.in", custom_domain: true } as never]

@@ -4,7 +4,7 @@ import { EmptyState, PageHeader } from "@/components/restaurant/page-header"
 import { NewPartnerButton, type PartnerRow, PartnersGrid } from "@/components/restaurant/ops-grids"
 import { deliveryPartners, orders } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
-import { tenantUrl } from "@/lib/env"
+import { siteUrl } from "@/lib/tenant/domains"
 import { requireRestaurant } from "@/lib/restaurant/guard"
 
 export const metadata = { title: "Delivery partners" }
@@ -19,7 +19,7 @@ export default async function DeliveryPartnersPage() {
   ])
   const current = new Map<string, string>()
   for (const o of active) if (o.partnerId) current.set(o.partnerId, o.code)
-  const base = tenantUrl(dealer.slug).replace(/\/$/, "")
+  const base = (await siteUrl(dealer.slug)).replace(/\/$/, "")
   const rows: PartnerRow[] = partners.map((p) => ({
     id: p.id,
     code: p.code,

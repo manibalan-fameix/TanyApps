@@ -1,0 +1,1 @@
+ALTER TABLE "enquiries" ADD COLUMN "kind" text DEFAULT 'question' NOT NULL;

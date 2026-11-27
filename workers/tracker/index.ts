@@ -174,13 +174,16 @@ export class RateLimiter extends DurableObject {
 /** What a viewer receives: [lat, lng, heading, time]. Four numbers, about 40 bytes. */
 const encode = (fix: Fix) => JSON.stringify([fix.lat, fix.lng, fix.heading, fix.at])
 
-/** Whether a page on this origin may open a connection. Browsers do not apply CORS to WebSockets, so it is checked here. */
-function originAllowed(origin: string | null, root: string | undefined): boolean {
+/**
+ * Whether a page on this origin may open a connection. Browsers do not apply CORS to WebSockets, so it is checked here.
+ * A business's own domain is not under our root, so it must match the hostname the app signed into the ticket.
+ */
+export function originAllowed(origin: string | null, root: string | undefined, ticketHost?: string): boolean {
   if (!origin) return false
   try {
     const host = new URL(origin).hostname
     if (root && (host === root || host.endsWith(`.${root}`))) return true
-    return host === "localhost" || host.endsWith(".localhost")
+    return host === "localhost" || host.endsWith(".localhost") || (Boolean(ticketHost) && host === ticketHost)
   } catch {
     return false
   }
@@ -191,9 +194,9 @@ export default {
     const url = new URL(req.url)
     if (url.pathname !== "/ws") return new Response("Not found", { status: 404 })
     if (req.headers.get("Upgrade") !== "websocket") return new Response("Expected a WebSocket", { status: 426 })
-    if (!originAllowed(req.headers.get("Origin"), env.ALLOWED_ROOT)) return new Response("Forbidden", { status: 403 })
     const claims = await verifyTicket(env.TRACKER_SECRET ?? "", url.searchParams.get("t"))
     if (!claims) return new Response("Unauthorized", { status: 401 })
+    if (!originAllowed(req.headers.get("Origin"), env.ALLOWED_ROOT, claims.h)) return new Response("Forbidden", { status: 403 })
     const stub = env.TRACKER.get(env.TRACKER.idFromName(claims.k))
     const forward = new Request(req, { headers: new Headers({ Upgrade: "websocket", "x-role": claims.r }) })
     return stub.fetch(forward)

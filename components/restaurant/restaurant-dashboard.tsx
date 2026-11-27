@@ -19,7 +19,7 @@ import { billingState, effectivePlanKey } from "@/lib/billing/state"
 import { enquiries, orders, reviews, type dealers } from "@/lib/db/schema"
 import { expireUnpaidOrders } from "@/lib/restaurant/payments"
 import { scopedDb } from "@/lib/db/scoped"
-import { tenantUrl } from "@/lib/env"
+import { siteUrl } from "@/lib/tenant/domains"
 import { type PlanKey, PLANS } from "@/lib/plans"
 import { menuItemLimit } from "@/lib/restaurant/menu"
 import { FULFILMENT_LABEL, type Fulfilment } from "@/lib/restaurant/settings"
@@ -53,7 +53,7 @@ export async function RestaurantDashboard({ dealer, role }: { dealer: typeof dea
   const billing = billingState(dealer)
   const stats = summariseOrders(recent)
   const customers = summariseCustomers(recent)
-  const publicUrl = tenantUrl(dealer.slug)
+  const publicUrl = await siteUrl(dealer.slug)
   const billingNote =
     billing.phase === "trial"
       ? `Free trial · ${billing.daysLeft} ${billing.daysLeft === 1 ? "day" : "days"} left`

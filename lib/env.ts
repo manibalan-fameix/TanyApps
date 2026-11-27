@@ -21,6 +21,13 @@ export function shareUrl(slug: string, path = "/"): string {
   return `${protocolFor(root)}://${slug}.${root}${path}`
 }
 
+/** Where a business's own domain is reached: https, except on a developer's machine, where it is http on the dev server's port. */
+export function customDomainOrigin(hostname: string): string {
+  const root = getRootDomain() ?? ""
+  if (protocolFor(root) === "https") return `https://${hostname}`
+  return `http://${hostname}${/:\d+$/.exec(root)?.[0] ?? ""}`
+}
+
 export function adminUrl(path = "/"): string {
   const root = getRootDomain() ?? "localhost:3000"
   return `${protocolFor(root)}://app.${root}${path}`

@@ -29,6 +29,7 @@ import {
 } from "@hugeicons/core-free-icons"
 
 import { copy } from "@/lib/copy"
+import { offersCustomDomain } from "@/lib/domains/rollout"
 import type { IndustryKey } from "@/lib/verticals"
 
 const n = copy.admin.nav
@@ -74,6 +75,7 @@ export const navMain: NavMainItem[] = [
       { title: "Business details", url: "/settings/business" },
       { title: n.hours, url: "/settings/hours" },
       { title: n.theme, url: "/settings/theme" },
+      { title: "Custom domain", url: "/settings/domain" },
       { title: n.team, url: "/settings/team" },
       { title: n.billing, url: "/settings/billing" },
       { title: n.payments, url: "/settings/payments" },
@@ -83,7 +85,12 @@ export const navMain: NavMainItem[] = [
 
 export type NavGroup = { label: string; items: NavMainItem[] }
 
-const settingsItem = navMain.find((i) => i.url === "/settings")!
+const motorsSettings = navMain.find((i) => i.url === "/settings")!
+/** The settings every product shares: the Motos list without the pages only some products are offered. */
+const settingsFor = (industry: IndustryKey) => ({
+  ...motorsSettings,
+  items: motorsSettings.items!.filter((i) => i.url !== "/settings/domain" || offersCustomDomain(industry)),
+})
 
 /**
  * Sidebar for restaurants: the same seven sections as the Lala Sweets admin (Main, Catalog, Delivery, Customers,
@@ -139,13 +146,13 @@ export const navRestaurantGroups: NavGroup[] = [
     items: [
       { title: "Notifications", url: "/notifications", icon: Notification01Icon },
       {
-        ...settingsItem,
+        ...settingsFor("restaurants"),
         items: [
           { title: "Storefront", url: "/settings/storefront" },
           { title: "Ordering", url: "/settings/ordering" },
           { title: "Returns", url: "/settings/returns" },
           { title: "Location & range", url: "/settings/location" },
-          ...settingsItem.items!,
+          ...settingsFor("restaurants").items,
         ],
       },
     ],
@@ -163,7 +170,8 @@ export const navRetailGroups: NavGroup[] = navRestaurantGroups.map((g) => ({
   ...g,
   items: g.items
     .filter((i) => i.url !== "/table-bookings")
-    .map((i) => (i.url === "/menu" ? { ...i, title: "Products", icon: Store01Icon } : i)),
+    .map((i) => (i.url === "/menu" ? { ...i, title: "Products", icon: Store01Icon } : i))
+    .map((i) => (i.url === "/settings" ? { ...i, items: i.items!.filter((s) => s.url !== "/settings/domain" || offersCustomDomain("retail")) } : i)),
 }))
 export const navRetail: NavMainItem[] = navRetailGroups.flatMap((g) => g.items)
 
@@ -195,7 +203,7 @@ export const navCabsGroups: NavGroup[] = [
   },
   {
     label: "System",
-    items: [{ ...settingsItem, items: [{ title: "Fares, GST and rules", url: "/cabs/settings" }, ...settingsItem.items!] }],
+    items: [{ ...settingsFor("cabs"), items: [{ title: "Fares, GST and rules", url: "/cabs/settings" }, ...settingsFor("cabs").items] }],
   },
 ]
 export const navCabs: NavMainItem[] = navCabsGroups.flatMap((g) => g.items)

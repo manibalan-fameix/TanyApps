@@ -9,6 +9,8 @@ export type TicketClaims = {
   r: TicketRole
   /** Expiry, in seconds since 1970. */
   e: number
+  /** Hostname of the site the ticket was issued to, so the tracker can admit a business's own domain. */
+  h?: string
 }
 
 export const TICKET_TTL_S = 600

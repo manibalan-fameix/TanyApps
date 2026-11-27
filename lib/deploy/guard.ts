@@ -98,7 +98,13 @@ const hostOf = (url: string | undefined): string | null => {
 /** Variables that exist only for development and testing and must never reach a deployed environment. */
 const DEV_ONLY = ["RAZORPAY_ALLOW_DIRECT", "GEO_FIXTURE", "E2E", "LOCAL_ADMIN_PASSWORD", "FIREBASE_AUTH_EMULATOR_HOST", "FIREBASE_TEST_PHONES", "TEST_DATABASE_URL", "TEST_DATABASE_MIGRATE_URL", "TEST_DATABASE_DISPOSABLE", "TEST_DATABASE_CONFIRM"]
 
-const routesOf = (c: WorkerConfig): string[] => (c.routes ?? []).map((r) => (typeof r === "string" ? r : (r.pattern ?? "")))
+// "*/*" names no domain, so it is judged by the zone it is attached to; every other route by its pattern.
+const routesOf = (c: WorkerConfig): string[] =>
+  (c.routes ?? []).map((r) => {
+    if (typeof r === "string") return r
+    const { pattern = "", zone_name: zone } = r as { pattern?: string; zone_name?: string }
+    return pattern === "*/*" && zone ? `${pattern} on ${zone}` : pattern
+  })
 const configFor = (c: WorkerConfig, target: Target): WorkerConfig => (target === "staging" ? { ...(c.env?.staging ?? {}), vars: { ...(c.env?.staging?.vars ?? {}) } } : c)
 
 export type Finding = { level: "block" | "note"; message: string }

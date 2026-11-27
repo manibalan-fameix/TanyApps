@@ -61,7 +61,11 @@
         "R2_BUCKET": "tany-staging",
         "R2_PUBLIC_URL": "https://cdn.tanystaging.in",
         "RC_PROVIDER": "mock",
-        "TRACKER_WS_URL": "wss://track.tanystaging.in/ws"
+        "TRACKER_WS_URL": "wss://track.tanystaging.in/ws",
+        // Businesses' own domains (docs/custom-domains.md). Their CNAME values are <token>.<this>. The token is the secret CUSTOM_DOMAIN_API_TOKEN.
+        "CUSTOM_DOMAIN_TARGET": "customers.tanystaging.in",
+        // Staging test of custom domains: the demo Motos shop has Pro free until this date (lib/billing/pilot.ts).
+        "PILOT_DEALERS": "demo-motors:pro:2026-12-31"
       },
       "analytics_engine_datasets": [
         { "binding": "ANALYTICS", "dataset": "tany_listing_events_staging" },
@@ -77,7 +81,10 @@
       "routes": [
         { "pattern": "tanystaging.in", "custom_domain": true },
         { "pattern": "app.tanystaging.in", "custom_domain": true },
-        { "pattern": "*.tanystaging.in/*", "zone_name": "tanystaging.in" }
+        { "pattern": "*.tanystaging.in/*", "zone_name": "tanystaging.in" },
+        // Businesses' own domains arrive with their own hostname, so only this catches them (docs/custom-domains.md). The zone's
+        // cdn (no Worker) and track routes are more specific, so they win over it.
+        { "pattern": "*/*", "zone_name": "tanystaging.in" }
       ]
     }
   }
