@@ -1,3 +1,5 @@
+import Link from "next/link"
+
 import { TextPage } from "@/components/site/text-page"
 import { company } from "@/lib/company"
 import { copy } from "@/lib/copy"
@@ -32,6 +34,8 @@ export default function Page() {
           <p>{company.address}</p>
         </>
       )}
+      <h2>Payments, refunds and complaints</h2>
+      <p>Email or call us with your business name, the date and the amount. See our <Link className="underline" href="/refund-policy">refunds and cancellation policy</Link>.</p>
       <p>For a question about an order, booking or vehicle, contact the business you dealt with. Its details are on its own page.</p>
     </TextPage>
   )

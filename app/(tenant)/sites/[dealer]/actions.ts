@@ -210,11 +210,21 @@ export async function cancelPendingOrder(code: string): Promise<{ ok: true } | F
   return { ok: true }
 }
 
-const enquirySchema = z.object({
+const enquiryContact = {
   name: z.string().trim().min(2, "Enter your name.").max(60),
   phone: z.string().trim().regex(/^[0-9+\s-]{10,15}$/, "Enter a valid phone number."),
-  message: z.string().trim().min(5, "Write a short message.").max(600),
-})
+}
+
+const enquirySchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("question"), ...enquiryContact, message: z.string().trim().min(5, "Write a short message.").max(600) }),
+  z.object({
+    kind: z.literal("product"),
+    ...enquiryContact,
+    item: z.string().trim().min(2, "Tell us what you need.").max(80),
+    quantity: z.string().trim().max(40).default(""),
+    message: z.string().trim().max(400).default(""),
+  }),
+])
 
 export async function sendEnquiry(input: unknown): Promise<{ ok: true } | Fail> {
   const ctx = await context()
@@ -225,7 +235,13 @@ export async function sendEnquiry(input: unknown): Promise<{ ok: true } | Fail> 
     const issue = parsed.error.issues[0]
     return { ok: false, error: issue.message, field: String(issue.path[0]) }
   }
-  await scopedDb(ctx.dealer.id).enquiries.insert(parsed.data)
+  const { kind, name, phone } = parsed.data
+  // A product request is kept as readable lines in the message, so it is sealed with the rest of the customer's words.
+  const message =
+    parsed.data.kind === "product"
+      ? [parsed.data.item, parsed.data.quantity && `Quantity: ${parsed.data.quantity}`, parsed.data.message].filter(Boolean).join("\n")
+      : parsed.data.message
+  await scopedDb(ctx.dealer.id).enquiries.insert({ kind, name, phone, message })
   return { ok: true }
 }
 

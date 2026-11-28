@@ -138,6 +138,11 @@ describe("orders carry notes.kind", () => {
     expect((bodies[0] as { notes: Record<string, string> }).notes.kind).toBe("eats_order")
   })
 
+  it("refuses an order under 100 paise without calling Razorpay", async () => {
+    await expect(createFoodOrder({ amount: 0, receipt: "R", linkedAccountId: null, notes: {} })).rejects.toThrow("100 paise")
+    expect(bodies).toHaveLength(0)
+  })
+
   it("lets a caller's own notes never override the kind", async () => {
     await createFoodOrder({ amount: 100, receipt: "R", linkedAccountId: null, notes: { kind: "motors_booking" } })
     expect((bodies[0] as { notes: Record<string, string> }).notes.kind).toBe("eats_order")

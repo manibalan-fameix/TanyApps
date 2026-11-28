@@ -1,15 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import { Fragment, useEffect, useMemo, useRef, useState } from "react"
+import { Fragment, useEffect, useRef, useState } from "react"
 import {
   ArrowDown01Icon,
-  DiscountTag01Icon,
-  FilterHorizontalIcon,
-  Medal01Icon,
   Search01Icon,
-  SortByDown01Icon,
-  Clock01Icon,
   Location01Icon,
   RestaurantTableIcon,
   Scooter01Icon,
@@ -33,13 +28,7 @@ import {
   writeFulfilmentPref,
 } from "@/components/restaurant/store/fulfilment-pref"
 import { useGuestLocation } from "@/components/restaurant/store/location"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { FilterBar, useDishFilters } from "@/components/restaurant/store/filter-bar"
 import { type Fulfilment, FULFILMENT_LABEL } from "@/lib/restaurant/settings"
 import {
   type StoreCategory,
@@ -50,31 +39,15 @@ import { distanceKm } from "@/lib/restaurant/service-area"
 import { isOpenAt, nextOpeningLabel } from "@/lib/hours"
 import { etaMinutes } from "@/lib/restaurant/tracking"
 import { cn } from "@/lib/utils"
+import { RequestPrompt } from "@/components/restaurant/store/request-prompt"
 import { useStoreTerms } from "@/components/restaurant/store/terms-context"
 
-type Sort = "popular" | "low" | "high"
-type Diet = "all" | "veg" | "nonVeg"
 
 const MODE_ICON = {
   delivery: Scooter01Icon,
   pickup: Store01Icon,
   dine_in: RestaurantTableIcon,
 } as const
-const SORT_LABEL: Record<Sort, string> = {
-  popular: "Popular",
-  low: "Price: low to high",
-  high: "Price: high to low",
-}
-const DIET_LABEL: Record<Diet, string> = {
-  all: "Dietary",
-  veg: "Veg",
-  nonVeg: "Non-veg",
-}
-
-const PILL =
-  "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[8px] border border-border bg-background px-3.5 text-sm whitespace-nowrap text-foreground shadow-[0_0_6px_1px_color-mix(in_oklab,var(--foreground)_9%,transparent),0_0_2px_color-mix(in_oklab,var(--foreground)_10%,transparent)] transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-const PILL_ON = "border-foreground bg-foreground text-background"
-
 type Props = {
   restaurant: string
   logoUrl: string | null
@@ -110,11 +83,6 @@ export function StoreAppHome({
   const terms = useStoreTerms()
   const modes: Fulfilment[] = fulfilments.filter((f) => f !== "dine_in")
   const [mode, setMode] = useState<Fulfilment | null>(modes[0] ?? null)
-  const [sort, setSort] = useState<Sort>("popular")
-  const [diet, setDiet] = useState<Diet>("all")
-  const [open, setOpen] = useState(false)
-  const [offers, setOffers] = useState(false)
-  const [best, setBest] = useState(false)
   const mainRef = useRef<HTMLElement>(null)
   const headRef = useRef<HTMLDivElement>(null)
   const brandRef = useRef<HTMLDivElement>(null)
@@ -226,36 +194,14 @@ export function StoreAppHome({
     writeFulfilmentPref(m)
   }
 
-  const anyFilter =
-    diet !== "all" || open || offers || best || sort !== "popular"
-  const shown = useMemo(() => {
-    const list = dishes.filter((d) => {
-      if (diet === "veg" && !d.isVeg) return false
-      if (diet === "nonVeg" && d.isVeg) return false
-      if (open && !d.isAvailable) return false
-      if (offers && offerPercent(d) === null) return false
-      if (best && !d.isFeatured) return false
-      return true
-    })
-    const unit = (d: StoreDish) =>
-      d.portions.length ? Math.min(...d.portions.map((p) => p.price)) : d.price
-    if (sort === "low") return [...list].sort((a, b) => unit(a) - unit(b))
-    if (sort === "high") return [...list].sort((a, b) => unit(b) - unit(a))
-    return list
-  }, [dishes, diet, open, offers, best, sort])
+  const filters = useDishFilters(dishes)
+  const { shown, anyFilter, clear } = filters
 
   const picks = shown.filter((d) => d.isFeatured)
   const gems = rowProducts(layout.picks.productIds, dishes, shown, (picks.length ? picks : shown).slice(0, 8))
   const onOffer = rowProducts(layout.offers.productIds, dishes, shown, shown.filter((d) => offerPercent(d) !== null).slice(0, 8))
   const circles = categories.filter((c) => !layout.hiddenCategoryIds.includes(c.id))
   const offersTitle = layout.offers.title || "Offers for You"
-  const clear = () => {
-    setDiet("all")
-    setOpen(false)
-    setOffers(false)
-    setBest(false)
-    setSort("popular")
-  }
 
   // Nothing to show is said once, where the product rows would start.
   const emptyNote = (
@@ -323,119 +269,12 @@ export function StoreAppHome({
     catalogue: (
       <>
         {emptyNote}
-      <div
-        ref={filtersRef}
-        className="sticky top-[var(--head-h,10rem)] z-30 mt-6 flex bg-background scroll-px-4 [scrollbar-width:none] gap-3 h-[3.25rem] shrink-0 items-center overflow-x-auto border-y border-border px-4 [&::-webkit-scrollbar]:hidden"
-        aria-label="Filters"
-      >
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            className={cn(PILL, sort !== "popular" && PILL_ON)}
-          >
-            <HugeiconsIcon
-              icon={SortByDown01Icon}
-              strokeWidth={2}
-              className="size-4"
-            />
-            Sort
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="min-w-52">
-            <DropdownMenuRadioGroup
-              value={sort}
-              onValueChange={(v) => setSort(v as Sort)}
-            >
-              {(Object.keys(SORT_LABEL) as Sort[]).map((k) => (
-                <DropdownMenuRadioItem key={k} value={k}>
-                  {SORT_LABEL[k]}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        {terms.diet ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger className={cn(PILL, diet !== "all" && PILL_ON)}>
-            {DIET_LABEL[diet]}
-            <HugeiconsIcon
-              icon={ArrowDown01Icon}
-              strokeWidth={2}
-              className="size-4"
-            />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="min-w-40">
-            <DropdownMenuRadioGroup
-              value={diet}
-              onValueChange={(v) => setDiet(v as Diet)}
-            >
-              <DropdownMenuRadioItem value="all">
-                All {terms.items}
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="veg">Veg</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="nonVeg">
-                Non-veg
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        ) : null}
-        <button
-          type="button"
-          aria-pressed={open}
-          onClick={() => setOpen((v) => !v)}
-          className={cn(PILL, open && PILL_ON)}
-        >
-          <HugeiconsIcon
-            icon={Clock01Icon}
-            strokeWidth={2}
-            className="size-4"
-          />
-          Open Now
-        </button>
-        <button
-          type="button"
-          aria-pressed={offers}
-          onClick={() => setOffers((v) => !v)}
-          className={cn(PILL, offers && PILL_ON)}
-        >
-          <HugeiconsIcon
-            icon={DiscountTag01Icon}
-            strokeWidth={2}
-            className="size-4"
-          />
-          Offers
-        </button>
-        <button
-          type="button"
-          aria-pressed={best}
-          onClick={() => setBest((v) => !v)}
-          className={cn(PILL, best && PILL_ON)}
-        >
-          <HugeiconsIcon
-            icon={Medal01Icon}
-            strokeWidth={2}
-            className="size-4 text-primary"
-          />
-          Bestsellers
-        </button>
-        {anyFilter ? (
-          <button
-            type="button"
-            onClick={clear}
-            className={cn(PILL, "text-muted-foreground")}
-          >
-            <HugeiconsIcon
-              icon={FilterHorizontalIcon}
-              strokeWidth={2}
-              className="size-4"
-            />
-            Clear
-          </button>
-        ) : null}
-      </div>
+      <FilterBar ref={filtersRef} filters={filters} className="top-[var(--head-h,10rem)]" />
       <StoreTabs
         dishes={shown}
         categories={categories}
         canOrder={canOrder}
+        underBar
       />
       </>
     ),
@@ -553,6 +392,7 @@ export function StoreAppHome({
         </div>
       ) : null}
       {layout.sections.map((section) => (section.visible ? <Fragment key={section.id}>{blocks[section.id]}</Fragment> : null))}
+      <RequestPrompt className="mx-4 my-8" />
       </div>
     </main>
   )

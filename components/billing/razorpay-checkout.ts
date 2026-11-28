@@ -10,7 +10,10 @@ type RazorpayResponse = {
   razorpay_subscription_id: string
   razorpay_signature: string
 }
-type RazorpayCheckout = { open(): void }
+type RazorpayCheckout = {
+  open(): void
+  on(event: "payment.failed", listener: (r: { error?: { description?: string } }) => void): void
+}
 declare global {
   interface Window {
     Razorpay?: new (options: Record<string, unknown>) => RazorpayCheckout
@@ -33,6 +36,7 @@ export type PaymentResult =
   | "dismissed" // the owner closed the popup, or every attempt failed and they gave up
   | "unconfirmed" // paid, but our server could not confirm yet: the webhook will catch up
   | "unavailable" // Razorpay could not be loaded
+  | { failed: string } // an attempt failed and the owner closed the popup: Razorpay's reason
 
 /** Opens Razorpay Checkout to authorise the payment method. */
 export async function authorisePayment(
@@ -45,10 +49,11 @@ export async function authorisePayment(
 ): Promise<PaymentResult> {
   if (!(await loadRazorpay()) || !window.Razorpay) return "unavailable"
   return new Promise((resolve) => {
+    let failure: string | undefined
     const rz = new window.Razorpay!({
       key: checkout.keyId,
       subscription_id: checkout.subscriptionId,
-      name: "TanyApps",
+      name: "Tany",
       description: options.description,
       prefill: options.prefill,
       theme: { color: options.color },
@@ -60,9 +65,12 @@ export async function authorisePayment(
         })
         resolve(res.ok ? "done" : "unconfirmed")
       },
-      modal: { ondismiss: () => resolve("dismissed") },
+      modal: { ondismiss: () => resolve(failure ? { failed: failure } : "dismissed") },
     })
-    // A failed attempt keeps the popup open so the owner can retry; only closing it ends the flow.
+    // A failed attempt keeps the popup open for a retry, so the reason is kept and shown only if the popup is closed unpaid.
+    rz.on("payment.failed", (r) => {
+      failure = r.error?.description || "The payment did not go through."
+    })
     rz.open()
   })
 }

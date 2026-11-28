@@ -33,7 +33,9 @@ Choices made without asking, newest first within each phase. Reverse any of them
 - `dealers` and the auth tables are read through the raw client only in `lib/tenant` and `lib/auth`.
 - A test fails when any table gains `dealer_id` or `car_id` without being registered as tenant-scoped.
 - Reserved subdomains: `app`, `www`, `api`, `admin` and others in `lib/tenant/host.ts`. Only one label deep.
-- Custom domains resolve only when `verified_at` is set and the plan allows them. Cached in memory for 60 seconds. Cloudflare for SaaS provisioning is a TODO in `lib/tenant/dealer.ts`.
+- Custom domains resolve only when `verified_at` is set and the plan allows them. Cached in memory for 60 seconds. Setup: docs/custom-domains.md.
+- Offered to every product (`lib/domains/rollout.ts`). Only Motos has been tried on a real domain; the others still need the checks in docs/custom-domains.md before their customers are moved.
+- The owner adds one record: a CNAME to `<claim token>.<CUSTOM_DOMAIN_TARGET>`. The token proves ownership before Cloudflare is told of the name, so a leftover CNAME cannot be claimed by someone else (a TXT record is the fallback where a provider hides CNAMEs). The owner then confirms it as the main address; only then do `<slug>.<root>` pages redirect to it (307, so it stops when the domain breaks or the plan ends). One domain per business. A bare domain typed in becomes `www.` plus a forwarding step. An unverified claim can be taken over after 72 hours.
 - The proxy strips any client-supplied `x-tenant-slug` and sets its own. Tenant hosts can reach `/api/t/*` only; everything else under `/api` is 404 there.
 
 **Plans (no billing)**

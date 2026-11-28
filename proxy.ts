@@ -1,18 +1,18 @@
 import { NextResponse, type NextRequest } from "next/server"
 
-import { getRootDomain } from "./lib/env"
+import { customDomainOrigin, getRootDomain } from "./lib/env"
 import { looksLikeShortCode } from "./lib/slug"
 import { TENANT_HEADER, type HostTarget, classifyHost, devLanSlug, isLocalNetworkIp } from "./lib/tenant/host"
 import { classifySource, deviceOf, isBot } from "./lib/analytics/events"
 import { recordEvent } from "./lib/analytics/track"
-import { resolveCustomDomain, resolveShortLink } from "./lib/tenant/lookup"
+import { resolveCustomDomain, resolvePrimaryHost, resolveShortLink } from "./lib/tenant/lookup"
 
 const notFound = () => new NextResponse("Not found", { status: 404 })
 
 /**
  * Tenant resolution (Next 16 "proxy", formerly middleware).
  *   <slug>.<root>      -> /sites/<slug>/...   (app/(tenant)/sites/[dealer])
- *   verified custom    -> /sites/<slug>/...
+ *   verified custom    -> /sites/<slug>/...  (and <slug>.<root> pages redirect to it once the owner makes it the main address)
  *   app.<root>         -> admin routes as-is
  *   <root>, www.<root> -> marketing page only
  */
@@ -56,6 +56,13 @@ export async function proxy(request: NextRequest) {
     case "custom": {
       const slug = target.kind === "subdomain" ? target.slug : await resolveCustomDomain(target.hostname)
       if (!slug) return notFound()
+
+      // Pages only: API calls from tabs already open on the default address keep working. Temporary (307), never permanent,
+      // because browsers must come back if the domain stops working or the plan ends.
+      if (target.kind === "subdomain" && !lanSlug && (request.method === "GET" || request.method === "HEAD") && !pathname.startsWith("/api/")) {
+        const primary = await resolvePrimaryHost(slug)
+        if (primary) return NextResponse.redirect(`${customDomainOrigin(primary)}${pathname}${request.nextUrl.search}`, 307)
+      }
       headers.set(TENANT_HEADER, slug)
 
       // Public tenant endpoints (leads, views) resolve the dealer from the header.

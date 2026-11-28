@@ -7,9 +7,7 @@ import { effectivePlanKey } from "../billing/state"
 import { getPlan } from "../plans"
 
 // Custom domains (paid tier) and short links: the two lookups the proxy makes on the hot path.
-// Lookup only. Provisioning via Cloudflare for SaaS is a stub.
-// TODO: provision hostnames and certificates through Cloudflare for SaaS and set verified_at
-// from the webhook. Until then, a row needs verified_at set by hand.
+// Lookup only: adding and verifying a domain lives in lib/tenant/domains.ts.
 
 // The proxy runs as Node middleware on Cloudflare Workers, where node-postgres cannot be bundled
 // (no raw sockets in that bundle, and a static `pg` import makes the middleware an async module that
@@ -52,6 +50,42 @@ export async function resolveCustomDomain(hostname: string): Promise<string | nu
   if (domainCache.size > 5000) domainCache.clear()
   domainCache.set(hostname, { slug, expires: Date.now() + (slug ? CACHE_TTL_MS : NEGATIVE_TTL_MS) })
   return slug
+}
+
+const primaryCache = new Map<string, { host: string | null; expires: number }>()
+
+/**
+ * The business's own domain, when it should be used in place of <slug>.<root>: confirmed by the owner, working now, and the plan
+ * still includes it. Null otherwise, including on any database error, so the default address keeps serving whatever happens.
+ */
+export async function resolvePrimaryHost(slug: string): Promise<string | null> {
+  // Switched off until Cloudflare for SaaS is set up: no query, and nothing depends on the new columns yet.
+  if (!process.env.CUSTOM_DOMAIN_TARGET?.trim()) return null
+  const hit = primaryCache.get(slug)
+  if (hit && hit.expires > Date.now()) return hit.host
+
+  let host: string | null = null
+  try {
+    const db = await proxyDb()
+    const [row] = await db
+      .select({ hostname: dealerDomains.hostname, slug: dealers.slug, plan: dealers.plan, nextPlan: dealers.nextPlan, nextPlanStartsAt: dealers.nextPlanStartsAt })
+      .from(dealerDomains)
+      .innerJoin(dealers, eq(dealers.id, dealerDomains.dealerId))
+      .where(and(eq(dealers.slug, slug), isNotNull(dealerDomains.verifiedAt), isNotNull(dealerDomains.primaryAt)))
+      .limit(1)
+    host = row && getPlan(effectivePlanKey(row)).customDomain ? row.hostname : null
+  } catch (error) {
+    console.error("primary domain lookup failed:", error instanceof Error ? error.message : "unknown")
+  }
+  if (primaryCache.size > 5000) primaryCache.clear()
+  primaryCache.set(slug, { host, expires: Date.now() + (host ? CACHE_TTL_MS : NEGATIVE_TTL_MS) })
+  return host
+}
+
+/** Drops cached answers after a change. Reaches only this server instance; others catch up within the cache time. */
+export function forgetDomain(slug: string, hostname: string): void {
+  primaryCache.delete(slug)
+  domainCache.delete(hostname)
 }
 
 /**

@@ -220,6 +220,8 @@ export const enquiries = pgTable(
     name: text("name").notNull(),
     phone: text("phone").notNull(),
     message: text("message").notNull(),
+    /** question | product (something the customer wants the business to stock) */
+    kind: text("kind").$type<"question" | "product">().notNull().default("question"),
     /** new | handled */
     status: text("status").notNull().default("new"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

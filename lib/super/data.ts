@@ -495,7 +495,8 @@ export async function loadBusiness(id: string): Promise<BusinessDetail | null> {
         .from(dealerUsers)
         .innerJoin(users, eq(users.id, dealerUsers.userId))
         .where(eq(dealerUsers.dealerId, id)),
-      db.select().from(dealerDomains).where(eq(dealerDomains.dealerId, id)),
+      // Only what this page shows, so it also opens on a database that does not have the custom domain update yet.
+      db.select({ hostname: dealerDomains.hostname, verifiedAt: dealerDomains.verifiedAt }).from(dealerDomains).where(eq(dealerDomains.dealerId, id)),
       db
         .select({ car: cars, make: variants.make, model: variants.model })
         .from(cars)

@@ -6,6 +6,7 @@ import { z } from "zod"
 import { orders } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
 import { TICKET_TTL_S, signTicket } from "@/lib/restaurant/ws-ticket"
+import { normalizeHost } from "@/lib/tenant/host"
 import { TOKEN_RE, hashRiderToken, sharingAllowed } from "@/lib/restaurant/tracking"
 import { orderByRiderToken } from "@/lib/restaurant/trip"
 import { rateLimit } from "@/lib/core/rate-limit"
@@ -14,6 +15,8 @@ import { ORDER_INDUSTRIES } from "@/lib/verticals"
 const json = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } })
 
 const secret = () => process.env.TRACKER_SECRET?.trim() ?? ""
+// The proxy has already matched this host to the business, so it is safe to sign into the ticket.
+const siteHost = (req: Request) => normalizeHost(req.headers.get("host"))
 const socketUrl = () => process.env.TRACKER_WS_URL?.trim() ?? ""
 
 // Hands a phone a short-lived ticket for the live-location WebSocket, after checking it may have one: a rider needs
@@ -34,7 +37,7 @@ export async function POST(req: Request) {
   const order = await orderByRiderToken(dealer.id, parsed.data.token)
   if (!order) return json({ ok: false, error: "link_closed" }, 404)
   if (!sharingAllowed(order.status)) return json({ ok: false, error: "not_in_progress" }, 409)
-  const ticket = await signTicket(secret(), { k: `${dealer.id}:${order.id}`, r: "rider", e: Math.floor(Date.now() / 1000) + TICKET_TTL_S })
+  const ticket = await signTicket(secret(), { k: `${dealer.id}:${order.id}`, r: "rider", h: siteHost(req), e: Math.floor(Date.now() / 1000) + TICKET_TTL_S })
   return json({ ok: true, live: true, url: socketUrl(), ticket })
 }
 
@@ -49,6 +52,6 @@ export async function GET(req: Request) {
   if (!(await rateLimit(`ws-ticket:${ip}:${code}`, 20, 60_000))) return json({ ok: false, error: "slow_down" }, 429)
   const [order] = await scopedDb(dealer.id).orders.select(eq(orders.code, code), { limit: 1 })
   if (!order || order.fulfilment !== "delivery" || order.status !== "out_for_delivery") return json({ ok: true, live: false })
-  const ticket = await signTicket(secret(), { k: `${dealer.id}:${order.id}`, r: "guest", e: Math.floor(Date.now() / 1000) + TICKET_TTL_S })
+  const ticket = await signTicket(secret(), { k: `${dealer.id}:${order.id}`, r: "guest", h: siteHost(req), e: Math.floor(Date.now() / 1000) + TICKET_TTL_S })
   return json({ ok: true, live: true, url: socketUrl(), ticket })
 }

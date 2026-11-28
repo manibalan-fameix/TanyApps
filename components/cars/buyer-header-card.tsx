@@ -81,8 +81,10 @@ function BookingDialog({
         toast.error(
           "Could not load the payment window. Check your connection and try again."
         )
-      } else {
+      } else if (result === "dismissed") {
         toast.error("Payment was not completed. You have not been charged.")
+      } else {
+        toast.error(`Payment failed: ${result.failed}`)
       }
       router.refresh()
     })

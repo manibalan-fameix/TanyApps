@@ -7,6 +7,8 @@ import { HugeiconsIcon } from "@hugeicons/react"
 
 import { CategoryIcon } from "@/components/restaurant/category-icon"
 import { DishCard } from "@/components/restaurant/store/dish-card"
+import { requestHref } from "@/components/restaurant/store/request-link"
+import { aOrAn } from "@/lib/verticals/terms"
 import { StoreEmpty, DISH_GRID } from "@/components/restaurant/store/ui"
 import { buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -71,7 +73,7 @@ export function MenuCatalogue({ dishes, categories, canOrder }: { dishes: StoreD
           </p>
           <div className="min-h-0 overflow-y-auto pr-1 pb-24 md:pb-6">
             {shown.length === 0 ? (
-              <StoreEmpty title={`No ${terms.items} found`} body="Try another search or clear a filter." />
+              <StoreEmpty title={`No ${terms.items} found`} body="Try another search or clear a filter." action={{ href: requestHref(query), label: `Request ${aOrAn(terms.item)}` }} />
             ) : (
               <div className={DISH_GRID}>
                 {shown.map((d) => (

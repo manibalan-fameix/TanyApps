@@ -7,53 +7,101 @@ import { requestReviewVideoUpload, requestTableBooking, sendEnquiry, submitRevie
 import { Button } from "@/components/ui/button"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { useStoreTerms } from "@/components/restaurant/store/terms-context"
 import { resizeToJpeg } from "@/lib/image/resize"
 import { MAX_REVIEW_PHOTOS, MAX_REVIEW_VIDEO_BYTES, REVIEW_VIDEO_TYPES } from "@/lib/restaurant/review-media"
+import { aOrAn } from "@/lib/verticals/terms"
 import { cn } from "@/lib/utils"
 
-export function EnquiryForm() {
+export type EnquiryKind = "question" | "product"
+
+const EMPTY_ENQUIRY = { name: "", phone: "", item: "", quantity: "", message: "" }
+
+/** The store's contact form: ask the business a question, or ask it for something it does not list. */
+export function EnquiryForm({ initialKind = "product", initialItem = "" }: { initialKind?: EnquiryKind; initialItem?: string }) {
+  const terms = useStoreTerms()
   const [pending, start] = useTransition()
+  const [kind, setKind] = useState<EnquiryKind>(initialKind)
   const [sent, setSent] = useState(false)
-  const [v, setV] = useState({ name: "", phone: "", message: "" })
+  const [v, setV] = useState({ ...EMPTY_ENQUIRY, item: initialItem })
   const [err, setErr] = useState<{ field?: string; message: string } | null>(null)
-  if (sent) return <p className="rounded-xl border p-6 text-center text-sm">Thank you. We will get back to you soon.</p>
+  const product = kind === "product"
+
+  if (sent)
+    return (
+      <div className="flex flex-col items-center gap-4 rounded-xl border p-6 text-center text-sm" role="status">
+        <p>{product ? "Thank you. We have your request and will call you about it." : "Thank you. We will get back to you soon."}</p>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            // Keep who they are, so a second request only needs the new details.
+            setV((cur) => ({ ...EMPTY_ENQUIRY, name: cur.name, phone: cur.phone }))
+            setSent(false)
+          }}
+        >
+          Send another
+        </Button>
+      </div>
+    )
+
   const bad = (f: string) => (err?.field === f ? err.message : undefined)
+  const field = (key: keyof typeof EMPTY_ENQUIRY, label: string, props: React.ComponentProps<typeof Input> = {}) => (
+    <Field data-invalid={Boolean(bad(key))}>
+      <FieldLabel htmlFor={`en-${key}`}>{label}</FieldLabel>
+      <Input id={`en-${key}`} value={v[key]} onChange={(e) => setV({ ...v, [key]: e.target.value })} aria-invalid={Boolean(bad(key))} {...props} />
+      {bad(key) ? <FieldError>{bad(key)}</FieldError> : null}
+    </Field>
+  )
+
   return (
-    <FieldGroup>
-      <Field data-invalid={Boolean(bad("name"))}>
-        <FieldLabel htmlFor="en-name">Your name</FieldLabel>
-        <Input id="en-name" value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} />
-        {bad("name") ? <FieldError>{bad("name")}</FieldError> : null}
-      </Field>
-      <Field data-invalid={Boolean(bad("phone"))}>
-        <FieldLabel htmlFor="en-phone">Mobile number</FieldLabel>
-        <Input id="en-phone" inputMode="tel" value={v.phone} onChange={(e) => setV({ ...v, phone: e.target.value })} />
-        {bad("phone") ? <FieldError>{bad("phone")}</FieldError> : null}
-      </Field>
-      <Field data-invalid={Boolean(bad("message"))}>
-        <FieldLabel htmlFor="en-msg">Message</FieldLabel>
-        <Textarea id="en-msg" rows={4} value={v.message} onChange={(e) => setV({ ...v, message: e.target.value })} />
-        {bad("message") ? <FieldError>{bad("message")}</FieldError> : null}
-      </Field>
-      <Button
-        type="button"
-        disabled={pending}
-        onClick={() =>
-          start(async () => {
-            setErr(null)
-            const res = await sendEnquiry(v)
-            if (res.ok) setSent(true)
-            else {
-              setErr({ field: res.field, message: res.error })
-              if (!res.field) toast.error(res.error)
-            }
-          })
-        }
-      >
-        {pending ? "Sending..." : "Send message"}
-      </Button>
-    </FieldGroup>
+    <Tabs
+      value={kind}
+      onValueChange={(next) => {
+        setKind(next as EnquiryKind)
+        setErr(null)
+      }}
+      className="gap-5"
+    >
+      <TabsList className="w-full">
+        <TabsTrigger value="product">Request {aOrAn(terms.item)}</TabsTrigger>
+        <TabsTrigger value="question">Ask a question</TabsTrigger>
+      </TabsList>
+      <FieldGroup>
+        {product ? (
+          <>
+            {field("item", `${terms.Item} you need`, { maxLength: 80 })}
+            {field("quantity", "Quantity (optional)", { maxLength: 40 })}
+          </>
+        ) : null}
+        <Field data-invalid={Boolean(bad("message"))}>
+          <FieldLabel htmlFor="en-message">{product ? "Anything else we should know (optional)" : "Your question"}</FieldLabel>
+          <Textarea id="en-message" rows={4} maxLength={product ? 400 : 600} value={v.message} onChange={(e) => setV({ ...v, message: e.target.value })} aria-invalid={Boolean(bad("message"))} />
+          {bad("message") ? <FieldError>{bad("message")}</FieldError> : null}
+        </Field>
+        {field("name", "Your name", { autoComplete: "name" })}
+        {field("phone", "Mobile number", { inputMode: "tel", autoComplete: "tel" })}
+        <Button
+          type="button"
+          disabled={pending}
+          onClick={() =>
+            start(async () => {
+              setErr(null)
+              const res = await sendEnquiry({ ...v, kind })
+              if (res.ok) setSent(true)
+              else {
+                setErr({ field: res.field, message: res.error })
+                if (!res.field) toast.error(res.error)
+              }
+            })
+          }
+        >
+          {pending ? "Sending..." : product ? "Send request" : "Send question"}
+        </Button>
+      </FieldGroup>
+    </Tabs>
   )
 }
 

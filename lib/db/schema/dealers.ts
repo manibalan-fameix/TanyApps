@@ -52,9 +52,18 @@ export const dealerDomains = pgTable(
   {
     dealerId: uuid("dealer_id").notNull().references(() => dealers.id, { onDelete: "cascade" }),
     hostname: text("hostname").notNull().unique(),
+    /** Set while the domain is serving: ownership proved and the certificate issued. Cleared if Cloudflare reports it stopped working. */
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /** The owner's TXT record must carry this (lib/domains/hostname.ts). It proves ownership before Cloudflare hears of the name. */
+    verificationToken: text("verification_token"),
+    /** Cloudflare for SaaS custom hostname id. Null until ownership is proved. */
+    cfHostnameId: text("cf_hostname_id"),
+    /** When the owner confirmed this as the business's main address. The default address redirects here only while verified_at is also set. */
+    primaryAt: timestamp("primary_at", { withTimezone: true }),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
   },
-  (t) => [index("dealer_domains_dealer_idx").on(t.dealerId)],
+  (t) => [index("dealer_domains_dealer_idx").on(t.dealerId), uniqueIndex("dealer_domains_one_per_dealer_uq").on(t.dealerId)],
 )
 
 export const dealerUsers = pgTable(

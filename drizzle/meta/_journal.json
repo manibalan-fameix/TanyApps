@@ -344,6 +344,20 @@
       "when": 1795636078502,
       "tag": "0048_order_returns",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1795679768899,
+      "tag": "0049_enquiry_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1795765310399,
+      "tag": "0050_custom_domains",
+      "breakpoints": true
     }
   ]
 }

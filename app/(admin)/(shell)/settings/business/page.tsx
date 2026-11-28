@@ -4,7 +4,7 @@ import { BusinessDetailsForm } from "@/components/settings/business-details-form
 import { SettingsPage } from "@/components/settings/settings-page"
 import { getDealerContext } from "@/lib/auth/context"
 import { getFirebaseWebConfig } from "@/lib/auth/firebase"
-import { tenantUrl } from "@/lib/env"
+import { siteUrl } from "@/lib/tenant/domains"
 import type { RetailTypeKey } from "@/lib/verticals/retail-types"
 
 export const metadata = { title: "Business details" }
@@ -32,7 +32,7 @@ export default async function BusinessDetailsPage() {
           logoUrl: dealer.logoUrl,
         }}
         industry={dealer.industry}
-        webAddress={tenantUrl(dealer.slug)}
+        webAddress={await siteUrl(dealer.slug)}
         firebaseConfig={getFirebaseWebConfig()}
         testPhones={testPhones}
         disabled={locked}

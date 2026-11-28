@@ -17,7 +17,7 @@ import { copy } from "@/lib/copy"
 import { getDealerContext } from "@/lib/auth/context"
 import { cars } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
-import { tenantUrl } from "@/lib/env"
+import { siteUrl } from "@/lib/tenant/domains"
 import Link from "next/link"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import type { IndustryKey } from "@/lib/industries"
@@ -42,7 +42,7 @@ export default async function ShellLayout({ children }: { children: React.ReactN
 
   const dealerName = ctx.status === "ok" ? ctx.dealer.displayName : copy.brand.name
   const planLabel = ctx.status === "ok" ? ctx.plan.label : ""
-  const publicUrl = ctx.status === "ok" ? tenantUrl(ctx.dealer.slug) : "/"
+  const publicUrl = ctx.status === "ok" ? await siteUrl(ctx.dealer.slug) : "/"
   const user = { name: ctx.user.name ?? "", email: ctx.user.email ?? "" }
 
   let recentCars: RecentCar[] = []

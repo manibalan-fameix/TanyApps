@@ -277,7 +277,9 @@ export function ReviewsGrid({ rows }: { rows: ReviewRow[] }) {
 
 // ---------- enquiries ----------
 
-export type EnquiryRow = { id: string; name: string; phone: string; message: string; status: "new" | "handled"; createdAt: string }
+export type EnquiryRow = { id: string; name: string; phone: string; message: string; kind: "question" | "product"; status: "new" | "handled"; createdAt: string }
+
+const KIND_LABEL = { product: "Product request", question: "Question" } as const
 
 export function EnquiriesGrid({ rows }: { rows: EnquiryRow[] }) {
   const ctx = useRunner()
@@ -285,7 +287,7 @@ export function EnquiriesGrid({ rows }: { rows: EnquiryRow[] }) {
     () => [
       {
         field: "name",
-        headerName: "Guest",
+        headerName: "Customer",
         width: 220,
         cellRenderer: ({ data }: CustomCellRendererProps<EnquiryRow>) =>
           data ? (
@@ -295,7 +297,14 @@ export function EnquiriesGrid({ rows }: { rows: EnquiryRow[] }) {
             </div>
           ) : null,
       },
-      { field: "message", headerName: "Message", minWidth: 300, flex: 1, cellClass: "text-muted-foreground" },
+      {
+        field: "kind",
+        headerName: "Type",
+        width: 170,
+        cellRenderer: ({ data }: CustomCellRendererProps<EnquiryRow>) => (data ? <Badge variant={data.kind === "product" ? "outline" : "secondary"}>{KIND_LABEL[data.kind]}</Badge> : null),
+        ...(optionsFilter({ options: ["product", "question"], labels: KIND_LABEL }) as Partial<ColDef<EnquiryRow>>),
+      },
+      { field: "message", headerName: "Message", minWidth: 300, flex: 1, cellClass: "text-muted-foreground whitespace-pre-line" },
       {
         field: "status",
         headerName: "Status",

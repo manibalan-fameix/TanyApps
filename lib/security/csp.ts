@@ -38,5 +38,7 @@ export const CSP_DIRECTIVES: Record<string, string[]> = {
 }
 
 export function cspReportOnly(): string {
-  return [...Object.entries(CSP_DIRECTIVES).map(([k, v]) => `${k} ${v.join(" ")}`), `report-uri ${CSP_REPORT_PATH}`].join("; ")
+  // React uses eval in development only. Allowing it there stops every page load posting a batch of reports to the dev server.
+  const dev = process.env.NODE_ENV === "development"
+  return [...Object.entries(CSP_DIRECTIVES).map(([k, v]) => `${k} ${(dev && k === "script-src" ? [...v, "'unsafe-eval'"] : v).join(" ")}`), `report-uri ${CSP_REPORT_PATH}`].join("; ")
 }

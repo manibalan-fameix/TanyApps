@@ -50,7 +50,7 @@ async function ensurePlan(creds: Credentials, industry: string, plan: SellablePl
       period: cycle === "yearly" ? "yearly" : "monthly",
       interval: 1,
       item: {
-        name: `TanyApps ${PLANS[plan].label} (${cycle})`,
+        name: `Tany ${PLANS[plan].label} (${cycle})`,
         amount,
         currency: "INR",
         description: `${PLANS[plan].label} plan, billed ${cycle}`,

@@ -12,6 +12,8 @@ import { CategoryIcon } from "@/components/restaurant/category-icon"
 import { PromoBanners } from "@/components/restaurant/store/promo-banners"
 import { Input } from "@/components/ui/input"
 import { DishTile } from "@/components/restaurant/store/dish-tile"
+import { requestHref } from "@/components/restaurant/store/request-link"
+import { aOrAn } from "@/lib/verticals/terms"
 import { StoreEmpty } from "@/components/restaurant/store/ui"
 import { useStoreTerms } from "@/components/restaurant/store/terms-context"
 import type { StoreBanner } from "@/lib/restaurant/banners"
@@ -142,6 +144,7 @@ export function CategoryBrowser({
             <StoreEmpty
               title={`No ${terms.items} found`}
               body={query ? "Try another search." : "Pick another category."}
+              action={{ href: requestHref(query), label: `Request ${aOrAn(terms.item)}` }}
             />
           ) : (
             <div className="grid grid-cols-2 gap-x-3 gap-y-5">

@@ -1,5 +1,6 @@
 import { InfoTabs } from "@/components/restaurant/store/info-tabs"
 import { storeInfo, storeReviews } from "@/components/restaurant/store/home"
+import { RequestPrompt } from "@/components/restaurant/store/request-prompt"
 import { currentCustomer } from "@/lib/core/login/customer"
 import { reviews } from "@/lib/db/schema"
 import { scopedDb } from "@/lib/db/scoped"
@@ -15,5 +16,12 @@ export default async function StoreInfoPage({ params }: { params: Promise<{ deal
   const customer = await currentCustomer(dealer.id)
   const reviewed = customer ? (await scopedDb(dealer.id).reviews.count(and(eq(reviews.customerId, customer.id), isNull(reviews.orderId)))) > 0 : false
   const write = !customer ? "signed-out" : reviewed ? "done" : "signed-in"
-  return <InfoTabs info={storeInfo(dealer, store)} reviews={storeReviews(store)} rating={store.rating} write={write} />
+  return (
+    <>
+      <InfoTabs info={storeInfo(dealer, store)} reviews={storeReviews(store)} rating={store.rating} write={write} />
+      <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6">
+        <RequestPrompt />
+      </div>
+    </>
+  )
 }

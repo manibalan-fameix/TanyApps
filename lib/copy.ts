@@ -4,7 +4,7 @@
  */
 export const copy = {
   brand: {
-    name: "TanyApps",
+    name: "Tany",
     tagline: "Your showroom. One smart link.",
     // Public support address: website footer, contact and policy pages, and plan enquiry links.
     contactEmail: "manibalan.raja@fameix.in",
@@ -108,7 +108,7 @@ export const copy = {
       talkToUs: "Talk to us",
       plans: {
         free: {
-          blurb: "Try TanyApps with your first cars. No card needed",
+          blurb: "Try Tany with your first cars. No card needed",
           features: [
             "Up to 5 cars live at once",
             "Your own showroom link",

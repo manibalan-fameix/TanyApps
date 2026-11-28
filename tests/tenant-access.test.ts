@@ -47,6 +47,7 @@ const RAW_CLIENT_USERS: Record<string, Mode> = {
   "lib/tenant/create-dealer.ts": "tenant-root",
   "lib/tenant/dealer.ts": "tenant-root",
   "lib/tenant/invites.ts": "tenant-root", // finds an invitation by its secret token before the business is known; every write after is scoped
+  "lib/tenant/domains.ts": "tenant-root", // reads who holds a domain name and sweeps every domain for the scheduled job; every write after is scoped to that row's business
   "lib/tenant/lists.ts": "tenant-root",
   "lib/tenant/lookup.ts": "tenant-root",
   "lib/tenant/route.ts": "tenant-root",

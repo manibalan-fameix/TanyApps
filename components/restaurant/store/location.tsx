@@ -1,15 +1,20 @@
 "use client"
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
+import Image from "next/image"
+import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Location01Icon } from "@hugeicons/core-free-icons"
+import { Briefcase01Icon, Gps01Icon, Home01Icon, Location01Icon, Navigation03Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { type AreaCheck, checkPincode, locateGuest } from "@/app/(tenant)/sites/[dealer]/actions"
-import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
+import { myDeliveryAddresses } from "@/app/(tenant)/sites/[dealer]/address-actions"
+import { AddressFormDialog } from "@/components/restaurant/store/address-form-dialog"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { ROUGH_ACCURACY_M, accuratePosition } from "@/lib/core/geo/accurate-position"
+import { MAX_SAVED_ADDRESSES, type SavedAddress } from "@/lib/restaurant/saved-address"
 import { type GuestLocation, parseStoredLocation } from "@/lib/restaurant/location"
 import { formatKm } from "@/lib/restaurant/service-area"
 import { cn } from "@/lib/utils"
@@ -32,11 +37,12 @@ type Ctx = {
   /** The map where the guest searches, drags a pin and confirms the exact spot. */
   pickerOpen: boolean
   setPickerOpen: (open: boolean) => void
+  /** Delivers to one of the signed-in customer's saved addresses. */
+  chooseSaved: (address: SavedAddress) => Promise<void>
   /** Saves a spot chosen on the map. */
   choose: (location: GuestLocation, check: AreaCheck) => void
   /** Asks the phone where it is, then works out the address and whether this restaurant delivers there. */
   locate: () => Promise<void>
-  submitPincode: (pincode: string) => Promise<void>
   /** Closes the prompt without choosing, and remembers not to ask again unprompted. */
   skip: () => void
   clear: () => void
@@ -66,9 +72,9 @@ const write = (key: string, value: string | null) => {
 }
 
 function geoMessage(code: number | undefined): string {
-  if (code === 1) return "Location is blocked for this site. Allow it in your browser's address bar, or enter your pincode below."
-  if (code === 3) return "Finding your location took too long. Try again, or enter your pincode below."
-  return "We could not get your location. Try again, or enter your pincode below."
+  if (code === 1) return "Location is blocked for this site. Allow it in your browser's address bar, then try again."
+  if (code === 3) return "Finding your location took too long. Please try again."
+  return "We could not get your location. Please try again."
 }
 
 /**
@@ -100,16 +106,32 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  const remember = useCallback((l: GuestLocation, c: AreaCheck | null) => {
+  const remember = useCallback((l: GuestLocation, c: AreaCheck | null, stayOpen = false) => {
     setLocation(l)
     setCheck(c)
     write(LOCATION_KEY, JSON.stringify(l))
     write(ASKED_KEY, "1")
+    // Nothing left to say when we deliver there. Otherwise the pop-up stays to explain why not.
+    if (c?.deliverable && !stayOpen) setOpen(false)
   }, [])
+
+  const chooseSaved = useCallback(
+    async (a: SavedAddress) => {
+      setError(null)
+      setStatus("checking")
+      const r = await locateGuest(a.lat, a.lng).catch(() => null)
+      const check = r?.ok ? r : await checkPincode(a.pincode).catch(() => null)
+      setStatus("idle")
+      if (!check) return setError("Something went wrong. Please try again.")
+      if (!check.ok) return setError(check.error)
+      remember({ lat: a.lat, lng: a.lng, pincode: a.pincode, area: check.area.slice(0, 80), city: check.city.slice(0, 80), address: a.line.slice(0, 300), source: "map" }, check)
+    },
+    [remember],
+  )
 
   const locate = useCallback(async () => {
     setError(null)
-    if (!navigator.geolocation) return setError("This browser cannot share your location. Enter your pincode below.")
+    if (!navigator.geolocation) return setError("This browser cannot share your location.")
     setStatus("locating")
     const fix = await accuratePosition(navigator.geolocation, { maxWaitMs: 12_000 }).catch((e: { code?: number }) => ({ failed: e.code }))
     if ("failed" in fix) {
@@ -126,23 +148,10 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     setStatus("checking")
     const r = await locateGuest(fix.lat, fix.lng).catch(() => null)
     setStatus("idle")
-    if (!r) return setError("Something went wrong. Try again, or enter your pincode below.")
+    if (!r) return setError("Something went wrong. Please try again.")
     if (!r.ok) return setError(r.error)
-    remember({ lat: fix.lat, lng: fix.lng, pincode: r.pincode, area: r.area, city: r.city, address: r.address, source: "gps" }, r)
-  }, [remember])
-
-  const submitPincode = useCallback(
-    async (pincode: string) => {
-      setError(null)
-      setStatus("checking")
-      const r = await checkPincode(pincode).catch(() => null)
-      setStatus("idle")
-      if (!r) return setError("Something went wrong. Please try again.")
-      if (!r.ok) return setError(r.error)
-      remember({ lat: null, lng: null, pincode: r.pincode, area: r.area, city: r.city, address: "", source: "pincode" }, r)
-    },
-    [remember],
-  )
+    remember({ lat: fix.lat, lng: fix.lng, pincode: r.pincode, area: r.area, city: r.city, address: r.address, source: "gps" }, r, true)
+  }, [remember, setPickerOpen])
 
   const choose = useCallback(
     (l: GuestLocation, c: AreaCheck) => {
@@ -151,7 +160,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       setOpen(false)
       setError(null)
     },
-    [remember],
+    [remember, setPickerOpen],
   )
 
   const skip = useCallback(() => {
@@ -169,8 +178,8 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   // Never ask on a page where the pop-up is in the way, even if the guest navigates there after the first load.
   const hidden = NO_PROMPT.some((re) => re.test(pathname))
   const value = useMemo<Ctx>(
-    () => ({ location, check, open: open && !hidden, setOpen, status, error, ready, pickerOpen, setPickerOpen, choose, locate, submitPincode, skip, clear }),
-    [location, check, open, hidden, status, error, ready, pickerOpen, setPickerOpen, choose, locate, submitPincode, skip, clear],
+    () => ({ location, check, open: open && !hidden, setOpen, status, error, ready, pickerOpen, setPickerOpen, chooseSaved, choose, locate, skip, clear }),
+    [location, check, open, hidden, status, error, ready, pickerOpen, setPickerOpen, chooseSaved, choose, locate, skip, clear],
   )
   return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>
 }
@@ -197,71 +206,150 @@ export function LocationChip({ className }: { className?: string }) {
   )
 }
 
-/** The welcome prompt: use my live location, type a pincode, or skip. Also reopened from the header pill. */
-export function LocationDialog({ restaurant, themeVars }: { restaurant: string; themeVars: React.CSSProperties }) {
-  const { location, check, open, setOpen, status, error, locate, submitPincode, skip, clear } = useGuestLocation()
-  const [pin, setPin] = useState("")
-  const busy = status !== "idle"
-  const done = location && check
+const addressIcon = (label: string) => (/home/i.test(label) ? Home01Icon : /work|office/i.test(label) ? Briefcase01Icon : Navigation03Icon)
+// How many saved addresses the pop-up lists; the rest are behind "See all".
+const SHOWN_ADDRESSES = 3
+
+/** The location pop-up: use the phone's location, or pick a saved address. Opens on the first visit and from the header. */
+export function LocationDialog({ restaurant, themeVars, centre }: { restaurant: string; themeVars: React.CSSProperties; /** Where the map starts for a new address: the shop. */ centre: { lat: number; lng: number } | null }) {
+  const { open, setOpen, skip } = useGuestLocation()
+  const currentButton = useRef<HTMLButtonElement>(null)
+  const isMobile = useIsMobile()
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? setOpen(true) : skip())}>
       {/* The dialog is drawn outside the themed page, so it carries the restaurant's colours itself. */}
-      <DialogContent className="max-w-md" style={themeVars}>
-        <DialogHeader>
-          <div className="mb-1 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <HugeiconsIcon icon={Location01Icon} strokeWidth={2} className="size-6" />
-          </div>
-          <DialogTitle>{done ? "Delivery location" : `Welcome to ${restaurant}`}</DialogTitle>
-          <DialogDescription>
-            {done
-              ? "This is where we will deliver. You can change it any time."
-              : "Share your live location so we can check we deliver to you, fill in your address and guide the rider to your door. It is used only for your delivery."}
-          </DialogDescription>
-        </DialogHeader>
-
-        {done ? (
-          <div className="grid gap-3">
-            <div className={cn("rounded-xl border p-4 text-sm", check.deliverable ? "border-primary/40 bg-primary/5" : "border-destructive/40 bg-destructive/5")}>
-              <p className="font-medium">{[location.area, location.city].filter(Boolean).join(", ") || "Your location"}{location.pincode ? ` · ${location.pincode}` : ""}</p>
-              {location.address ? <p className="mt-1 text-muted-foreground">{location.address}</p> : null}
-              <p className={cn("mt-2 font-medium", check.deliverable ? "text-primary" : "text-destructive")}>
-                {check.deliverable
-                  ? `${check.zone ? `We deliver here (${check.zone} zone)${check.etaMinutes ? ` in about ${check.etaMinutes} min` : ""}${check.fee !== null ? ` · ₹${check.fee} delivery` : ""}${check.minOrder ? ` · minimum order ₹${check.minOrder}` : ""}.` : "We deliver here."}${check.radius?.distanceKm != null ? ` You are about ${formatKm(check.radius.distanceKm)} km away.` : ""}`
-                  : check.reason === "radius" && check.radius
-                    ? `Sorry, you are ${check.radius.distanceKm !== null ? `about ${formatKm(check.radius.distanceKm)} km` : "too far"} from us and we deliver up to ${formatKm(check.radius.km)} km. You can still order for pickup.`
-                    : "Sorry, we do not deliver to this area yet. You can still order for pickup."}
-              </p>
-            </div>
-            <DialogFooter className="gap-2 sm:flex-col">
-              <Button size="lg" onClick={() => setOpen(false)}>{check.deliverable ? "Continue" : "Order for pickup"}</Button>
-              <Button variant="outline" onClick={() => { clear(); setPin("") }}>Change location</Button>
-            </DialogFooter>
-          </div>
-        ) : (
-          <div className="grid gap-4">
-            <Button size="lg" className="gap-2" disabled={busy} onClick={() => void locate()}>
-              <HugeiconsIcon icon={Location01Icon} strokeWidth={2} className="size-5" />
-              {status === "locating" ? "Finding your location…" : status === "checking" ? "Checking delivery…" : "Use my current location"}
-            </Button>
-            {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span className="h-px flex-1 bg-border" /> or <span className="h-px flex-1 bg-border" />
-            </div>
-            <form
-              className="flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault()
-                void submitPincode(pin)
-              }}
-            >
-              <Input aria-label="Pincode" inputMode="numeric" maxLength={6} placeholder="Enter your pincode" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} />
-              <Button type="submit" variant="outline" disabled={busy || pin.length !== 6}>Check</Button>
-            </form>
-            <Button variant="ghost" size="sm" className="self-center" onClick={skip}>Skip for now</Button>
-          </div>
-        )}
+      {/* A bottom sheet on phones: data-side makes it slide up. It stays a Dialog so the address form can open on top of it. */}
+      <DialogContent
+        data-side={isMobile ? "bottom" : undefined}
+        className="max-h-[calc(100svh-2rem)] grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto max-md:top-auto max-md:bottom-0 max-md:left-0 max-md:max-h-[calc(100svh-1.5rem)] max-md:translate-x-0 max-md:translate-y-0 max-md:rounded-t-3xl max-md:rounded-b-none max-md:pb-[max(1.5rem,env(safe-area-inset-bottom))] max-w-none sm:max-w-none md:max-w-xl"
+        style={themeVars}
+        initialFocus={currentButton}
+      >
+        {/* Mounted only while open, so the saved addresses are fresh each time. */}
+        <LocationChoices restaurant={restaurant} themeVars={themeVars} centre={centre} currentButton={currentButton} />
       </DialogContent>
     </Dialog>
+  )
+}
+
+function LocationChoices({ restaurant, themeVars, centre, currentButton }: { restaurant: string; themeVars: React.CSSProperties; centre: { lat: number; lng: number } | null; currentButton: React.RefObject<HTMLButtonElement | null> }) {
+  const { location, check, setOpen, status, error, locate, chooseSaved, skip } = useGuestLocation()
+  const [saved, setSaved] = useState<Awaited<ReturnType<typeof myDeliveryAddresses>> | null>(null)
+  const busy = status !== "idle"
+  // The result is shown only after the guest chooses something here, not for the spot saved on an earlier visit.
+  const [picked, setPicked] = useState(false)
+  const current = location && check ? check : null
+  // The address form: closed, starting at the current spot ("current"), or empty ("new").
+  const [adding, setAdding] = useState<"current" | "new" | null>(null)
+  const spot = location && location.lat !== null && location.lng !== null ? { lat: location.lat, lng: location.lng } : null
+  const room = saved?.signedIn ? saved.addresses.length < MAX_SAVED_ADDRESSES : false
+  // About 10 m: the same door, so there is nothing new to save.
+  const alreadySaved = Boolean(spot && saved?.signedIn && saved.addresses.some((a) => Math.abs(a.lat - spot.lat) < 0.0001 && Math.abs(a.lng - spot.lng) < 0.0001))
+
+  useEffect(() => {
+    void myDeliveryAddresses().then(setSaved).catch(() => {})
+  }, [])
+
+  return (
+    <>
+      <DialogHeader className="text-center">
+        {/* Runs edge to edge across the top of the pop-up, and fades into it at the bottom. */}
+        <div className="relative -mx-6 -mt-6 mb-4 aspect-[3/2] sm:aspect-[12/5]">
+          <Image src="/storefront/location-shop-v3.webp" alt="" fill unoptimized priority className="object-cover" />
+          <div aria-hidden className="absolute inset-x-0 bottom-0 h-12 bg-linear-to-t from-popover to-transparent" />
+          <div aria-hidden className="absolute inset-x-0 top-2 mx-auto h-1.5 w-10 rounded-full bg-foreground/20 md:hidden" />
+        </div>
+        <DialogTitle className="text-2xl font-bold tracking-tight [-webkit-text-stroke:0.6px_currentColor]">Welcome to {restaurant}</DialogTitle>
+        <DialogDescription>Choose where we should deliver. Your location is used only for your delivery.</DialogDescription>
+      </DialogHeader>
+
+      <div className="grid gap-2">
+        <Button
+          ref={currentButton}
+          className="h-12 w-full gap-2 rounded-xl"
+          disabled={busy}
+          onClick={() => {
+            setPicked(true)
+            void locate()
+          }}
+        >
+          <HugeiconsIcon icon={Gps01Icon} strokeWidth={2} className="size-5 shrink-0" />
+          {status === "locating" ? "Finding you…" : "Use current location"}
+        </Button>
+        {status === "checking" ? <p role="status" className="text-sm text-muted-foreground">Checking delivery…</p> : null}
+        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+        {picked && !busy && !error && location && current ? (
+          <div className={cn("rounded-xl border p-3.5 text-sm", current.deliverable ? "border-primary/40 bg-primary/5" : "border-destructive/40 bg-destructive/5")}>
+            <p className="font-medium">{[location.area, location.city].filter(Boolean).join(", ") || "Your location"}{location.pincode ? ` · ${location.pincode}` : ""}</p>
+            <p className={cn("mt-1 font-medium", current.deliverable ? "text-primary" : "text-destructive")}>
+              {current.deliverable
+                ? `${current.zone ? `We deliver here (${current.zone} zone)${current.etaMinutes ? ` in about ${current.etaMinutes} min` : ""}${current.fee !== null ? ` · ₹${current.fee} delivery` : ""}${current.minOrder ? ` · minimum order ₹${current.minOrder}` : ""}.` : "We deliver here."}${current.radius?.distanceKm != null ? ` You are about ${formatKm(current.radius.distanceKm)} km away.` : ""}`
+                : current.reason === "radius" && current.radius
+                  ? `Sorry, you are ${current.radius.distanceKm !== null ? `about ${formatKm(current.radius.distanceKm)} km` : "too far"} from us and we deliver up to ${formatKm(current.radius.km)} km. You can still order for pickup.`
+                  : "Sorry, we do not deliver to this area yet. You can still order for pickup."}
+            </p>
+            {current.deliverable ? null : <Button size="sm" className="mt-3 mr-2" onClick={() => setOpen(false)}>Order for pickup</Button>}
+            {room && !alreadySaved ? <Button size="sm" variant="outline" className="mt-3" onClick={() => setAdding("current")}>Save this address</Button> : null}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="flex items-center gap-3 text-xs font-semibold text-muted-foreground">
+        <span className="flex-1 border-t border-dashed" /> OR <span className="flex-1 border-t border-dashed" />
+      </div>
+
+      {saved === null ? (
+        <p className="py-2 text-center text-sm text-muted-foreground">Loading…</p>
+      ) : !saved.signedIn ? (
+        // Same height as "Use current location".
+        // eslint-disable-next-line @next/next/no-html-link-for-pages -- API route that redirects to another host; <Link> cannot follow it
+        <a href="/api/t/auth/start?next=%2F" className={cn(buttonVariants({ variant: "outline" }), "h-12 w-full rounded-xl")}>Sign in for saved address</a>
+      ) : (
+        <section className="grid grid-cols-[minmax(0,1fr)] gap-1">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-base font-bold">Select from saved address</h3>
+            {saved?.signedIn && saved.addresses.length > 0 ? (
+              <Link href="/addresses" onClick={() => setOpen(false)} className="shrink-0 text-sm font-semibold text-primary underline underline-offset-4">See all</Link>
+            ) : null}
+          </div>
+          {saved.addresses.length === 0 ? (
+            <p className="py-2 text-sm text-muted-foreground">No saved addresses yet.</p>
+          ) : (
+            <ul className="divide-y">
+              {saved.addresses.slice(0, SHOWN_ADDRESSES).map((a) => (
+                <li key={a.id}>
+                  <button type="button" disabled={busy} onClick={() => {
+                    setPicked(true)
+                    void chooseSaved(a)
+                  }} className="flex w-full items-center gap-3 rounded-lg py-3 text-left transition-colors hover:bg-muted/50 disabled:opacity-60">
+                    <span className="flex size-12 shrink-0 items-center justify-center rounded-xl border text-primary">
+                      <HugeiconsIcon icon={addressIcon(a.label)} strokeWidth={2} className="size-5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold">{a.label}</span>
+                      <span className="block truncate text-muted-foreground">{a.line} · {a.pincode}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {room ? <Button type="button" variant="outline" className="mt-2" onClick={() => setAdding("new")}>Add a new address</Button> : null}
+        </section>
+      )}
+
+      <AddressFormDialog
+        open={adding !== null}
+        onOpenChange={(next) => !next && setAdding(null)}
+        editing={null}
+        centre={spot ?? centre}
+        start={adding === "current" ? spot : null}
+        themeVars={themeVars}
+        onSaved={(addresses) => setSaved({ signedIn: true, addresses })}
+      />
+
+      {location ? null : <Button variant="link" size="sm" className="justify-self-center text-muted-foreground underline underline-offset-4" onClick={skip}>Skip for now</Button>}
+    </>
   )
 }

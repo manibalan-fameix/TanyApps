@@ -3,7 +3,10 @@
 import { confirmOrderPayment, type PaymentCheckout } from "@/app/(tenant)/sites/[dealer]/actions"
 
 type RazorpayResponse = { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }
-type RazorpayCheckout = { open(): void }
+type RazorpayCheckout = {
+  open(): void
+  on(event: "payment.failed", listener: (r: { error?: { description?: string } }) => void): void
+}
 declare global {
   interface Window {
     Razorpay?: new (options: Record<string, unknown>) => RazorpayCheckout
@@ -32,6 +35,7 @@ export type PayResult =
 export async function payWithRazorpay(checkout: PaymentCheckout, opts: { color: string; name: string; phone: string }): Promise<PayResult> {
   if (!(await loadRazorpay()) || !window.Razorpay) return { status: "error", message: "The payment window could not load. Check your connection and try again." }
   return new Promise((resolve) => {
+    let failure: string | undefined
     const rz = new window.Razorpay!({
       key: checkout.keyId,
       order_id: checkout.orderId,
@@ -45,8 +49,11 @@ export async function payWithRazorpay(checkout: PaymentCheckout, opts: { color: 
         const res = await confirmOrderPayment({ orderId: r.razorpay_order_id, paymentId: r.razorpay_payment_id, signature: r.razorpay_signature })
         resolve(res.ok ? { status: "done", code: res.code } : { status: "error", message: res.error })
       },
-      // A failed attempt keeps the popup open so the guest can retry; only closing it ends the flow.
-      modal: { ondismiss: () => resolve({ status: "dismissed" }) },
+      modal: { ondismiss: () => resolve(failure ? { status: "error", message: `Payment failed: ${failure}` } : { status: "dismissed" }) },
+    })
+    // A failed attempt keeps the popup open for a retry, so the reason is kept and shown only if the popup is closed unpaid.
+    rz.on("payment.failed", (r) => {
+      failure = r.error?.description || "The payment did not go through."
     })
     rz.open()
   })

@@ -27,7 +27,7 @@ import { copy } from "@/lib/copy"
 import { RestaurantDashboard } from "@/components/restaurant/restaurant-dashboard"
 import { loadDashboardStats } from "@/lib/dashboard/stats"
 import { getDealerContext } from "@/lib/auth/context"
-import { tenantUrl } from "@/lib/env"
+import { siteUrl } from "@/lib/tenant/domains"
 import { cn } from "@/lib/utils"
 import { isOrderIndustry } from "@/lib/verticals"
 
@@ -57,7 +57,7 @@ export default async function DashboardPage() {
   const stats = ctx.dealerInDb ? await loadDashboardStats(dealer.id) : null
   const liveCount =
     stats?.statusCounts.find((s) => s.status === "live")?.count ?? 0
-  const publicUrl = tenantUrl(dealer.slug)
+  const publicUrl = await siteUrl(dealer.slug)
   const billing = billingState(dealer)
   const performance = ctx.dealerInDb
     ? await fetchPerformance(dealer.id, 7)
