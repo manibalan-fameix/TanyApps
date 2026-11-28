@@ -78,3 +78,9 @@ export async function deleteDeliveryAddress(id: string): Promise<{ ok: true; add
   await scopedDb(me.dealerId).customerAddresses.delete(and(eq(customerAddresses.id, id), eq(customerAddresses.customerId, me.customerId))!)
   return { ok: true, addresses: await savedAddressesFor(me.dealerId, me.customerId) }
 }
+
+/** The signed-in customer's own saved addresses, for the location pop-up. */
+export async function myDeliveryAddresses(): Promise<{ signedIn: false } | { signedIn: true; addresses: SavedAddress[] }> {
+  const me = await who()
+  return me ? { signedIn: true, addresses: await savedAddressesFor(me.dealerId, me.customerId) } : { signedIn: false }
+}

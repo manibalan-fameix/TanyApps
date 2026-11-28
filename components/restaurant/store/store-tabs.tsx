@@ -54,7 +54,7 @@ function goTo(uid: string, id: string) {
 
 
 /** The categories of the home page: a chip bar that jumps to a section, and the sections of dishes. */
-export function StoreTabs({ dishes, categories, canOrder }: { dishes: StoreDish[]; categories: StoreCategory[]; canOrder: boolean }) {
+export function StoreTabs({ dishes, categories, canOrder, underBar = false }: { dishes: StoreDish[]; categories: StoreCategory[]; canOrder: boolean; /** Another 3.25rem bar is pinned at the header line (the phone's sort / filter strip), so the chips pin below it. */ underBar?: boolean }) {
   const sections = categories.map((c) => ({ c, dishes: dishes.filter((d) => d.categoryId === c.id) })).filter((s) => s.dishes.length > 0)
   // The phone and the desktop home both mount this component (one is hidden by CSS), so element ids must be unique per copy.
   const uid = useId()
@@ -97,7 +97,7 @@ export function StoreTabs({ dishes, categories, canOrder }: { dishes: StoreDish[
   return (
     <div>
         {sections.length > 1 ? (
-          <nav ref={nav} aria-label="Jump to a category" className="sticky top-[var(--head-h,10rem)] z-20 flex h-[3.25rem] items-center gap-5 md:gap-10 overflow-x-auto border-b border-border bg-background px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <nav ref={nav} aria-label="Jump to a category" className={cn("sticky z-20 flex h-[3.25rem] items-center gap-5 md:gap-10 overflow-x-auto border-b border-border bg-background px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", underBar ? "top-[calc(var(--head-h,10rem)+3.25rem)]" : "top-[var(--head-h,10rem)]")}>
             {sections.map((s) => (
               <button
                 key={s.c.id}
@@ -115,7 +115,7 @@ export function StoreTabs({ dishes, categories, canOrder }: { dishes: StoreDish[
           </nav>
         ) : null}
         {sections.map((s, i) => (
-          <div key={s.c.id} id={`${uid}-cat-${s.c.id}`} className="scroll-mt-[calc(var(--head-h,10rem)+3.25rem)]">
+          <div key={s.c.id} id={`${uid}-cat-${s.c.id}`} className={underBar ? "scroll-mt-[calc(var(--head-h,10rem)+6.5rem)]" : "scroll-mt-[calc(var(--head-h,10rem)+3.25rem)]"}>
             {i > 0 ? <div aria-hidden className="mt-6 h-2 bg-muted" /> : null}
             <DishListSection title={s.c.name} href={`/category/${s.c.slug}`} total={s.dishes.length} dishes={s.dishes.slice(0, 10)} canOrder={canOrder} />
           </div>

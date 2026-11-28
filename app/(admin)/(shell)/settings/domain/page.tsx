@@ -25,7 +25,9 @@ export default async function DomainSettingsPage() {
   if (!offersCustomDomain(dealer.industry)) notFound()
   const included = getPlan(effectivePlanKey(dealer)).customDomain
   const configured = customDomainsConfigured()
-  const row = ctx.dealerInDb ? await getDomain(dealer.id) : null
+  // Switched off, nothing can be connected or changed, so the domain table is not read: the page must open even on a database
+  // that does not have the custom domain update yet.
+  const row = configured && ctx.dealerInDb ? await getDomain(dealer.id) : null
   const parts = row ? splitHostname(row.hostname) : null
   const token = row?.verificationToken
   const domain: DomainView | null =
@@ -56,13 +58,13 @@ export default async function DomainSettingsPage() {
 
   // What customers lose when the address changes depends on what this kind of site keeps in the browser.
   const switchWarning = isOrderIndustry(dealer.industry)
-    ? "Customers who were signed in need to sign in again, and anything in their cart will not carry over."
+    ? "Customers who were signed in need to sign in again. Their cart, favourites and delivery location will not carry over, and delivery partners need to enter their PIN again."
     : dealer.industry === "cabs"
       ? "Customers who were signed in need to sign in again."
       : undefined
 
   return (
-    <SettingsPage title="Custom domain" description="Show your shop on a domain you own, such as www.yourshop.com." note={note}>
+    <SettingsPage title="Custom domain" description="Use a domain you own for your website, such as www.yourbusiness.com." note={note}>
       <div className="grid gap-6">
         {included ? null : (
           <div className="grid justify-items-start gap-3">

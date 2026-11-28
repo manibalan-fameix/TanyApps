@@ -10,7 +10,10 @@ type RazorpayResponse = {
   razorpay_order_id: string
   razorpay_signature: string
 }
-type RazorpayCheckout = { open(): void }
+type RazorpayCheckout = {
+  open(): void
+  on(event: "payment.failed", listener: (r: { error?: { description?: string } }) => void): void
+}
 declare global {
   interface Window {
     Razorpay?: new (options: Record<string, unknown>) => RazorpayCheckout
@@ -35,6 +38,7 @@ export type BookingPaymentResult =
   | "lost" // paid, but another buyer got the car first: the payment is being refunded
   | "duplicate" // charged a second time for the same booking: the second payment is being refunded
   | "unavailable" // Razorpay could not be loaded
+  | { failed: string } // an attempt failed and the buyer closed the popup: Razorpay's reason
 
 /** Opens Razorpay Checkout to pay a car's booking amount. */
 export async function authoriseBookingPayment(
@@ -48,12 +52,13 @@ export async function authoriseBookingPayment(
 ): Promise<BookingPaymentResult> {
   if (!(await loadRazorpay()) || !window.Razorpay) return "unavailable"
   return new Promise((resolve) => {
+    let failure: string | undefined
     const rz = new window.Razorpay!({
       key: checkout.keyId,
       order_id: checkout.orderId,
       amount: checkout.amount * 100,
       currency: "INR",
-      name: "TanyApps",
+      name: "Tany",
       description: options.description,
       prefill: options.prefill,
       theme: { color: options.color },
@@ -66,7 +71,11 @@ export async function authoriseBookingPayment(
         })
         resolve(res.ok ? "done" : res.lost ? "lost" : res.duplicate ? "duplicate" : "unconfirmed")
       },
-      modal: { ondismiss: () => resolve("dismissed") },
+      modal: { ondismiss: () => resolve(failure ? { failed: failure } : "dismissed") },
+    })
+    // A failed attempt keeps the popup open for a retry, so the reason is kept and shown only if the popup is closed unpaid.
+    rz.on("payment.failed", (r) => {
+      failure = r.error?.description || "The payment did not go through."
     })
     rz.open()
   })

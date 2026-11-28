@@ -24,6 +24,8 @@ export const POLICY_PAGES = [
   { href: "/terms", label: "Terms of Service" },
   { href: "/privacy", label: "Privacy Policy" },
   { href: "/refund-policy", label: "Refunds and Cancellation" },
-  { href: "/delivery-policy", label: "Service Delivery" },
+  { href: "/delivery-policy", label: "Shipping and Delivery" },
   { href: "/data-deletion", label: "Data Deletion" },
 ] as const
+
+

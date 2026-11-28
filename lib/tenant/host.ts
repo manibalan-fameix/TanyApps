@@ -52,14 +52,15 @@ export function classifyHost(hostHeader: string | null | undefined, rootDomain: 
 }
 
 /**
- * A loopback or private-network IPv4 address (127.x, 10.x, 192.168.x, 172.16-31.x). Used only by the dev server so a phone on the same
+ * A loopback, private-network or Tailscale IPv4 address (127.x, 10.x, 192.168.x, 172.16-31.x, 100.64-127.x). Used only by the dev server so a phone on the same
  * Wi-Fi can open http://<mac-ip>:3000; proxy.ts never applies it outside development.
  */
 export function isLocalNetworkIp(hostHeader: string | null | undefined): boolean {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(normalizeHost(hostHeader))
   if (!m) return false
   const [a, b] = [Number(m[1]), Number(m[2])]
-  return a === 127 || a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31)
+  // 100.64.0.0/10 is the range Tailscale gives each device, so a phone can reach a private dev server through it.
+  return a === 127 || a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 100 && b >= 64 && b <= 127)
 }
 
 /**

@@ -3,8 +3,8 @@ import type { MetadataRoute } from "next"
 // Lets phones install TanyApps to the home screen and open it without browser chrome.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "TanyApps",
-    short_name: "TanyApps",
+    name: "Tany",
+    short_name: "Tany",
     start_url: "/dashboard",
     display: "standalone",
     background_color: "#ffffff",

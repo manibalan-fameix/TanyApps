@@ -3,13 +3,14 @@ import { Call02Icon, Location01Icon, Mail01Icon } from "@hugeicons/core-free-ico
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { STORE_CONTENT } from "@/components/restaurant/store/layout"
+import { requestHref } from "@/components/restaurant/store/request-link"
 import { formatKm } from "@/lib/restaurant/service-area"
 import { mapsUrl } from "@/lib/restaurant/location"
 import { PoweredBy } from "@/components/tenant/powered-by"
 import type { DealerProfile } from "@/lib/tenant/dealer"
 import type { Storefront } from "@/lib/restaurant/storefront-data"
 import { cn } from "@/lib/utils"
-import { storeTerms } from "@/lib/verticals/terms"
+import { aOrAn, storeTerms } from "@/lib/verticals/terms"
 
 export function StoreFooter({ dealer, store, hidePoweredBy }: { dealer: DealerProfile; store: Storefront; hidePoweredBy?: boolean }) {
   const { profile, categories } = store
@@ -48,6 +49,8 @@ export function StoreFooter({ dealer, store, hidePoweredBy }: { dealer: DealerPr
               <li><a href={mapsUrl(store.serviceArea.lat, store.serviceArea.lng)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 hover:text-foreground"><HugeiconsIcon icon={Location01Icon} strokeWidth={2} className="size-4" />Get directions{store.serviceArea.radiusKm !== null ? ` · delivers up to ${formatKm(store.serviceArea.radiusKm)} km` : ""}</a></li>
             ) : null}
             <li><Link href="/track-order" className="hover:text-foreground">Track an order</Link></li>
+            <li><Link href={requestHref()} className="hover:text-foreground">Request {aOrAn(terms.item)}</Link></li>
+            <li><Link href="/contact?type=question" className="hover:text-foreground">Ask a question</Link></li>
           </ul>
         </div>
       </div>

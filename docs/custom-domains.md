@@ -1,7 +1,7 @@
 # Custom domains
 
-A Pro business can serve its shop on a domain it owns (for example `www.sellershypermarket.com`) instead of `sellershypermarket.tany.in`.
-**Motos only for now** (`lib/domains/rollout.ts`): other products do not see the page. The feature is **off** until `CUSTOM_DOMAIN_TARGET` is set, so the code can ship before Cloudflare is ready.
+A Pro business can serve its website on a domain it owns (for example `www.sellershypermarket.com`) instead of `sellershypermarket.tany.in`.
+**All products** see the page: Motos, Eats, Retail and Cabs (`lib/domains/rollout.ts`). The feature is **off** until `CUSTOM_DOMAIN_TARGET` is set, so the code can ship before Cloudflare is ready.
 
 ## What the owner does (Settings → Custom domain)
 
@@ -44,7 +44,7 @@ The automated tests fake Cloudflare and DNS. On staging, with a real spare domai
 
 - **first of all:** that a CNAME to `<token>.customers.<root>` (one record, no TXT) gets a certificate and loads the shop over HTTPS. This has only been tested with Cloudflare faked;
 - for Motos: car pages, shared car links, the enquiry form, and a booking with a test payment (Razorpay may require the seller's domain to be registered on the account taking the payment);
-- before offering it to other products: customer sign-in, adding to cart, checkout and a test payment;
+- for Eats, Retail and Cabs, before offering it to their customers: sign-in, cart or booking, checkout and a test payment, delivery partner PIN sign-in, and photo uploads;
 - maps: a Google Maps browser key restricted by website must also allow the seller's domain, or maps will not load there;
 - live delivery tracking;
 - breaking the CNAME: within a few minutes of Cloudflare noticing, `<slug>.<root>` stops redirecting. How quickly Cloudflare notices is not under our control, and until then visitors are still redirected. The owner can press **Use <slug>.<root> instead** at once.

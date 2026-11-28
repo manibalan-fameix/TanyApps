@@ -608,7 +608,7 @@ export function DealerLoginForm({
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <div className="flex flex-col items-center">
-        <Link href="/" aria-label="TanyApps">
+        <Link href="/" aria-label="Tany">
           <Logo className="h-10" />
         </Link>
       </div>

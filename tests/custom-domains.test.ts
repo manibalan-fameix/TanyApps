@@ -48,13 +48,13 @@ describe("what the owner is asked to add", () => {
 })
 
 describe("which products are offered a domain", () => {
-  it("is Motos only, in the menus too", async () => {
+  it("is every product, in the menus too", async () => {
     const { offersCustomDomain } = await import("../lib/domains/rollout")
     const { ADMIN_NAV } = await import("../components/admin/nav-config")
     for (const [industry, nav] of Object.entries(ADMIN_NAV)) {
       const listed = nav.items.flatMap((i) => i.items ?? []).some((i) => i.url === "/settings/domain")
-      expect(listed, industry).toBe(industry === "motors")
-      expect(offersCustomDomain(industry as keyof typeof ADMIN_NAV), industry).toBe(industry === "motors")
+      expect(listed, industry).toBe(true)
+      expect(offersCustomDomain(industry as keyof typeof ADMIN_NAV), industry).toBe(true)
     }
   })
 })

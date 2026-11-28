@@ -22,7 +22,7 @@ export type ParsedHostname = { ok: true; hostname: string } | { ok: false; error
 /** What the owner typed (maybe a whole link, maybe without www) as the hostname to connect, or why it cannot be used. */
 export function parseCustomHostname(input: string, rootDomain?: string): ParsedHostname {
   const raw = input.trim()
-  const invalid: ParsedHostname = { ok: false, error: "Enter a web address such as www.yourshop.com." }
+  const invalid: ParsedHostname = { ok: false, error: "Enter a web address such as www.yourbusiness.com." }
   if (!raw || raw.length > 300 || /\s/.test(raw)) return invalid
   let hostname: string
   try {
@@ -86,7 +86,7 @@ export type SetupGuide = { host: string; domain: string; name: string; value: st
 /** The whole job in plain text, for the owner to send to whoever looks after their domain. */
 export function setupInstructions(guide: SetupGuide): string {
   return [
-    `Please connect ${guide.host} to our Tany shop.`,
+    `Please connect ${guide.host} to our Tany website.`,
     "",
     `In the DNS settings of ${guide.domain}, add this record. If a record named "${guide.name}" already exists, edit it instead.`,
     "Type: CNAME",

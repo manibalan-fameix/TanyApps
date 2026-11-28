@@ -32,6 +32,8 @@ export type AddressFormProps = {
   editing: SavedAddress | null
   /** Where the map starts for a new address: the shop. */
   centre: Point | null
+  /** A spot the customer has already set, to save as a new address: the pin starts there. */
+  start?: Point | null
   /** The dialog is drawn outside the themed page, so it carries the shop's colours itself. */
   themeVars: React.CSSProperties
   onSaved: (addresses: SavedAddress[], id: string) => void
@@ -40,8 +42,9 @@ export type AddressFormProps = {
 export function AddressFormDialog({ open, onOpenChange, ...rest }: AddressFormProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-2xl overflow-y-auto sm:max-w-2xl" style={rest.themeVars}>
-        <DialogHeader>
+      {/* The title and the Cancel / Save buttons stay put; only the fields between them scroll. */}
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-2xl flex-col gap-4 overflow-hidden sm:max-w-2xl" style={rest.themeVars}>
+        <DialogHeader className="pr-10">
           <DialogTitle>{rest.editing ? "Edit address" : "Add a delivery address"}</DialogTitle>
           <DialogDescription>Put the pin on your door. The delivery partner navigates to that exact spot.</DialogDescription>
         </DialogHeader>
@@ -52,9 +55,9 @@ export function AddressFormDialog({ open, onOpenChange, ...rest }: AddressFormPr
   )
 }
 
-function AddressForm({ editing, centre, onSaved, onOpenChange }: Omit<AddressFormProps, "open" | "themeVars">) {
-  const [pin, setPin] = useState<Point | null>(editing ? { lat: editing.lat, lng: editing.lng } : null)
-  const [pinFrom, setPinFrom] = useState<PinFrom | null>(editing ? "saved" : null)
+function AddressForm({ editing, centre, start = null, onSaved, onOpenChange }: Omit<AddressFormProps, "open" | "themeVars">) {
+  const [pin, setPin] = useState<Point | null>(editing ? { lat: editing.lat, lng: editing.lng } : start)
+  const [pinFrom, setPinFrom] = useState<PinFrom | null>(editing ? "saved" : start ? "hand" : null)
   const [accuracy, setAccuracy] = useState<number | null>(null)
   const [locating, setLocating] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -104,6 +107,13 @@ function AddressForm({ editing, centre, onSaved, onOpenChange }: Omit<AddressFor
     if (found.pincode) setPincode((v) => (!v || v === before.pincode ? found.pincode : v))
     filled.current = { street: found.street || before.street, pincode: found.pincode || before.pincode }
   }
+
+  // A starting spot fills in its street and pincode, as a pin placed by hand does.
+  useEffect(() => {
+    if (!editing && start) void describe(start)
+    // Runs once, when the form opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function place(p: Point, from: PinFrom) {
     latestPin.current++
@@ -169,77 +179,80 @@ function AddressForm({ editing, centre, onSaved, onOpenChange }: Omit<AddressFor
 
   return (
     <form
-      className="grid gap-4"
+      className="flex min-h-0 flex-1 flex-col gap-4"
       noValidate
       onSubmit={(e) => {
         e.preventDefault()
         save()
       }}
     >
-      <Button type="button" size="lg" variant="outline" className="gap-2" disabled={locating} onClick={() => void fromPhone()}>
-        <HugeiconsIcon icon={Location01Icon} strokeWidth={2} className="size-5" />
-        {locating ? "Getting a precise location…" : "I am at this address: use my current location"}
-      </Button>
+      {/* Reaches the pop-up's edges, so the scrollbar sits there and focus rings are not clipped. */}
+      <div className="-mx-6 grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-4 overflow-x-hidden overflow-y-auto border-y px-6 py-4">
+        <Button type="button" size="lg" variant="outline" className="h-auto min-h-11 gap-2 py-2 text-center whitespace-normal" disabled={locating} onClick={() => void fromPhone()}>
+          <HugeiconsIcon icon={Location01Icon} strokeWidth={2} className="size-5" />
+          {locating ? "Getting a precise location…" : "I am at this address: use my current location"}
+        </Button>
 
-      <div className="grid gap-1.5">
-        <Input aria-label="Search for a place" placeholder="Or search your area, street or landmark" value={query} autoComplete="off" onChange={(e) => { setQuery(e.target.value); if (e.target.value.trim().length < 3) setPlaces([]) }} onKeyDown={(e) => e.key === "Enter" && e.preventDefault()} />
-        {places.length > 0 ? (
-          <ul className="max-h-44 overflow-auto rounded-xl border bg-popover p-1">
-            {places.map((p) => (
-              <li key={`${p.lat},${p.lng}`}>
-                <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-muted" onClick={() => { setQuery(""); setPlaces([]); place({ lat: p.lat, lng: p.lng }, "search") }}>
-                  {p.label}
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
-
-      <div className="grid gap-1.5">
-        <PinMap point={pin ?? centre ?? INDIA} onPick={(p) => place(p, "hand")} label="Map: drag the pin to your door" className="h-64" />
-        <p role="status" className={cn("text-sm", exact ? "text-success" : "text-muted-foreground")}>
-          {locating
-            ? `Finding your exact spot${accuracy !== null ? ` · accurate to about ${accuracy} m so far` : ""}…`
-            : rough
-              ? `Your location is only accurate to about ${accuracy} m. Drag the pin, or tap the map, on your door.`
-              : pinFrom === "search"
-                ? "That is the general area. Now drag the pin, or tap the map, on your door."
-                : pinFrom === "gps"
-                  ? `Accurate to about ${accuracy} m. Drag the pin if it is not on your door.`
-                  : pin
-                    ? "Pin set. Drag it if it is not on your door."
-                    : "Drag the pin, or tap the map, on your door."}
-        </p>
-        {notice ? <p role="alert" className="text-sm text-destructive">{notice}</p> : null}
-        {errors.lat ? <p role="alert" className="text-sm text-destructive">{errors.lat}</p> : null}
-        {outside ? <p role="alert" className="text-sm text-destructive">We do not deliver to this spot yet. You can still save it.</p> : null}
-      </div>
-
-      <FieldGroup>
-        <Field data-invalid={Boolean(errors.label)}>
-          <FieldLabel htmlFor="addr-label">Save as</FieldLabel>
-          <div className="flex flex-wrap gap-2">
-            {ADDRESS_LABELS.map((l) => (
-              <Button key={l} type="button" size="sm" variant={label === l ? "default" : "outline"} aria-pressed={label === l} onClick={() => setLabel(l)}>{l}</Button>
-            ))}
-          </div>
-          <Input id="addr-label" value={label} maxLength={40} onChange={(e) => setLabel(e.target.value)} />
-          {errors.label ? <FieldError>{errors.label}</FieldError> : null}
-        </Field>
-        {text("house", "Flat, house or door number", house, setHouse, { maxLength: 60, autoComplete: "address-line1" })}
-        <Field data-invalid={Boolean(errors.street)}>
-          <FieldLabel htmlFor="addr-street">Building, street and area</FieldLabel>
-          <Textarea id="addr-street" rows={2} maxLength={150} value={street} autoComplete="address-line2" onChange={(e) => setStreet(e.target.value)} />
-          {errors.street ? <FieldError>{errors.street}</FieldError> : null}
-        </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {text("landmark", "Landmark (optional)", landmark, setLandmark, { maxLength: 70 })}
-          {text("pincode", "Pincode", pincode, (v) => setPincode(v.replace(/\D/g, "")), { maxLength: 6, inputMode: "numeric", autoComplete: "postal-code" })}
+        <div className="grid gap-1.5">
+          <Input aria-label="Search for a place" placeholder="Or search your area, street or landmark" value={query} autoComplete="off" onChange={(e) => { setQuery(e.target.value); if (e.target.value.trim().length < 3) setPlaces([]) }} onKeyDown={(e) => e.key === "Enter" && e.preventDefault()} />
+          {places.length > 0 ? (
+            <ul className="max-h-44 overflow-auto rounded-xl border bg-popover p-1">
+              {places.map((p) => (
+                <li key={`${p.lat},${p.lng}`}>
+                  <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-muted" onClick={() => { setQuery(""); setPlaces([]); place({ lat: p.lat, lng: p.lng }, "search") }}>
+                    {p.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
-      </FieldGroup>
 
-      {errors.form ? <p role="alert" className="text-sm text-destructive">{errors.form}</p> : null}
+        <div className="grid gap-1.5">
+          <PinMap point={pin ?? centre ?? INDIA} onPick={(p) => place(p, "hand")} label="Map: drag the pin to your door" className="h-64" />
+          <p role="status" className={cn("text-sm", exact ? "text-success" : "text-muted-foreground")}>
+            {locating
+              ? `Finding your exact spot${accuracy !== null ? ` · accurate to about ${accuracy} m so far` : ""}…`
+              : rough
+                ? `Your location is only accurate to about ${accuracy} m. Drag the pin, or tap the map, on your door.`
+                : pinFrom === "search"
+                  ? "That is the general area. Now drag the pin, or tap the map, on your door."
+                  : pinFrom === "gps"
+                    ? `Accurate to about ${accuracy} m. Drag the pin if it is not on your door.`
+                    : pin
+                      ? "Pin set. Drag it if it is not on your door."
+                      : "Drag the pin, or tap the map, on your door."}
+          </p>
+          {notice ? <p role="alert" className="text-sm text-destructive">{notice}</p> : null}
+          {errors.lat ? <p role="alert" className="text-sm text-destructive">{errors.lat}</p> : null}
+          {outside ? <p role="alert" className="text-sm text-destructive">We do not deliver to this spot yet. You can still save it.</p> : null}
+        </div>
+
+        <FieldGroup>
+          {text("house", "Flat, house or door number", house, setHouse, { maxLength: 60, autoComplete: "address-line1" })}
+          <Field data-invalid={Boolean(errors.street)}>
+            <FieldLabel htmlFor="addr-street">Building, street and area</FieldLabel>
+            <Textarea id="addr-street" rows={2} maxLength={150} value={street} autoComplete="address-line2" onChange={(e) => setStreet(e.target.value)} />
+            {errors.street ? <FieldError>{errors.street}</FieldError> : null}
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {text("landmark", "Landmark (optional)", landmark, setLandmark, { maxLength: 70 })}
+            {text("pincode", "Pincode", pincode, (v) => setPincode(v.replace(/\D/g, "")), { maxLength: 6, inputMode: "numeric", autoComplete: "postal-code" })}
+          </div>
+          <Field data-invalid={Boolean(errors.label)}>
+            <FieldLabel id="addr-label">Save as</FieldLabel>
+            <div role="group" aria-labelledby="addr-label" className="flex flex-wrap gap-2">
+              {ADDRESS_LABELS.map((l) => (
+                <Button key={l} type="button" size="sm" variant={label === l ? "default" : "outline"} aria-pressed={label === l} onClick={() => setLabel(l)}>{l}</Button>
+              ))}
+            </div>
+            {errors.label ? <FieldError>{errors.label}</FieldError> : null}
+          </Field>
+        </FieldGroup>
+
+        {errors.form ? <p role="alert" className="text-sm text-destructive">{errors.form}</p> : null}
+
+      </div>
 
       <DialogFooter>
         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

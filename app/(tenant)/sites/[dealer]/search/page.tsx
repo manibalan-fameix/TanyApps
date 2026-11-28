@@ -1,4 +1,5 @@
 import { DishCard } from "@/components/restaurant/store/dish-card"
+import { requestHref } from "@/components/restaurant/store/request-link"
 import { StoreEmpty, StorePage, DISH_GRID } from "@/components/restaurant/store/ui"
 import { Input } from "@/components/ui/input"
 import { restaurantPage } from "@/lib/restaurant/page-data"
@@ -23,7 +24,7 @@ export default async function SearchPage({ params, searchParams }: { params: Pro
         {!q.trim() ? (
           <StoreEmpty title={dealer.industry === "retail" ? "What are you looking for?" : "What are you craving?"} body={`Search by ${t.item} name, description or category.`} action={{ href: "/menu", label: `Browse the ${t.catalogue.toLowerCase()}` }} />
         ) : results.length === 0 ? (
-          <StoreEmpty title={`No ${t.items} found`} body={`Nothing matched “${q}”. Try another word or browse all categories.`} action={{ href: "/menu", label: `Browse the ${t.catalogue.toLowerCase()}` }} />
+          <StoreEmpty title={`No ${t.items} found`} body={`Nothing matched “${q}”. Ask us for it, try another word or browse all categories.`} action={{ href: requestHref(q), label: `Request this ${t.item}` }} secondary={{ href: "/menu", label: `Browse the ${t.catalogue.toLowerCase()}` }} />
         ) : (
           <>
             <p className="mb-4 text-sm text-muted-foreground">{results.length} {results.length === 1 ? t.item : t.items} for “{q}”</p>

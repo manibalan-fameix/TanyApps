@@ -80,7 +80,7 @@ export function WelcomeDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Welcome to TanyApps, {name}!</DialogTitle>
+          <DialogTitle>Welcome to Tany, {name}!</DialogTitle>
           <DialogDescription>
             Your {vertical.pageNoun} is live on the {planLabel} plan
             {free

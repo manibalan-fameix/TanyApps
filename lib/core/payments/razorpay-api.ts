@@ -128,6 +128,8 @@ export async function createRouteOrder(input: {
 }): Promise<{ orderId: string } | null> {
   const creds = razorpayCredentials()
   if (!creds) return null
+  // Razorpay's smallest order is 100 paise, which is one rupee.
+  if (!(input.amount >= 1)) throw new Error("A payment must be at least 100 paise")
   const notes = { ...input.notes, kind: input.kind }
   const body: Record<string, unknown> = { amount: input.amount * 100, currency: "INR", notes }
   if (input.receipt) body.receipt = input.receipt

@@ -46,7 +46,9 @@
     ".next-e2e-cabs/types/**/*.ts",
     ".next-e2e-cabs/dev/types/**/*.ts",
     ".next-e2e-login/types/**/*.ts",
-    ".next-e2e-login/dev/types/**/*.ts"
+    ".next-e2e-login/dev/types/**/*.ts",
+    ".next-motos-domain/types/**/*.ts",
+    ".next-motos-domain/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

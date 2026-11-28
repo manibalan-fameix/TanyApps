@@ -15,7 +15,7 @@ import { verticalList } from "@/lib/verticals"
 import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = {
-  title: "TanyApps | Online pages and software for local businesses",
+  title: "Tany | Online pages and software for local businesses",
   description: "Software for car dealers, restaurants, cab operators and shops in India: your own web page to show what you offer and take enquiries, orders and bookings.",
 }
 
@@ -34,7 +34,7 @@ export default function Home() {
           Your business online, on <span className="text-primary">your own link</span>
         </h1>
         <p className="text-lg text-pretty text-muted-foreground">
-          TanyApps gives car dealers, restaurants, cab operators and shops their own web page and a dashboard to manage enquiries, orders and bookings.
+          Tany gives car dealers, restaurants, cab operators and shops their own web page and a dashboard to manage enquiries, orders and bookings.
         </p>
         <div className="flex flex-wrap justify-center gap-3">
           {/* Plain anchor: the admin app is on another subdomain. */}

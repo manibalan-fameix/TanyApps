@@ -33,6 +33,9 @@ export type StoreTerms = {
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
+/** "a product", "an item". */
+export const aOrAn = (word: string) => `${/^[aeiou]/i.test(word) ? "an" : "a"} ${word}`
+
 const RESTAURANT_TERMS: StoreTerms = {
   item: "dish",
   items: "dishes",

@@ -71,7 +71,7 @@ export async function StoreShell({ dealer, children, preview = false }: { dealer
         <ViewCartBar />
         <OrderAssistant dishes={store.dishes} categories={store.categories} canOrder={store.canOrder} name={dealer.displayName} logoUrl={dealer.logoUrl ?? null} themeVars={themeToCssVars(dealer.theme) as CSSProperties} />
         <StoreBottomNav monthly={store.settings.monthly.enabled} />
-        {preview ? null : <LocationDialog restaurant={dealer.displayName} themeVars={themeToCssVars(dealer.theme) as CSSProperties} />}
+        {preview ? null : <LocationDialog restaurant={dealer.displayName} themeVars={themeToCssVars(dealer.theme) as CSSProperties} centre={centre} />}
         <LocationPicker restaurant={dealer.displayName} themeVars={themeToCssVars(dealer.theme) as CSSProperties} centre={centre} />
        </LocationProvider>
        </DishPopupProvider>

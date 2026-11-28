@@ -30,7 +30,9 @@ export function SectionTitle({ eyebrow, title, hint, action }: { eyebrow?: strin
   )
 }
 
-export function StoreEmpty({ title, body, action }: { title: string; body: string; action?: { href: string; label: string } }) {
+type EmptyAction = { href: string; label: string }
+
+export function StoreEmpty({ title, body, action, secondary }: { title: string; body: string; action?: EmptyAction; secondary?: EmptyAction }) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-2xl border bg-card p-10 text-center">
       <h2 className="text-lg font-semibold">{title}</h2>
@@ -38,6 +40,11 @@ export function StoreEmpty({ title, body, action }: { title: string; body: strin
       {action ? (
         <Link href={action.href} className={cn(buttonVariants())}>
           {action.label}
+        </Link>
+      ) : null}
+      {secondary ? (
+        <Link href={secondary.href} className={cn(buttonVariants({ variant: "ghost" }))}>
+          {secondary.label}
         </Link>
       ) : null}
     </div>

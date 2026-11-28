@@ -1,10 +1,11 @@
 "use client"
 
 import Link from "next/link"
-import { Fragment, useMemo } from "react"
+import { Fragment } from "react"
 
 import { CategoryIcon } from "@/components/restaurant/category-icon"
 import { DishTile } from "@/components/restaurant/store/dish-tile"
+import { FilterBar, useDishFilters } from "@/components/restaurant/store/filter-bar"
 import { useWebStrip } from "@/components/restaurant/store/web-header"
 import { PromoBanner } from "@/components/restaurant/store/promo-banners"
 import { PRODUCT_SLOT, ScrollRow } from "@/components/restaurant/store/scroll-row"
@@ -13,6 +14,7 @@ import type { StoreBanner } from "@/lib/restaurant/banners"
 import { type HomeSectionId, type Homepage, rowProducts } from "@/lib/restaurant/homepage"
 import { type StoreCategory, type StoreDish, offerPercent } from "@/lib/restaurant/storefront"
 import { cn } from "@/lib/utils"
+import { RequestPrompt } from "@/components/restaurant/store/request-prompt"
 import { useStoreTerms } from "@/components/restaurant/store/terms-context"
 
 type Props = {
@@ -34,10 +36,12 @@ export function StoreWebHome({ dishes, categories, couponHint, canOrder, banners
   const terms = useStoreTerms()
   const strip = useWebStrip()
 
-  const picks = dishes.filter((d) => d.isFeatured)
-  const gems = rowProducts(layout.picks.productIds, dishes, dishes, (picks.length ? picks : dishes).slice(0, 12))
-  const discounted = useMemo(() => dishes.filter((d) => offerPercent(d) !== null).slice(0, 12), [dishes])
-  const onOffer = rowProducts(layout.offers.productIds, dishes, dishes, discounted)
+  const filters = useDishFilters(dishes)
+  const { shown, anyFilter, clear } = filters
+
+  const picks = shown.filter((d) => d.isFeatured)
+  const gems = rowProducts(layout.picks.productIds, dishes, shown, (picks.length ? picks : shown).slice(0, 12))
+  const onOffer = rowProducts(layout.offers.productIds, dishes, shown, shown.filter((d) => offerPercent(d) !== null).slice(0, 12))
   const circles = categories.filter((c) => !layout.hiddenCategoryIds.includes(c.id))
   const blocks: Record<HomeSectionId, React.ReactNode> = {
     banners: (
@@ -72,7 +76,7 @@ export function StoreWebHome({ dishes, categories, couponHint, canOrder, banners
       </>
     ),
     picks:
-      dishes.length > 0 && gems.length > 0 ? (
+      shown.length > 0 && gems.length > 0 ? (
         <ScrollRow className="mt-10" title={layout.picks.title || (picks.length ? terms.picksTitle : "Popular Now")}>
           {gems.map((d) => (
             <li key={d.id} className={PRODUCT_SLOT}>
@@ -91,7 +95,23 @@ export function StoreWebHome({ dishes, categories, couponHint, canOrder, banners
           ))}
         </ScrollRow>
       ) : null,
-    catalogue: <StoreTabs dishes={dishes} categories={categories} canOrder={canOrder} />,
+    // A fragment, so the filter strip can still pin while the page scrolls.
+    catalogue: (
+      <>
+        {dishes.length > 0 && shown.length === 0 ? (
+          <p className="mx-4 mt-10 rounded-2xl border bg-card p-10 text-center text-muted-foreground">
+            No {terms.items} match these filters.
+            {anyFilter ? (
+              <button type="button" onClick={clear} className="mx-auto mt-3 block font-medium text-primary">
+                Clear filters
+              </button>
+            ) : null}
+          </p>
+        ) : null}
+        {dishes.length > 0 ? <FilterBar filters={filters} className="top-[var(--head-h,5rem)]" /> : null}
+        <StoreTabs dishes={shown} categories={categories} canOrder={canOrder} underBar />
+      </>
+    ),
   }
 
   return (
@@ -102,6 +122,7 @@ export function StoreWebHome({ dishes, categories, couponHint, canOrder, banners
           <p className="mx-4 mt-10 rounded-2xl border bg-card p-10 text-center text-muted-foreground">Our {terms.catalogue.toLowerCase()} is coming soon. Please check back shortly.</p>
         ) : null}
         {layout.sections.map((section) => (section.visible ? <Fragment key={section.id}>{blocks[section.id]}</Fragment> : null))}
+        <RequestPrompt className="mx-4 mt-10" />
       </div>
       </div>
     </main>

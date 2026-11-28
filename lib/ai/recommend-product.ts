@@ -48,7 +48,7 @@ export function parseRecommendation(raw: string): Recommendation | null {
 }
 
 const SYSTEM = [
-  "You match a small business to one TanyApps product. Products:",
+  "You match a small business to one Tany product. Products:",
   ...PRODUCTS.map((p) => `- ${p.key}: ${p.blurb}`),
   'Reply with JSON only: {"product":"<key>","reason":"<one friendly sentence, max 20 words, addressed to the owner>"}.',
   "The owner may paste a website or social media link; its words, title and description appear in a <link_info> block.",

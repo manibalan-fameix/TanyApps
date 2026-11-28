@@ -1,7 +1,10 @@
+import Link from "next/link"
+
 import { PricingSection } from "@/components/site/pricing-section"
 import { SiteShell } from "@/components/site/site-shell"
+import { TRIAL_DAYS } from "@/lib/plans"
 
-export const metadata = { title: "Pricing | TanyApps" }
+export const metadata = { title: "Pricing | Tany" }
 
 export default function Page() {
   return (
@@ -12,6 +15,17 @@ export default function Page() {
           <p className="text-muted-foreground">Software subscription plans, priced in Indian rupees. Choose your type of business.</p>
         </div>
         <PricingSection />
+        <div className="mx-auto flex max-w-2xl flex-col gap-3 text-center text-sm text-muted-foreground">
+          <p>
+            Every plan is online software. Nothing is shipped. Paid plans start with a {TRIAL_DAYS}-day free trial, then renew automatically each month or year once you authorise a payment method. You can cancel at any time.
+          </p>
+          <p>
+            Read our{" "}
+            <Link className="underline" href="/refund-policy">refunds and cancellation policy</Link>,{" "}
+            <Link className="underline" href="/delivery-policy">shipping and delivery policy</Link> and{" "}
+            <Link className="underline" href="/terms">terms of service</Link>.
+          </p>
+        </div>
       </div>
     </SiteShell>
   )

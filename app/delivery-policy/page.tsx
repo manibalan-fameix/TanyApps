@@ -2,11 +2,11 @@ import { TextPage } from "@/components/site/text-page"
 import { company } from "@/lib/company"
 import { copy } from "@/lib/copy"
 
-export const metadata = { title: "Service Delivery | " + copy.brand.name }
+export const metadata = { title: "Shipping and Delivery | " + copy.brand.name }
 
 export default function Page() {
   return (
-    <TextPage title="Service Delivery" updated="25 November 2026">
+    <TextPage title="Shipping and Delivery" updated="27 November 2026">
       <p>{copy.brand.name} is online software. We ship no physical goods and charge no shipping fee.</p>
       <h2>When you get access</h2>
       <p>Your account is available online once you sign up. A plan&rsquo;s features are switched on once your trial starts or your payment is confirmed, usually within a few minutes.</p>

@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-sans" })
 
-export const metadata: Metadata = { title: "TanyApps", appleWebApp: { capable: true, title: "TanyApps", statusBarStyle: "default" }, formatDetection: { telephone: false } }
+export const metadata: Metadata = { title: "Tany", appleWebApp: { capable: true, title: "Tany", statusBarStyle: "default" }, formatDetection: { telephone: false } }
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" }
 
 // Root layout is theme-neutral. The admin layout adds next-themes; tenant pages get the

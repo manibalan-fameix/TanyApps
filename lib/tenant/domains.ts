@@ -107,7 +107,7 @@ async function advance(row: DomainRow, slug: string, now: Date): Promise<Progres
       return {
         proven: false,
         note: cname.length
-          ? `Your CNAME record points to ${cname[0]}. Change its value to ${expected}.`
+          ? `We still see ${cname[0]} in your record. If you have just changed it, this can take an hour or more and we will keep checking. The value should be ${expected}.`
           : "We cannot see your record yet. DNS changes can take a few hours to appear.",
       }
     }
